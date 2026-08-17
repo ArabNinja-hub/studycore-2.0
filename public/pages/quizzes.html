@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quizzes | StudyCore</title>
+    <link rel="stylesheet" href="../css/style.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="top-bar">🧠 Practice quizzes for each course, posted whenever the instructor adds them.</div>
+      <nav class="navbar">
+        <div class="container nav-inner">
+          <a href="../index.html" class="nav-brand">
+            <img src="../assets/logo.jpg" alt="StudyCore Logo" />
+            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
+          </a>
+          <ul class="nav-links">
+            <li><a href="../index.html">Home</a></li>
+            <li><a href="courses.html">Courses</a></li>
+            <li><a href="documents.html">Documents</a></li>
+            <li><a href="videos.html">Videos</a></li>
+            <li><a href="/dashboard.html">Dashboard</a></li>
+          </ul>
+        </div>
+      </nav>
+      <main class="page-main">
+        <section class="page-hero">
+          <div class="container">
+            <h1>Quizzes</h1>
+            <p>Open short practice quizzes for the selected subject and test your understanding.</p>
+            <div class="page-actions">
+              <a class="btn btn-primary" href="assignments.html">Open Assignments</a>
+              <button class="btn btn-outline" onclick="history.back()">← Back</button>
+            </div>
+          </div>
+        </section>
+        <section class="section">
+          <div class="container">
+            <div id="quizToolbar"></div>
+            <div class="resource-grid" id="quizCards"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        renderResourceSection({ category: 'quiz', gridId: 'quizCards', toolbarId: 'quizToolbar' });
+      });
+    </script>
+  </body>
+</html>

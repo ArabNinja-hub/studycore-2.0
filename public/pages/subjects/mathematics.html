@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mathematics | StudyCore</title>
+    <link rel="stylesheet" href="../../css/style.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="top-bar">➕ Mathematics study hub with notes, videos, assignments, and quizzes.</div>
+      <nav class="navbar">
+        <div class="container nav-inner">
+          <a href="../../index.html" class="nav-brand">
+            <img src="../../assets/logo.jpg" alt="StudyCore Logo" />
+            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
+          </a>
+          <ul class="nav-links">
+            <li><a href="../../index.html">Home</a></li>
+            <li><a href="../courses.html">Courses</a></li>
+            <li><a href="../documents.html">Documents</a></li>
+            <li><a href="../videos.html">Videos</a></li>
+            <li><a href="/dashboard.html">Dashboard</a></li>
+          </ul>
+        </div>
+      </nav>
+      <main class="page-main">
+        <section class="page-hero">
+          <div class="container">
+            <h1>Mathematics</h1>
+            <p id="subjectIntro">Explore algebra, geometry, trigonometry, revision packs, quizzes, and practice assignments.</p>
+            <div class="page-actions">
+              <a class="btn btn-primary" href="../course.html?subject=Mathematics">🎓 Open Course Home</a>
+              <button class="btn btn-outline" onclick="history.back()">← Back</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="../../js/api.js"></script>
+    <script src="../../js/auth.js"></script>
+    <script src="../../js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        await StudyCoreAuth.fetchSession();
+        StudyCoreAuth.updateAuthUI();
+        const user = StudyCoreAuth.getCurrentUser();
+        const subjectSlug = 'mathematics';
+        document.body.setAttribute('data-subject', 'mathematics');
+        if (user && user.learning_level === 'tertiary') {
+          const intro = document.getElementById('subjectIntro');
+          if (intro) intro.textContent = intro.textContent + ' (Showing tertiary-level framing where available.)';
+        }
+      });
+    </script>
+  </body>
+</html>

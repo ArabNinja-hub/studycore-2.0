@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Video Learning | StudyCore</title>
+    <link rel="stylesheet" href="../css/style.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="top-bar">🎬 Learn through guided video lessons, tutorials, and revision sessions.</div>
+      <nav class="navbar">
+        <div class="container nav-inner">
+          <a href="../index.html" class="nav-brand">
+            <img src="../assets/logo.jpg" alt="StudyCore Logo" />
+            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
+          </a>
+          <ul class="nav-links">
+            <li><a href="../index.html">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a href="courses.html">Courses</a></li>
+            <li><a href="documents.html">Documents</a></li>
+            <li><a class="active" href="videos.html">Videos</a></li>
+            <li><a href="announcements.html">Announcements</a></li>
+            <li><a href="pricing.html">Pricing</a></li>
+            <li><a href="/dashboard.html">Dashboard</a></li>
+            <li><a href="contact.html">Contact</a></li>
+          </ul>
+          <div class="nav-actions">
+            <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
+            <a class="btn btn-primary btn-sm" href="/signup.html">Sign Up</a>
+          </div>
+        </div>
+      </nav>
+
+      <main class="page-main">
+        <section class="page-hero">
+          <div class="container">
+            <h1>Video Learning</h1>
+            <p>Watch clear lesson videos that guide students through theory, worked examples, and revision topics.</p>
+            <div class="page-actions">
+              <a class="btn btn-primary" href="documents.html">Browse Documents</a>
+              <button class="btn btn-outline" onclick="history.back()">← Back</button>
+            </div>
+            <div id="accessNotice" class="access-notice"></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container card-grid">
+            <a class="info-card" href="subjects/mathematics.html">
+              <h3>➕ Mathematics</h3>
+              <p>Learn algebra, graphs, trigonometry, and revision concepts in short structured lessons.</p>
+            </a>
+            <a class="info-card" href="subjects/physics.html">
+              <h3>🧪 Physics</h3>
+              <p>Watch experiments, scientific explanations, and exam-focused topic breakdowns.</p>
+            </a>
+            <a class="info-card" href="subjects/programming.html">
+              <h3>💻 Programming</h3>
+              <p>Understand coding basics, problem solving, and practical examples from beginner to intermediate level.</p>
+            </a>
+            <a class="info-card" href="subjects/communication.html">
+              <h3>🗣 Communication Skills</h3>
+              <p>Improve speaking, writing, presentation, and confidence in clear lesson formats.</p>
+            </a>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>Video library</h2>
+              <p>Every lesson video your instructor has published appears here automatically.</p>
+            </div>
+            <div id="videoToolbar"></div>
+            <div class="resource-grid" id="videoCards"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        renderResourceSection({ category: 'video', gridId: 'videoCards', toolbarId: 'videoToolbar' });
+      });
+    </script>
+  </body>
+</html>

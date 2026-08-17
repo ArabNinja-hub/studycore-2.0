@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Courses | StudyCore</title>
+    <link rel="stylesheet" href="../css/style.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <div class="top-bar">📚 Explore dedicated subject pages for every major learning area.</div>
+      <nav class="navbar">
+        <div class="container nav-inner">
+          <a href="../index.html" class="nav-brand">
+            <img src="../assets/logo.jpg" alt="StudyCore Logo" />
+            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
+          </a>
+          <ul class="nav-links">
+            <li><a href="../index.html">Home</a></li>
+            <li><a href="about.html">About</a></li>
+            <li><a class="active" href="courses.html">Courses</a></li>
+            <li><a href="documents.html">Documents</a></li>
+            <li><a href="videos.html">Videos</a></li>
+            <li><a href="announcements.html">Announcements</a></li>
+            <li><a href="pricing.html">Pricing</a></li>
+            <li><a href="/dashboard.html">Dashboard</a></li>
+            <li><a href="contact.html">Contact</a></li>
+          </ul>
+          <div class="nav-actions">
+            <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
+            <a class="btn btn-primary btn-sm" href="/signup.html">Sign Up</a>
+          </div>
+        </div>
+      </nav>
+
+      <main class="page-main">
+        <section class="page-hero">
+          <div class="container">
+            <h1>Courses</h1>
+            <p>Select a subject and open its own learning page filled with notes, videos, assignments, revision materials, and quizzes.</p>
+            <div class="page-actions">
+              <a class="btn btn-primary" href="documents.html">Open Documents Library</a>
+              <button class="btn btn-outline" onclick="history.back()">← Back</button>
+            </div>
+            <div id="courseLevelNotice" class="access-notice"></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container">
+            <div class="subject-grid">
+              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
+                <a href="subjects/mathematics.html" style="color:inherit;text-decoration:none;">➕ Mathematics</a>
+                <a href="course.html?subject=Mathematics" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
+              </div>
+              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
+                <a href="subjects/programming.html" style="color:inherit;text-decoration:none;">💻 Programming &amp; Computer Science</a>
+                <a href="course.html?subject=Programming" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
+              </div>
+              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
+                <a href="subjects/communication.html" style="color:inherit;text-decoration:none;">🗣 Communication Skills</a>
+                <a href="course.html?subject=Communication" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
+              </div>
+              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
+                <a href="subjects/physics.html" style="color:inherit;text-decoration:none;">⚛ Physics</a>
+                <a href="course.html?subject=Physics" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
+              </div>
+              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
+                <a href="subjects/chemistry.html" style="color:inherit;text-decoration:none;">🧪 Chemistry</a>
+                <a href="course.html?subject=Chemistry" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
+              </div>
+              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
+                <a href="subjects/biology.html" style="color:inherit;text-decoration:none;">🌿 Biology</a>
+                <a href="course.html?subject=Biology" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="../js/api.js"></script>
+    <script src="../js/auth.js"></script>
+    <script src="../js/main.js"></script>
+  </body>
+</html>

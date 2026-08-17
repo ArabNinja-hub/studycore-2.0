@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Student Dashboard | StudyCore</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="navbar">
+        <div class="container nav-inner">
+          <a href="/" class="nav-brand">
+            <img src="/assets/logo.jpg" alt="StudyCore Logo" />
+            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
+          </a>
+          <ul class="nav-links">
+            <li><a href="/pages/courses.html">Courses</a></li>
+            <li><a href="/pages/documents.html">Documents</a></li>
+            <li><a href="/pages/videos.html">Videos</a></li>
+            <li><a href="/pages/quizzes.html">Quizzes</a></li>
+            <li><a href="/pages/assignments.html">Assignments</a></li>
+            <li><a href="/pages/announcements.html">Announcements</a></li>
+            <li><a href="/pages/search.html">Search</a></li>
+          </ul>
+          <div class="nav-actions">
+            <button class="btn btn-primary btn-sm" id="logoutBtn">Log Out</button>
+          </div>
+        </div>
+      </nav>
+      <main class="page-main">
+        <section class="page-hero">
+          <div class="container">
+            <div class="profile-header">
+              <div class="profile-avatar" id="profileAvatar">?</div>
+              <div class="profile-header-info">
+                <h1 id="profileHeaderName">Student Dashboard</h1>
+                <p id="profileHeaderEmail" class="profile-header-email"></p>
+              </div>
+            </div>
+            <div id="accessNotice" class="access-notice"></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container">
+            <div id="studentSummary" class="card-grid"></div>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>📢 Announcements</h2>
+              <p>Notices and updates from your admin - kept separate from your regular study materials.</p>
+            </div>
+            <div class="resource-grid" id="announcementCards"></div>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>Your bookmarks</h2>
+              <p>Resources you've saved for later.</p>
+            </div>
+            <div class="resource-grid" id="bookmarkCards"></div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>Your downloads</h2>
+              <p>Everything you've downloaded before - find it here again without searching, even though the file itself lives on your device.</p>
+            </div>
+            <div class="resource-grid" id="downloadCards"></div>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container card-grid">
+            <div class="info-card">
+              <h3>Edit profile</h3>
+              <form id="profileForm" class="profile-form">
+                <div class="form-group">
+                  <label for="profileName">Full name</label>
+                  <input id="profileName" type="text" required />
+                </div>
+                <div class="form-group">
+                  <label for="profileSchool">School</label>
+                  <input id="profileSchool" type="text" placeholder="e.g. Kitwe Secondary School" />
+                </div>
+                <div class="form-group">
+                  <label for="profileGrade">Grade / year</label>
+                  <input id="profileGrade" type="text" placeholder="e.g. Grade 11" />
+                </div>
+                <div class="form-group">
+                  <label for="profileLevel">Learning level</label>
+                  <select id="profileLevel">
+                    <option value="secondary">Secondary school</option>
+                    <option value="tertiary">University / Tertiary</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary" type="submit">Save changes</button>
+              </form>
+            </div>
+
+            <div class="info-card">
+              <h3>Change password</h3>
+              <form id="passwordForm" class="profile-form">
+                <div class="form-group">
+                  <label for="currentPassword">Current password</label>
+                  <div class="password-field-wrap">
+                    <input id="currentPassword" type="password" required />
+                    <button type="button" class="password-toggle-btn" data-toggle-password="currentPassword" aria-label="Show password">
+                      <svg class="pw-eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+                      <svg class="pw-eye-closed" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18M10.6 10.7a3.2 3.2 0 0 0 4.5 4.5M7.4 7.5C4.7 9 2.9 12 2.9 12s3.5 7 9.1 7c1.7 0 3.2-.5 4.4-1.2M12.2 5c6.4-.2 9.9 7 9.9 7a15 15 0 0 1-2.5 3.3"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="newPassword">New password</label>
+                  <div class="password-field-wrap">
+                    <input id="newPassword" type="password" required minlength="6" />
+                    <button type="button" class="password-toggle-btn" data-toggle-password="newPassword" aria-label="Show password">
+                      <svg class="pw-eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+                      <svg class="pw-eye-closed" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18M10.6 10.7a3.2 3.2 0 0 0 4.5 4.5M7.4 7.5C4.7 9 2.9 12 2.9 12s3.5 7 9.1 7c1.7 0 3.2-.5 4.4-1.2M12.2 5c6.4-.2 9.9 7 9.9 7a15 15 0 0 1-2.5 3.3"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <button class="btn btn-primary" type="submit">Update password</button>
+              </form>
+            </div>
+
+            <div class="info-card" id="subscriptionArea">
+              <h3>Subscription</h3>
+              <p>Loading...</p>
+            </div>
+
+            <div class="info-card" id="referralArea">
+              <h3>Invite friends</h3>
+              <p class="loading-text">Loading...</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/dashboard.js"></script>
+  </body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Dashboard | StudyCore</title>
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <nav class="navbar">
+        <div class="container nav-inner">
+          <a href="/" class="nav-brand">
+            <img src="/assets/logo.jpg" alt="StudyCore Logo" />
+            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
+          </a>
+          <div class="nav-actions">
+            <button class="btn btn-primary btn-sm" id="logoutBtn">Log Out</button>
+          </div>
+        </div>
+      </nav>
+      <main class="page-main">
+        <section class="page-hero">
+          <div class="container">
+            <h1>Admin Dashboard</h1>
+            <p>Manage every resource on StudyCore - upload, edit, organize, and track engagement.</p>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container">
+            <div id="adminAnalytics" class="card-grid"><p class="loading-text">Loading analytics…</p></div>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>📢 Post an announcement</h2>
+              <p>A quick notice for students - shown in the Announcements banner, not as a file upload.</p>
+            </div>
+            <form id="announcementForm" class="upload-form">
+              <div class="form-group">
+                <label for="annTitle">Title</label>
+                <input id="annTitle" type="text" placeholder="e.g. New past papers uploaded for Physics" required />
+              </div>
+              <div class="form-group">
+                <label for="annMessage">Message</label>
+                <textarea id="annMessage" placeholder="Details students should know" rows="3"></textarea>
+              </div>
+              <button class="btn btn-primary" type="submit" id="announcementSubmitBtn">Post Announcement</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container">
+            <div class="section-heading">
+              <h2 id="uploadFormTitle">Upload a new resource</h2>
+              <p>Drag a file in, fill in the details, and publish. Every upload is saved to disk and tracked in the database.</p>
+            </div>
+
+            <div class="quick-actions" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
+              <button class="btn btn-outline btn-sm" data-quick-category="document">📄 New Document</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="video">🎬 New Video</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="tutorial">📑 New Tutorial</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="past_paper">📝 New Past Paper</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="quiz">🧠 New Quiz</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="assignment">🗂 New Assignment</button>
+            </div>
+
+            <div class="upload-box">
+              <div id="dropZone" class="video-upload-slot" style="cursor:pointer;">
+                <span class="upload-icon">📁</span>
+                <strong id="dropZoneLabel">Drag & drop a file here, or click to browse</strong>
+                <span id="uploadSizeLabel" style="font-size:0.85rem;opacity:0.75;">PDF, Word, PowerPoint, Excel, images, ZIP, video, or audio - up to 2000MB</span>
+                <input type="file" id="fileInput" style="display:none;" />
+              </div>
+              <div id="fileChosenLabel" style="margin-top:8px;font-size:0.9rem;"></div>
+              <div id="uploadProgressWrap" style="display:none;margin-top:10px;">
+                <div style="background:rgba(0,0,0,0.08);border-radius:20px;height:10px;overflow:hidden;">
+                  <div id="uploadProgressBar" style="background:var(--teal,#1A9E8F);height:100%;width:0%;transition:width 0.2s;"></div>
+                </div>
+                <span id="uploadProgressText" style="font-size:0.8rem;"></span>
+              </div>
+
+              <form id="resourceForm" class="upload-form" style="margin-top:18px;" enctype="multipart/form-data">
+                <input type="hidden" id="resourceId" value="" />
+                <div class="form-group">
+                  <label for="resCategory">Category</label>
+                  <select id="resCategory" required>
+                    <option value="document">Document / Notes</option>
+                    <option value="video">Video Lesson</option>
+                    <option value="tutorial">Tutorial Sheet</option>
+                    <option value="past_paper">Past Paper</option>
+                    <option value="quiz">Quiz</option>
+                    <option value="assignment">Assignment</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="resTitle">Title</label>
+                  <input id="resTitle" type="text" placeholder="Introduction to Quadratic Equations" required />
+                </div>
+                <div class="form-group">
+                  <label for="resDescription">Description</label>
+                  <textarea id="resDescription" placeholder="Short summary students will see"></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="resSubject">Subject</label>
+                  <select id="resSubject">
+                    <option value="">General</option>
+                    <option>Mathematics</option>
+                    <option>Physics</option>
+                    <option>Chemistry</option>
+                    <option>Biology</option>
+                    <option>Communication</option>
+                    <option>Programming</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="resCourse">Course</label>
+                  <input id="resCourse" type="text" placeholder="e.g. Pure Mathematics" />
+                </div>
+                <div class="form-group">
+                  <label for="resYear">Year / Grade</label>
+                  <input id="resYear" type="text" placeholder="e.g. Grade 11, University Year 1" />
+                </div>
+                <div class="form-group">
+                  <label for="resSemester">Term</label>
+                  <select id="resSemester">
+                    <option value="">No specific term</option>
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="resTags">Tags (comma separated)</label>
+                  <input id="resTags" type="text" placeholder="algebra, revision, exam-pack" />
+                </div>
+                <div class="form-group" id="resDueDateGroup" style="display:none;">
+                  <label for="resDueDate">Due date</label>
+                  <input id="resDueDate" type="date" />
+                </div>
+                <div class="form-group" id="resQuizGroup" style="display:none;">
+                  <label for="resQuizData">Quiz questions (JSON array)</label>
+                  <textarea id="resQuizData" placeholder='[{"question":"What is 2+2?","options":["3","4","5"],"answer":1}]'></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="resPublishStatus">Status</label>
+                  <select id="resPublishStatus">
+                    <option value="published">Published (visible to students)</option>
+                    <option value="draft">Draft (hidden from students)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+                    <input type="checkbox" id="resIsFree" style="width:auto;" />
+                    Make this a free preview (visible even without an active subscription/trial)
+                  </label>
+                </div>
+                <button class="btn btn-primary" type="submit" id="resourceSubmitBtn">Publish Resource</button>
+                <button class="btn btn-outline" type="button" id="resourceCancelEditBtn" style="display:none;">Cancel edit</button>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>Manage resources</h2>
+              <p>Search, filter, sort, edit, delete, and publish/unpublish anything you've uploaded.</p>
+            </div>
+            <div id="adminToolbar"></div>
+            <div id="adminResourceTableWrap" style="overflow-x:auto;">
+              <table class="table" style="width:100%;border-collapse:collapse;">
+                <thead>
+                  <tr style="text-align:left;border-bottom:2px solid var(--border,#ddd);">
+                    <th style="padding:8px;">Title</th>
+                    <th style="padding:8px;">Category</th>
+                    <th style="padding:8px;">Subject</th>
+                    <th style="padding:8px;">Status</th>
+                    <th style="padding:8px;">Downloads</th>
+                    <th style="padding:8px;">Uploaded</th>
+                    <th style="padding:8px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminResourceTableBody">
+                  <tr><td colspan="7" style="padding:12px;">Loading…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>Subscription payments</h2>
+              <p>Students submit these after paying by mobile money. Confirm you actually received the money (check your phone) before approving.</p>
+            </div>
+            <div id="paymentsList" class="info-card">Loading…</div>
+          </div>
+        </section>
+
+        <section class="section alt-section">
+          <div class="container">
+            <div class="section-heading">
+              <h2>Students</h2>
+              <p>Everyone who has signed up, with subscription status.</p>
+            </div>
+            <div id="usersList" class="info-card">Loading…</div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/admin.js"></script>
+  </body>
+</html>
