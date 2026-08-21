@@ -641,12 +641,48 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
   overflow: hidden; aspect-ratio: 16 / 9; box-shadow: var(--shadow-lg);
 }
 .player-shell.lock-wall { aspect-ratio: auto; min-height: 360px; }
-.doc-viewer { overflow: hidden; }
+.doc-viewer { overflow: hidden; display: flex; flex-direction: column; }
 .doc-viewer-head {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 12px 18px; border-bottom: 1px solid var(--border);
 }
-.doc-viewer-frame { width: 100%; height: min(72vh, 860px); border: none; border-radius: 12px; background: #fff; }
+.doc-viewer-title {
+  font-size: 0.9rem; color: var(--ink); flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.doc-viewer-toolbar { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.doc-page-label, .doc-zoom-label {
+  font-size: 0.78rem; font-weight: 700; color: var(--muted);
+  min-width: 52px; text-align: center; font-variant-numeric: tabular-nums;
+}
+.doc-viewer-stage { position: relative; background: #121820; min-height: 280px; }
+.doc-viewer-scroll { overflow: auto; max-height: min(78vh, 920px); }
+.doc-viewer-canvas {
+  transform-origin: top center;
+  transition: transform 0.2s ease;
+}
+.doc-viewer-frame { width: 100%; height: min(72vh, 860px); border: none; background: #fff; }
+.doc-viewer-image { display: flex; justify-content: center; background: #0d141c; }
+.doc-viewer-image img { max-width: 100%; height: auto; margin: 0 auto; }
+.doc-viewer-text {
+  background: var(--bg-alt); margin: 0; padding: 22px;
+  font-size: 0.9rem; white-space: pre-wrap; max-height: 68vh; overflow-y: auto;
+}
+.doc-viewer-status {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 28px; text-align: center;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  color: var(--muted);
+}
+.doc-viewer-status[hidden] { display: none; }
+.doc-viewer-error h3 { color: var(--ink); font-size: 1.05rem; }
+.doc-viewer-error p { max-width: 420px; }
+.doc-viewer:fullscreen, .doc-viewer:-webkit-full-screen {
+  background: var(--card); border-radius: 0;
+}
+.doc-viewer:fullscreen .doc-viewer-frame,
+.doc-viewer:-webkit-full-screen .doc-viewer-frame { height: calc(100vh - 58px); }
 .player-shell video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .player-shell:fullscreen { border-radius: 0; }
 .player-shell:fullscreen video { height: 100vh; }

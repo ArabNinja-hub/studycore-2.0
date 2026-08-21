@@ -1,11 +1,10 @@
 const express = require('express');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
-const { r2, bucketName } = require('../lib/r2');
+const storage = require('../lib/storage');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('ADMIN'));
@@ -61,9 +60,9 @@ function serializeResource(row) {
 
 function deleteFileIfExists(storedKey) {
   if (!storedKey) return;
-  // Fire-and-forget, same as the old local-disk version - a resource row
-  // being deleted shouldn't be blocked or fail because R2 was briefly slow.
-  r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: storedKey })).catch(() => {});
+  // Fire-and-forget - a resource row being deleted shouldn't be blocked
+  // because storage was briefly slow.
+  storage.deleteObject(storedKey).catch(() => {});
 }
 
 // ---- Resource CRUD -------------------------------------------------------
@@ -109,7 +108,7 @@ router.post('/resources', upload.single('file'), (req, res) => {
     // Multer already streamed the file to R2 by this point - clean it up
     // rather than leaving an orphaned object with no matching resource row.
     if (req.file && req.file.key) {
-      r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: req.file.key })).catch(() => {});
+      storage.deleteObject(req.file.key).catch(() => {});
     }
     return res.status(400).json({ message: categoryMismatch });
   }
@@ -183,7 +182,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   const categoryMismatch = validateFileMatchesCategory(effectiveCategory, req.file);
   if (categoryMismatch) {
     if (req.file && req.file.key) {
-      r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: req.file.key })).catch(() => {});
+      storage.deleteObject(req.file.key).catch(() => {});
     }
     return res.status(400).json({ message: categoryMismatch });
   }

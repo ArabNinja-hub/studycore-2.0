@@ -3,9 +3,7 @@ const crypto = require('crypto');
 const { Transform } = require('stream');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { Upload } = require('@aws-sdk/lib-storage');
-const { r2, bucketName } = require('../lib/r2');
+const storage = require('../lib/storage');
 
 const ALLOWED_EXTENSIONS = new Set([
   '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt', '.csv',
@@ -23,14 +21,12 @@ function fileFilter(req, file, cb) {
   cb(null, true);
 }
 
-// A custom multer storage engine. Multer normally either buffers the whole
-// file in memory or writes it to local disk - neither is what we want here.
-// Instead, this streams the incoming file straight through to R2 as it
-// arrives (true streaming multipart upload, so a 250MB video is never fully
-// held in this server's memory or written to Render's disk), while a small
-// pass-through Transform also feeds a running SHA-256 hash so we still get
-// duplicate-file detection without a second read of the data.
-class R2Storage {
+// Streams the incoming file straight through to storage (R2 when configured,
+// otherwise the local DATA_DIR/uploads fallback) as it arrives. A small
+// pass-through Transform feeds a running SHA-256 hash so we still get
+// duplicate-file detection without a second read of the data. The whole
+// object is never buffered in this process.
+class ObjectStorage {
   _handleFile(req, file, cb) {
     const ext = path.extname(file.originalname).toLowerCase();
     const key = `${uuidv4()}${ext}`;
@@ -47,23 +43,17 @@ class R2Storage {
 
     file.stream.pipe(hashingPassThrough);
 
-    const upload = new Upload({
-      client: r2,
-      params: {
-        Bucket: bucketName,
-        Key: key,
-        Body: hashingPassThrough,
-        ContentType: file.mimetype
-      }
-    });
-
-    upload.done()
+    storage.putObject({
+      key,
+      body: hashingPassThrough,
+      contentType: file.mimetype
+    })
       .then(() => {
         cb(null, {
           key,
           size,
           contentHash: hash.digest('hex'),
-          bucket: bucketName
+          bucket: storage.backendName()
         });
       })
       .catch((err) => cb(err));
@@ -71,7 +61,7 @@ class R2Storage {
 
   _removeFile(req, file, cb) {
     if (!file.key) return cb(null);
-    r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: file.key }))
+    storage.deleteObject(file.key)
       .then(() => cb(null))
       .catch((err) => cb(err));
   }
@@ -80,7 +70,7 @@ class R2Storage {
 const maxMb = Number(process.env.MAX_UPLOAD_MB || 2000);
 
 const upload = multer({
-  storage: new R2Storage(),
+  storage: new ObjectStorage(),
   fileFilter,
   limits: { fileSize: maxMb * 1024 * 1024 }
 });
@@ -101,7 +91,7 @@ function avatarFileFilter(req, file, cb) {
 }
 
 const avatarUpload = multer({
-  storage: new R2Storage(),
+  storage: new ObjectStorage(),
   fileFilter: avatarFileFilter,
   limits: { fileSize: AVATAR_MAX_BYTES }
 });

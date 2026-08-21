@@ -101,6 +101,9 @@
   }
 
   /* ── Document viewer ────────────────────── */
+  // Progressive: the iframe / img points at the authorized stream URL so the
+  // browser can range-request the file. We never download the whole PDF into
+  // a blob first — that was the main reason large notes sat on a spinner.
   async function initDocumentViewer(lesson) {
     const host = $('#lessonPlayerHost');
     if (lesson.locked) {
@@ -115,25 +118,29 @@
         </div>`;
       return;
     }
+
     const stream = StudyCoreAPI.streamUrl(lesson.id);
     const mime = inferClientMime(lesson);
-    const shell = (inner) => `
-      <div class="card doc-viewer">
-        <div class="doc-viewer-head">
-          ${SC.icon('file-text', { size: 17 })}
-          <strong style="font-size:0.9rem;color:var(--ink);flex:1;min-width:0;">${escapeHtml(lesson.title)}</strong>
-          <span class="resource-meta">${lesson.fileSize ? formatFileSize(lesson.fileSize) : ''} · StudyCore Document Viewer</span>
-        </div>
-        <div style="padding:14px;">${inner}</div>
-      </div>`;
-
-    const isPdf = mime.startsWith('application/pdf');
+    const isPdf = mime.startsWith('application/pdf') || /\.pdf$/i.test(lesson.fileName || '');
     const isImage = mime.startsWith('image/');
     const isText = mime.startsWith('text/');
 
+    function paintChrome(stageInner) {
+      host.innerHTML = `
+        <div class="card doc-viewer" id="scDocViewer">
+          <div class="doc-viewer-head">
+            ${SC.icon('file-text', { size: 17 })}
+            <strong class="doc-viewer-title">${escapeHtml(lesson.title)}</strong>
+            <span class="resource-meta">${lesson.fileSize ? formatFileSize(lesson.fileSize) : ''} · StudyCore Document Viewer</span>
+            <div class="doc-viewer-toolbar" id="scDocToolbar"></div>
+          </div>
+          <div class="doc-viewer-stage" id="scDocStage">${stageInner}</div>
+        </div>`;
+    }
+
     if (!isPdf && !isImage && !isText) {
-      host.innerHTML = shell(`
-        <div class="empty-state" style="border:none;background:var(--bg-alt);">
+      paintChrome(`
+        <div class="empty-state" style="border:none;background:var(--bg-alt);margin:14px;">
           <div class="empty-icon">${SC.icon('file', { size: 28 })}</div>
           <h3>Preview not available in-browser</h3>
           <p>This file type (${escapeHtml(mime || 'unknown')}) can't be rendered directly in the StudyCore viewer. Ask your admin if a PDF or image version is available.</p>
@@ -141,43 +148,227 @@
       return;
     }
 
-    host.innerHTML = shell(`
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:240px;gap:12px;color:var(--muted);">
+    paintChrome(`
+      <div class="doc-viewer-status" id="scDocLoading">
         <div class="player-spinner"></div>
         <p>Opening document…</p>
       </div>`);
 
+    const OPEN_MS = 18000;
+    let opened = false;
+    const failTimer = setTimeout(() => {
+      if (!opened) showDocError('This document is taking too long to open. Check your connection and try again.');
+    }, OPEN_MS);
+
+    function showDocError(message) {
+      clearTimeout(failTimer);
+      opened = true;
+      const stage = host.querySelector('#scDocStage');
+      if (!stage) {
+        renderViewerError(host, 'Document unavailable', message);
+        return;
+      }
+      stage.innerHTML = `
+        <div class="doc-viewer-status doc-viewer-error">
+          ${SC.icon('alert-triangle', { size: 36 })}
+          <h3>Document unavailable</h3>
+          <p>${escapeHtml(message)}</p>
+          <button class="btn btn-teal btn-sm" type="button" id="scDocRetry">${SC.icon('refresh', { size: 15 })} Try again</button>
+        </div>`;
+      const retry = stage.querySelector('#scDocRetry');
+      if (retry) retry.addEventListener('click', () => initDocumentViewer(lesson));
+    }
+
+    async function probeStream() {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        let res = await fetch(stream, { method: 'HEAD', credentials: 'include', signal: ctrl.signal });
+        if (res.status === 405 || res.status === 501) {
+          res = await fetch(stream, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { Range: 'bytes=0-0' },
+            signal: ctrl.signal
+          });
+          if (res.body && typeof res.body.cancel === 'function') {
+            try { await res.body.cancel(); } catch { /* already closed */ }
+          }
+        }
+        return res;
+      } finally {
+        clearTimeout(t);
+      }
+    }
+
+    let probe;
     try {
-      const res = await fetch(stream, { credentials: 'include' });
+      probe = await probeStream();
+    } catch (err) {
+      console.error('[StudyCore reader] probe failed', err);
+      showDocError(err.name === 'AbortError'
+        ? 'The document server did not respond in time.'
+        : (err.message || 'Could not reach the document. Check your connection and try again.'));
+      return;
+    }
+
+    if (!probe.ok && probe.status !== 206) {
+      let message = 'This document could not be opened.';
+      if (probe.status === 401) message = 'Please log in again to open this document.';
+      else if (probe.status === 403) message = 'You do not have access to this document with your current plan.';
+      else if (probe.status === 404) message = 'This document is missing from storage.';
+      else if (probe.status === 503) message = 'File storage is not configured yet, so this file cannot be opened.';
+      try {
+        const data = await probe.json();
+        if (data && data.message) message = data.message;
+      } catch { /* not JSON */ }
+      console.error('[StudyCore reader] probe status', probe.status, message);
+      showDocError(message);
+      return;
+    }
+
+    const servedType = (probe.headers.get('content-type') || mime || '').split(';')[0].trim();
+    const asPdf = isPdf || servedType === 'application/pdf';
+    const asImage = isImage || servedType.startsWith('image/');
+    const asText = isText || servedType.startsWith('text/');
+
+    const toolbar = host.querySelector('#scDocToolbar');
+    const stage = host.querySelector('#scDocStage');
+    const viewer = host.querySelector('#scDocViewer');
+    let zoom = 100;
+    let page = 1;
+    const ZOOM_MIN = 75;
+    const ZOOM_MAX = 200;
+
+    function toolbarHtml() {
+      return `
+        ${asPdf ? `
+          <button type="button" class="icon-btn" id="scDocPrev" aria-label="Previous page">${SC.icon('arrow-left', { size: 16 })}</button>
+          <span class="doc-page-label" id="scDocPage">Page ${page}</span>
+          <button type="button" class="icon-btn" id="scDocNext" aria-label="Next page">${SC.icon('arrow-right', { size: 16 })}</button>
+        ` : ''}
+        <button type="button" class="icon-btn" id="scDocZoomOut" aria-label="Zoom out">${SC.icon('zoom-out', { size: 16 })}</button>
+        <span class="doc-zoom-label" id="scDocZoom">${zoom}%</span>
+        <button type="button" class="icon-btn" id="scDocZoomIn" aria-label="Zoom in">${SC.icon('zoom-in', { size: 16 })}</button>
+        <button type="button" class="icon-btn" id="scDocFit" aria-label="Fit width">${SC.icon('minimize', { size: 16 })}</button>
+        <button type="button" class="icon-btn" id="scDocFs" aria-label="Fullscreen">${SC.icon('maximize', { size: 16 })}</button>
+      `;
+    }
+
+    function pdfSrc() {
+      return `${stream}#page=${page}&zoom=${zoom}&toolbar=1&navpanes=0&view=FitH`;
+    }
+
+    function applyZoom() {
+      const label = host.querySelector('#scDocZoom');
+      if (label) label.textContent = `${zoom}%`;
+      const canvas = host.querySelector('#scDocCanvas');
+      if (canvas) canvas.style.transform = `scale(${zoom / 100})`;
+    }
+
+    function markOpen() {
+      if (opened) return;
+      opened = true;
+      clearTimeout(failTimer);
+      const loading = host.querySelector('#scDocLoading');
+      if (loading) loading.hidden = true;
+    }
+
+    function bindToolbar() {
+      const prev = host.querySelector('#scDocPrev');
+      const next = host.querySelector('#scDocNext');
+      const pageLabel = host.querySelector('#scDocPage');
+      if (prev) prev.addEventListener('click', () => {
+        page = Math.max(1, page - 1);
+        if (pageLabel) pageLabel.textContent = `Page ${page}`;
+        const frame = host.querySelector('#scDocFrame');
+        if (frame) frame.src = pdfSrc();
+      });
+      if (next) next.addEventListener('click', () => {
+        page += 1;
+        if (pageLabel) pageLabel.textContent = `Page ${page}`;
+        const frame = host.querySelector('#scDocFrame');
+        if (frame) frame.src = pdfSrc();
+      });
+      host.querySelector('#scDocZoomOut').addEventListener('click', () => {
+        zoom = Math.max(ZOOM_MIN, zoom - 25);
+        applyZoom();
+      });
+      host.querySelector('#scDocZoomIn').addEventListener('click', () => {
+        zoom = Math.min(ZOOM_MAX, zoom + 25);
+        applyZoom();
+      });
+      host.querySelector('#scDocFit').addEventListener('click', () => {
+        zoom = 100;
+        applyZoom();
+      });
+      host.querySelector('#scDocFs').addEventListener('click', () => {
+        const docFs = document.fullscreenElement || document.webkitFullscreenElement;
+        if (docFs) {
+          const exit = document.exitFullscreen || document.webkitExitFullscreen;
+          if (exit) exit.call(document);
+          return;
+        }
+        const req = viewer.requestFullscreen || viewer.webkitRequestFullscreen;
+        if (req) req.call(viewer);
+      });
+    }
+
+    if (asPdf) {
+      if (toolbar) toolbar.innerHTML = toolbarHtml();
+      stage.insertAdjacentHTML('beforeend', `
+        <div class="doc-viewer-scroll">
+          <div class="doc-viewer-canvas" id="scDocCanvas">
+            <iframe class="doc-viewer-frame" id="scDocFrame" src="${pdfSrc()}" title="${escapeHtml(lesson.title)}"></iframe>
+          </div>
+        </div>`);
+      const frame = host.querySelector('#scDocFrame');
+      frame.addEventListener('load', markOpen);
+      bindToolbar();
+      return;
+    }
+
+    if (asImage) {
+      if (toolbar) toolbar.innerHTML = toolbarHtml();
+      stage.insertAdjacentHTML('beforeend', `
+        <div class="doc-viewer-scroll doc-viewer-image">
+          <div class="doc-viewer-canvas" id="scDocCanvas">
+            <img id="scDocImage" src="${stream}" alt="${escapeHtml(lesson.title)}" />
+          </div>
+        </div>`);
+      const img = host.querySelector('#scDocImage');
+      img.addEventListener('load', markOpen);
+      img.addEventListener('error', () => showDocError('This image could not be displayed.'));
+      bindToolbar();
+      return;
+    }
+
+    // Text / CSV — small enough to fetch, but still time-bounded.
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 12000);
+      const res = await fetch(stream, { credentials: 'include', signal: ctrl.signal });
+      clearTimeout(t);
       if (!res.ok) {
         let message = 'This document could not be opened.';
         try {
           const data = await res.json();
           if (data && data.message) message = data.message;
         } catch { /* not JSON */ }
-        renderViewerError(host, 'Document unavailable', message);
+        showDocError(message);
         return;
       }
-      const blob = await res.blob();
-      const typed = blob.type && blob.type !== 'application/octet-stream'
-        ? blob
-        : new Blob([blob], { type: mime || blob.type || 'application/octet-stream' });
-      const url = URL.createObjectURL(typed);
-      let inner;
-      if (isPdf) {
-        inner = `<iframe class="doc-viewer-frame" src="${url}" title="${escapeHtml(lesson.title)}"></iframe>`;
-      } else if (isImage) {
-        inner = `<div style="background:#fff;border-radius:12px;padding:18px;text-align:center;"><img src="${url}" alt="${escapeHtml(lesson.title)}" style="max-height:68vh;margin:0 auto;" /></div>`;
-      } else {
-        const text = await typed.text();
-        inner = `<pre style="background:var(--bg-alt);border-radius:12px;padding:22px;font-size:0.9rem;white-space:pre-wrap;max-height:68vh;overflow-y:auto;"></pre>`;
-        host.innerHTML = shell(inner);
-        host.querySelector('pre').textContent = text;
-        return;
-      }
-      host.innerHTML = shell(inner);
+      const text = await res.text();
+      markOpen();
+      if (toolbar) toolbar.innerHTML = toolbarHtml();
+      stage.innerHTML = `<pre class="doc-viewer-text"></pre>`;
+      stage.querySelector('pre').textContent = text;
+      bindToolbar();
     } catch (err) {
-      renderViewerError(host, 'Document unavailable', err.message || 'Check your connection and try again.');
+      console.error('[StudyCore reader] text load failed', err);
+      showDocError(err.name === 'AbortError'
+        ? 'The document server did not respond in time.'
+        : (err.message || 'Check your connection and try again.'));
     }
   }
 

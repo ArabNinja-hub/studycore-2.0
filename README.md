@@ -83,6 +83,7 @@ middleware/auth.js      JWT cookie auth, role checks, page-level gating
 middleware/security.js  security headers + in-memory rate limiting (auth endpoints)
 middleware/upload.js    streaming R2 upload (SHA-256) + strict avatar upload config
 lib/r2.js               Cloudflare R2 client (S3-compatible)
+lib/storage.js          R2 + local-disk fallback, range-aware reads (never buffers whole files)
 routes/auth.routes.js   register/login/me, profile, password, avatar, subscribe, payment-info
 routes/courses.routes.js  public course directory, course home (topics/progress/continue), lesson flow
 routes/resources.routes.js  resource list/detail/stream/download, search, bookmarks,
@@ -115,7 +116,7 @@ npm start
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Seeded admin, created once on first boot |
 | `MAX_UPLOAD_MB` | Max upload size (default 2000MB) |
 | `DATA_DIR` | Persistent disk path for the SQLite file (Render etc.) |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage. If these are unset, uploads stream to `DATA_DIR/uploads` instead so local development still works. |
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
 | `WHATSAPP_CHANNEL_URL` | Official academic channel link (community panels, footer) |
 | `WHATSAPP_GROUP_URL` | Official WhatsApp group invite link ("Join the WhatsApp Group" buttons) |

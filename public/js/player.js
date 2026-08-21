@@ -125,13 +125,43 @@
     let speedIdx = SPEEDS.indexOf(1);
 
     const streamUrl = StudyCoreAPI.streamUrl(resourceId);
+    let attachedSrc = '';
+    let metaTimer = null;
+
+    function clearMetaTimer() {
+      if (metaTimer) {
+        clearTimeout(metaTimer);
+        metaTimer = null;
+      }
+    }
+
+    async function probeStream() {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        let probe = await fetch(streamUrl, { method: 'HEAD', credentials: 'include', signal: ctrl.signal });
+        if (probe.status === 405 || probe.status === 501) {
+          probe = await fetch(streamUrl, {
+            method: 'GET',
+            credentials: 'include',
+            headers: { Range: 'bytes=0-0' },
+            signal: ctrl.signal
+          });
+          if (probe.body && typeof probe.body.cancel === 'function') {
+            try { await probe.body.cancel(); } catch { /* already closed */ }
+          }
+        }
+        return probe;
+      } finally {
+        clearTimeout(t);
+      }
+    }
 
     async function attachStream() {
+      loading.hidden = false;
+      errorBox.hidden = true;
       try {
-        const probe = await fetch(streamUrl, {
-          credentials: 'include',
-          headers: { Range: 'bytes=0-1' }
-        });
+        const probe = await probeStream();
         if (probe.status === 401) {
           showStreamError('Please log in again to watch this video.');
           return;
@@ -142,23 +172,47 @@
         }
         if (!probe.ok && probe.status !== 206) {
           let message = 'This video could not be loaded. Check your connection and try again.';
+          if (probe.status === 404) message = 'This video is missing from storage.';
+          if (probe.status === 503) message = 'File storage is not configured yet, so this video cannot be played.';
           try {
             const data = await probe.json();
             if (data && data.message) message = data.message;
           } catch { /* not JSON */ }
+          console.error('[StudyCore player] stream probe failed', probe.status, message);
           showStreamError(message);
           return;
         }
-        // Drop the probe body so a full-file 200 doesn't download twice.
-        if (probe.body && typeof probe.body.cancel === 'function') {
-          try { await probe.body.cancel(); } catch { /* already closed */ }
+        const ctype = (probe.headers.get('content-type') || o.mimeType || '').toLowerCase();
+        const name = String(o.fileName || '');
+        if (/matroska|x-msvideo|\.mkv$|\.avi$/i.test(ctype + ' ' + name)) {
+          showStreamError('This video format is not supported by your browser. Ask your admin to upload MP4 or WebM.');
+          return;
         }
-      } catch {
-        showStreamError('Could not connect to the video stream. Please try again.');
+        if (ctype && !ctype.startsWith('video/') && !ctype.startsWith('application/octet-stream') && !ctype.startsWith('application/mp4')) {
+          console.error('[StudyCore player] unexpected content-type', ctype);
+          showStreamError('The server did not return a playable video file.');
+          return;
+        }
+      } catch (err) {
+        console.error('[StudyCore player] probe failed', err);
+        showStreamError(err.name === 'AbortError'
+          ? 'The video server did not respond in time.'
+          : 'Could not connect to the video stream. Please try again.');
         return;
       }
-      video.src = streamUrl;
-      video.load();
+
+      if (attachedSrc !== streamUrl) {
+        attachedSrc = streamUrl;
+        video.src = streamUrl;
+        video.load();
+      }
+      clearMetaTimer();
+      metaTimer = setTimeout(() => {
+        if (video.readyState < 1) {
+          console.error('[StudyCore player] metadata timeout', { src: video.currentSrc, readyState: video.readyState });
+          showStreamError('The video is taking too long to start. Check your connection and try again.');
+        }
+      }, 20000);
     }
 
     function showStreamError(message) {
@@ -222,6 +276,7 @@
 
     /* ── Video events ─────────────────────── */
     video.addEventListener('loadedmetadata', () => {
+      clearMetaTimer();
       loading.hidden = true;
       // Resume where the student left off (30s+ into the video only,
       // so a fresh lesson isn't dropped near its end).
@@ -272,8 +327,20 @@
     });
     video.addEventListener('error', () => {
       if (!video.currentSrc && video.src === '') return; // never started
-      loading.hidden = true;
-      errorBox.hidden = false;
+      const err = video.error;
+      const codes = {
+        1: 'Playback was aborted.',
+        2: 'A network error stopped the video from loading.',
+        3: 'The video could not be decoded. The file may be damaged or use an unsupported codec.',
+        4: 'This video format is not supported by your browser. MP4 (H.264) or WebM works best.'
+      };
+      const message = (err && codes[err.code]) || 'This video could not be loaded. Check your connection and try again.';
+      console.error('[StudyCore player] media error', {
+        code: err && err.code,
+        message: err && err.message,
+        src: video.currentSrc
+      });
+      showStreamError(message);
     });
 
     // Block the context menu on the video itself (right-click "save video").
@@ -296,6 +363,8 @@
     container.querySelector('#scPlayerRetry').addEventListener('click', () => {
       errorBox.hidden = true;
       loading.hidden = false;
+      attachedSrc = '';
+      video.removeAttribute('src');
       attachStream();
     });
 
@@ -369,24 +438,25 @@
     const onBeforeUnload = () => reportPosition();
     window.addEventListener('beforeunload', onBeforeUnload);
 
-    // Start
-    video.src = streamUrl;
+    // Start — probe first (HEAD only) so a 401/403 JSON body never gets
+    // handed to the <video> element, then attach the same stream URL once.
     loading.hidden = false;
     setPlayIcon(false);
-    // play() returns a Promise in modern browsers (autoplay may reject);
-    // guard for engines where it doesn't, so autoplay issues can never
-    // take down the rest of the lesson page.
-    try {
-      const p = video.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
-    } catch { /* no-op */ }
+    attachStream().then(() => {
+      try {
+        const p = video.play();
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch { /* autoplay block is not a fatal error */ }
+    });
 
     return {
       destroy() {
         clearInterval(reportTimer);
+        clearMetaTimer();
         window.removeEventListener('beforeunload', onBeforeUnload);
         video.pause();
         video.removeAttribute('src');
+        attachedSrc = '';
         container.innerHTML = '';
       }
     };
