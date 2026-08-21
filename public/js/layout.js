@@ -284,7 +284,7 @@
     if (courseRows) parts.push(`<div class="search-result-group"><h4>Courses</h4>${courseRows}</div>`);
 
     const topicRows = (data.topics || []).map((t) => `
-      <a class="search-result" href="/pages/subjects/${t.slug}.html#${encodeURIComponent(t.topic).toLowerCase().replace(/\s+/g, '-')}">
+      <a class="search-result" href="/pages/subjects/${t.slug}.html#lesson-topic-${String(t.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">
         <span class="sr-icon">${SC.icon('layers', { size: 18 })}</span>
         <span class="sr-body"><strong>${escapeHtml(t.topic)}</strong><span>${escapeHtml(t.subject || '')} topic</span></span>
         <span class="sr-type">Topic</span>

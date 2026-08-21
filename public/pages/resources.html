@@ -158,7 +158,18 @@
 
         document.getElementById('loadMoreBtn').addEventListener('click', () => { page += 1; load(false); });
         renderChips();
-        load(true);
+        if (user) {
+          load(true);
+        } else {
+          // Anonymous visitors can't query the (auth-required) resource list —
+          // skip the request so no failing 401 is fired, and show a clean
+          // prompt instead of an error state.
+          document.getElementById('resourceGrid').innerHTML = emptyState({
+            icon: 'lock',
+            title: 'Log in to browse resources',
+            body: 'Create a free account to open notes, tutorial sheets and past papers inside StudyCore.'
+          });
+        }
       });
     </script>
   </body>

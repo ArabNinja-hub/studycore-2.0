@@ -44,7 +44,7 @@
     let html = `<a href="/">StudyCore</a>${sep}<a href="/pages/courses.html">Courses</a>`;
     if (slug) html += `${sep}<a href="/pages/subjects/${slug}.html">${escapeHtml(lesson.subject || subjectParam)}</a>`;
     if (lesson.topic && lesson.topic !== 'General') {
-      html += `${sep}<a href="/pages/subjects/${slug}.html#${String(lesson.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(lesson.topic)}</a>`;
+      html += `${sep}<a href="/pages/subjects/${slug}.html#lesson-topic-${String(lesson.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(lesson.topic)}</a>`;
     }
     html += `${sep}<span class="current">${escapeHtml(lesson.title)}</span>`;
     bc.innerHTML = html;
@@ -226,6 +226,15 @@
       showDocError(message);
       return;
     }
+
+    // The stream is confirmed reachable (200/206). Clear the "Opening document…"
+    // spinner now rather than waiting on the iframe/img `load` event, which
+    // never fires in some environments (e.g. browsers without an inline PDF
+    // plugin) and used to leave the reader stuck on the spinner until the
+    // 18s timeout showed a spurious error. The content streams in
+    // progressively from here; the `load` listener below remains as a
+    // harmless secondary signal.
+    markOpen();
 
     const servedType = (probe.headers.get('content-type') || mime || '').split(';')[0].trim();
     const asPdf = isPdf || servedType === 'application/pdf';
