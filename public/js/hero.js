@@ -34,6 +34,7 @@
     const ctx = canvas.getContext ? canvas.getContext('2d') : null;
     if (!ctx) return null; // no 2D context available (ancient engines, test DOMs)
     let w = 0, h = 0, dpr = 1;
+    let staticFrame = null;
     function resize() {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = host.clientWidth; h = host.clientHeight;
@@ -43,7 +44,7 @@
     }
     resize();
     window.addEventListener('resize', () => { resize(); if (staticFrame) staticFrame(0); });
-    return { canvas, ctx, size: () => ({ w, h }), resize };
+    return { canvas, ctx, size: () => ({ w, h }), resize, setStaticFrame: (fn) => { staticFrame = fn; } };
   }
 
   // ── MATHEMATICS: floating symbols, functions, a live sine curve ──
@@ -361,8 +362,8 @@
 
     if (reduced) {
       const staticFrame = () => frame(0);
+      env.setStaticFrame(staticFrame);
       staticFrame();
-      env.resize && null;
       return;
     }
 

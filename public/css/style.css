@@ -650,7 +650,7 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
   font-size: 0.9rem; color: var(--ink); flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.doc-viewer-toolbar { display: flex; align-items: center; gap: 2px; margin-left: auto; }
+.doc-viewer-toolbar { display: flex; align-items: center; gap: 2px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 .doc-page-label, .doc-zoom-label {
   font-size: 0.78rem; font-weight: 700; color: var(--muted);
   min-width: 52px; text-align: center; font-variant-numeric: tabular-nums;
@@ -1133,7 +1133,7 @@ table.table tbody tr:last-child td { border-bottom: none; }
   .resource-grid,
   .resource-grid-2,
   .how-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .lesson-layout { grid-template-columns: 1fr; }
+  .lesson-layout { grid-template-columns: minmax(0, 1fr); }
   .lesson-sidebar { position: static; }
   .dash-grid > * { grid-column: span 6 !important; }
   .footer-grid { grid-template-columns: 1fr 1fr; }

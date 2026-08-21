@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { createToken, setAuthCookie, clearAuthCookie, requireAuth } = require('../middleware/auth');
+const { createToken, setAuthCookie, clearAuthCookie, requireAuth, attachUser } = require('../middleware/auth');
 const { avatarUpload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 
@@ -152,7 +152,14 @@ router.post('/logout', (req, res) => {
   res.json({ message: 'Logged out.' });
 });
 
-router.get('/me', requireAuth, (req, res) => {
+// Returns the current user when logged in, or `{ user: null }` for anonymous
+// visitors. Previously this used requireAuth and returned 401 for guests,
+// which fired a noisy "Failed to load resource: 401" console error (and a
+// wasted round-trip) on every public page load when the nav queried the
+// session. The anonymous response is the same shape the client already
+// handled (null user), so nothing else changes.
+router.get('/me', attachUser, (req, res) => {
+  if (!req.user) return res.json({ user: null });
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
   res.json({ user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });

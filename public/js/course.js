@@ -24,7 +24,7 @@
   SC.Hero.init($('#courseHero'), slug);
   $('#courseHeroIcon').innerHTML = SC.icon(SC.courseIcon(slug), { size: 30 });
 
-  const topicAnchor = (name) => `#lesson-topic-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const topicAnchor = (name) => `lesson-topic-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
   function setStats(values) {
     document.querySelectorAll('[data-stat]').forEach((el) => {
@@ -130,7 +130,7 @@
     // Topics
     $('#topicGrid').innerHTML = data.topics.length
       ? data.topics.map((t) => `
-          <a class="topic-card" href="${topicAnchor(t.name)}">
+          <a class="topic-card" href="#${topicAnchor(t.name)}">
             <span class="card-icon">${SC.icon('layers', { size: 20 })}</span>
             <span class="topic-card-body"><h4>${escapeHtml(t.name)}</h4><p>${t.completed} of ${t.total} lessons complete</p></span>
             <span class="topic-card-progress">
