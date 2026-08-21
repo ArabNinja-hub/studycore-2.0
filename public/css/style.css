@@ -318,36 +318,44 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .hero-stat .num span { color: var(--teal-400); }
 .hero-stat .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.55); font-weight: 600; }
 
-/* Hero: text + rotating photo gallery (two-column on desktop) */
-.hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
-  gap: 52px;
-  align-items: center;
-}
-.hero-slideshow {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  border-radius: var(--radius-lg);
+/* Hero: full-bleed photo background (crossfade + slow pan, one by one) */
+.hero-bg {
+  position: absolute; inset: 0; z-index: 0;
   overflow: hidden;
-  background:
-    radial-gradient(600px 400px at 70% 20%, rgba(15, 140, 127, 0.25), transparent 60%),
-    var(--navy-900);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
 }
-.hero-slideshow.is-empty { display: none; }
-.hero-grid.hero-grid-single { grid-template-columns: 1fr; }
-.hero-slides { position: absolute; inset: 0; }
-.hero-slide {
+.hero-bg.is-empty { display: none; }
+.hero-bg-slide {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity 0.9s ease;
+  /* Rest state matches the pan-right end frame so a slide never jumps
+     while it is crossfading back out. */
+  transform: scale(1.18) translateX(1.6%);
+  transition: opacity 1.4s ease;
 }
-.hero-slide.is-active { opacity: 1; }
+.hero-bg-slide.pan-left { transform: scale(1.18) translateX(-1.6%); }
+.hero-bg-slide.is-active {
+  opacity: 1;
+  animation: hero-pan-right var(--hero-pan, 6s) linear forwards;
+}
+.hero-bg-slide.pan-left.is-active { animation-name: hero-pan-left; }
+@keyframes hero-pan-right {
+  from { transform: scale(1.08) translateX(-1.6%); }
+  to   { transform: scale(1.18) translateX(1.6%); }
+}
+@keyframes hero-pan-left {
+  from { transform: scale(1.08) translateX(1.6%); }
+  to   { transform: scale(1.18) translateX(-1.6%); }
+}
+/* Readability scrim over the photos so the copy stays the focus */
+.hero-bg::after {
+  content: ''; position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(5, 9, 13, 0.66) 0%, rgba(5, 9, 13, 0.42) 42%, rgba(5, 9, 13, 0.78) 100%),
+    linear-gradient(90deg, rgba(5, 9, 13, 0.86) 0%, rgba(5, 9, 13, 0.45) 52%, rgba(5, 9, 13, 0.3) 100%);
+}
 .hero-dots {
-  position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
   display: flex; gap: 8px; z-index: 3; padding: 7px 13px; border-radius: 999px;
   background: rgba(5, 9, 13, 0.35); backdrop-filter: blur(6px);
 }
@@ -358,7 +366,8 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .hero-dot:hover { background: rgba(255, 255, 255, 0.7); }
 .hero-dot.is-active { width: 24px; background: #fff; }
 @media (prefers-reduced-motion: reduce) {
-  .hero-slide { transition: opacity 0.01ms ease; }
+  .hero-bg-slide { transition: opacity 0.01ms ease; }
+  .hero-bg-slide.is-active { animation: none; }
 }
 
 .page-hero {
@@ -1070,7 +1079,6 @@ table.table tbody tr:last-child td { border-bottom: none; }
 
 /* ── Responsive ──────────────────────────── */
 @media (max-width: 1024px) {
-  .hero-grid { gap: 32px; }
   .course-grid,
   .feature-grid,
   .resource-grid,
@@ -1094,9 +1102,8 @@ table.table tbody tr:last-child td { border-bottom: none; }
   .section { padding: 44px 0; }
   .section-tight { padding: 28px 0; }
   .page-hero { padding: 36px 0 28px; }
-  .hero { padding: 48px 0 56px; }
-  .hero-grid { grid-template-columns: 1fr; gap: 28px; }
-  .hero-slideshow { aspect-ratio: 16 / 10; }
+  .hero { padding: 48px 0 72px; }
+  .hero-dots { bottom: 18px; }
   .hero-stats { gap: 18px 28px; margin-top: 36px; }
   .hero-actions { width: 100%; }
   .hero-actions .btn { flex: 1 1 160px; }

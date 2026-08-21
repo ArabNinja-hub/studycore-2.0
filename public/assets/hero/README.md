@@ -1,4 +1,4 @@
-# Homepage hero slideshow images
+# Homepage hero background images
 
 Drop your 6 tutorial-class photos here, named exactly:
 
@@ -15,7 +15,11 @@ Any `.jpg` / `.jpeg` / `.png` / `.webp` works — just keep the filenames
 matching the `<img src>` references in `public/index.html` (or update the
 `src` attributes there to match whatever filenames you use).
 
-The hero gallery auto-rotates through these images with a smooth crossfade
-(cross-dissolve) transition. If an image is missing or fails to load, the
-gallery simply skips it — and if none are present it hides itself entirely
-so the hero falls back to the clean text-only layout.
+The photos are used as a full-bleed background behind the homepage hero
+copy. They rotate one by one with a smooth crossfade, and each photo
+slowly pans (translates) across the hero while it is on screen,
+alternating direction every slide. A dark scrim keeps the heading and
+text readable on top of the photos. If an image is missing or fails to
+load, the rotation simply skips it — and if none are present the
+background hides itself entirely so the hero falls back to the clean
+text-only gradient layout.
