@@ -169,7 +169,7 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
 - **Legal**: public Terms & Conditions and Privacy Policy pages (legal-entity details are
   marked placeholders for the owner), linked from the footer and referenced at signup.
 - **Community**: official WhatsApp academic channel section
-  (`https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k`) and a WhatsApp group QR slot
-  awaiting the official QR code.
+  (`https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k`) and the STUDYCORE PREFRESHERS
+  WhatsApp group QR (`public/assets/whatsapp-group-qr.jpg`) on Home, About and the dashboard.
 - SEO: sitemap, robots.txt, canonicals, JSON-LD, per-course meta.
 - Real 404 page (unknown URLs no longer silently serve the homepage).

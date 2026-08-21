@@ -31,6 +31,7 @@ function serializeResource(row, extra = {}) {
     term: row.semester,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     hasFile: Boolean(row.stored_name),
+    fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: row.mime_type,
     dueDate: row.due_date,

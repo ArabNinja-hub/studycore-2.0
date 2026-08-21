@@ -126,6 +126,8 @@
       if (backdrop) backdrop.classList.toggle('open', open);
       document.body.style.overflow = open ? 'hidden' : '';
       hamburger.setAttribute('aria-expanded', String(open));
+      hamburger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+      if (typeof SC !== 'undefined') hamburger.innerHTML = SC.icon(open ? 'x' : 'menu', { size: 22 });
     };
     hamburger.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
     if (backdrop) backdrop.addEventListener('click', () => setOpen(false));

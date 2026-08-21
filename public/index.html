@@ -93,7 +93,7 @@
             <h2>One clear path from course to exam-ready</h2>
             <p>Everything happens inside StudyCore — no tabs, no scattered files, no guesswork.</p>
           </div>
-          <div class="course-grid" id="howItWorksGrid" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+          <div class="how-grid" id="howItWorksGrid">
             <div class="card card-pad card-hover">
               <div class="card-icon" data-icon="library"></div>
               <h3 style="margin-top:14px;">1. Choose a course</h3>
@@ -201,7 +201,7 @@
             <h2>Everything you need, in one platform</h2>
             <p>Not a folder of files. A real learning environment designed around how university students actually study.</p>
           </div>
-          <div class="course-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+          <div class="feature-grid">
             <div class="card card-pad card-hover">
               <div class="card-icon" data-icon="video"></div>
               <h3 style="margin-top:14px;">Video lessons</h3>
@@ -323,50 +323,8 @@
           }
         } catch { /* static cards remain */ }
 
-        // Community panel (official WhatsApp channel + group QR slot)
-        renderCommunityPanel(document.getElementById('communityPanel'));
+        SCLayout.renderCommunityPanel(document.getElementById('communityPanel'));
       });
-
-      // Shared community panel markup (home + about reuse this)
-      function renderCommunityPanel(host) {
-        if (!host) return;
-        host.innerHTML = `
-          <div>
-            <span class="badge badge-white" style="margin-bottom:14px;">${SC.icon('whatsapp', { size: 13 })} Official Academic Channel</span>
-            <h2>Stay Connected With StudyCore</h2>
-            <p>Follow <strong>STUDY-CORE ACADEMIC TIPS &amp; MENTORING</strong> for:</p>
-            <ul class="community-points">
-              <li>${SC.icon('check', { size: 17 })} Academic tips and study strategies</li>
-              <li>${SC.icon('check', { size: 17 })} Mentoring from the StudyCore team</li>
-              <li>${SC.icon('check', { size: 17 })} Important StudyCore updates</li>
-              <li>${SC.icon('check', { size: 17 })} Learning motivation and useful academic information</li>
-            </ul>
-            <a class="btn whatsapp-btn" href="https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k" target="_blank" rel="noopener">
-              ${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp
-            </a>
-          </div>
-          <div class="qr-card">
-            <div class="qr-frame" id="communityQrSlot">
-              ${SC.icon('qr-code', { size: 56 })}
-              <span>Official StudyCore WhatsApp group QR code appears here</span>
-            </div>
-            <h3>StudyCore Student Community</h3>
-            <p>Connect with other StudyCore students, stay updated and participate in the academic community.</p>
-            <a class="btn whatsapp-btn btn-sm" id="communityGroupBtn" style="display:none;margin-top:14px;" target="_blank" rel="noopener"></a>
-          </div>
-        `;
-        // Official group invite link (server-managed in .env)
-        const groupBtn = host.querySelector('#communityGroupBtn');
-        if (groupBtn) {
-          SCLayout.whatsappLinks().then((links) => {
-            if (links.group) {
-              groupBtn.href = links.group;
-              groupBtn.innerHTML = SC.icon('whatsapp', { size: 16 }) + ' Join the WhatsApp Group';
-              groupBtn.style.display = '';
-            }
-          });
-        }
-      }
     </script>
   </body>
 </html>
