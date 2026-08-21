@@ -262,7 +262,7 @@
     slot.innerHTML = `
       <div style="max-width:560px;">
         <p style="color:rgba(255,255,255,0.75);margin-bottom:12px;">Send <strong style="color:#fff;">K${info.amount}</strong> from your own mobile money account, then submit the details below so the team can confirm and activate your Premium.</p>
-        <div class="pay-methods" style="grid-template-columns:1fr 1fr;">${numbers}</div>
+        <div class="pay-methods">${numbers}</div>
         <form id="premiumPayForm" style="display:grid;gap:12px;margin-top:14px;">
           <div class="form-row">
             <div class="form-group" style="margin:0;">
@@ -470,40 +470,7 @@
 
   /* ── Community ──────────────────────────── */
   function renderCommunity() {
-    const host = $('#communityPanel');
-    host.innerHTML = `
-      <div>
-        <span class="badge badge-white" style="margin-bottom:14px;">${SC.icon('whatsapp', { size: 13 })} Official Academic Channel</span>
-        <h2>Stay Connected With StudyCore</h2>
-        <p>Follow <strong>STUDY-CORE ACADEMIC TIPS &amp; MENTORING</strong> for:</p>
-        <ul class="community-points">
-          <li>${SC.icon('check', { size: 17 })} Academic tips and study strategies</li>
-          <li>${SC.icon('check', { size: 17 })} Mentoring from the StudyCore team</li>
-          <li>${SC.icon('check', { size: 17 })} Important StudyCore updates</li>
-          <li>${SC.icon('check', { size: 17 })} Learning motivation and useful academic information</li>
-        </ul>
-        <a class="btn whatsapp-btn" href="https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k" target="_blank" rel="noopener">${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp</a>
-      </div>
-      <div class="qr-card">
-        <div class="qr-frame">
-          ${SC.icon('qr-code', { size: 56 })}
-          <span>Official StudyCore WhatsApp group QR code appears here</span>
-        </div>
-        <h3>StudyCore Student Community</h3>
-        <p>Connect with other StudyCore students, stay updated and participate in the academic community.</p>
-        <a class="btn whatsapp-btn btn-sm" id="communityGroupBtn" style="display:none;margin-top:14px;" target="_blank" rel="noopener"></a>
-      </div>`;
-    // Official group invite link (server-managed in .env)
-    const groupBtn = host.querySelector('#communityGroupBtn');
-    if (groupBtn) {
-      SCLayout.whatsappLinks().then((links) => {
-        if (links.group) {
-          groupBtn.href = links.group;
-          groupBtn.innerHTML = SC.icon('whatsapp', { size: 16 }) + ' Join the WhatsApp Group';
-          groupBtn.style.display = '';
-        }
-      });
-    }
+    SCLayout.renderCommunityPanel($('#communityPanel'));
   }
 
   /* ── Boot ──────────────────────────────── */

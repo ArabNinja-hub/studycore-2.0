@@ -77,7 +77,7 @@
             <span class="eyebrow">How it works</span>
             <h2>One platform, one clear path</h2>
           </div>
-          <div class="course-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+          <div class="feature-grid">
             <div class="card card-pad"><div class="card-icon" data-icon="library"></div><h3 style="margin-top:14px;">Structured courses</h3><p>Six university courses, each organised into focused topics in a logical learning order.</p></div>
             <div class="card card-pad"><div class="card-icon" data-icon="video"></div><h3 style="margin-top:14px;">Lessons that flow</h3><p>Video, notes and past papers live with their topic. Mark lessons complete and continue where you left off.</p></div>
             <div class="card card-pad"><div class="card-icon" data-icon="shield"></div><h3 style="margin-top:14px;">Your progress, secure</h3><p>Progress, streaks and profile are stored securely on your account — never just in your browser.</p></div>
@@ -87,26 +87,7 @@
 
       <section class="section" id="community">
         <div class="container">
-          <div class="community-panel">
-            <div>
-              <span class="badge badge-white" id="aboutChannelBadge" style="margin-bottom:14px;"></span>
-              <h2>Stay Connected With StudyCore</h2>
-              <p>Follow <strong>STUDY-CORE ACADEMIC TIPS &amp; MENTORING</strong> for:</p>
-              <ul class="community-points">
-                <li data-check></li>
-                <li data-check></li>
-                <li data-check></li>
-                <li data-check></li>
-              </ul>
-              <a class="btn whatsapp-btn" href="https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k" target="_blank" rel="noopener" id="whatsappCta"></a>
-            </div>
-            <div class="qr-card">
-              <div class="qr-frame" id="communityQrSlot"></div>
-              <h3>StudyCore Student Community</h3>
-              <p>Connect with other StudyCore students, stay updated and participate in the academic community.</p>
-              <a class="btn whatsapp-btn btn-sm" id="communityGroupBtn" style="display:none;margin-top:14px;" target="_blank" rel="noopener"></a>
-            </div>
-          </div>
+          <div class="community-panel" id="communityPanel"></div>
         </div>
       </section>
 
@@ -135,25 +116,8 @@
     <script>
       document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 }); });
-        const badge = document.querySelector('.community-panel .badge-white');
-        if (badge) badge.innerHTML = `${SC.icon('whatsapp', { size: 13 })} Official Academic Channel`;
-        const points = document.querySelectorAll('[data-check]');
-        const texts = ['Academic tips and study strategies', 'Mentoring from the StudyCore team', 'Important StudyCore updates', 'Learning motivation and useful academic information'];
-        points.forEach((li, i) => { li.innerHTML = `${SC.icon('check', { size: 17 })} ${texts[i]}`; });
-        document.getElementById('whatsappCta').innerHTML = `${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp`;
         document.getElementById('contactCta').innerHTML = `${SC.icon('whatsapp', { size: 17 })} Message StudyCore`;
-        document.getElementById('communityQrSlot').innerHTML = `
-          ${SC.icon('qr-code', { size: 56 })}
-          <span>Official StudyCore WhatsApp group QR code appears here</span>`;
-        // Official group invite link (server-managed in .env)
-        const groupBtn = document.getElementById('communityGroupBtn');
-        SCLayout.whatsappLinks().then((links) => {
-          if (links.group) {
-            groupBtn.href = links.group;
-            groupBtn.innerHTML = SC.icon('whatsapp', { size: 16 }) + ' Join the WhatsApp Group';
-            groupBtn.style.display = '';
-          }
-        });
+        SCLayout.renderCommunityPanel(document.getElementById('communityPanel'));
       });
     </script>
   </body>

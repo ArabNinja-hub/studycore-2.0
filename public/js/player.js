@@ -49,7 +49,7 @@
     /* ── Build the player shell ───────────── */
     container.innerHTML = `
       <div class="player-shell" id="scPlayerShell">
-        <video id="scPlayerVideo" preload="metadata" playsinline
+        <video id="scPlayerVideo" preload="metadata" playsinline webkit-playsinline
                controlslist="nodownload noremoteplayback" disablepictureinpicture></video>
         <div class="player-title">${SC.icon('video', { size: 17 })}<span>${escapeHtml(o.title || 'Video lesson')}</span></div>
         <div class="player-state" id="scPlayerLoading" hidden>
@@ -126,6 +126,48 @@
 
     const streamUrl = StudyCoreAPI.streamUrl(resourceId);
 
+    async function attachStream() {
+      try {
+        const probe = await fetch(streamUrl, {
+          credentials: 'include',
+          headers: { Range: 'bytes=0-1' }
+        });
+        if (probe.status === 401) {
+          showStreamError('Please log in again to watch this video.');
+          return;
+        }
+        if (probe.status === 403) {
+          renderLock(container, o);
+          return;
+        }
+        if (!probe.ok && probe.status !== 206) {
+          let message = 'This video could not be loaded. Check your connection and try again.';
+          try {
+            const data = await probe.json();
+            if (data && data.message) message = data.message;
+          } catch { /* not JSON */ }
+          showStreamError(message);
+          return;
+        }
+        // Drop the probe body so a full-file 200 doesn't download twice.
+        if (probe.body && typeof probe.body.cancel === 'function') {
+          try { await probe.body.cancel(); } catch { /* already closed */ }
+        }
+      } catch {
+        showStreamError('Could not connect to the video stream. Please try again.');
+        return;
+      }
+      video.src = streamUrl;
+      video.load();
+    }
+
+    function showStreamError(message) {
+      loading.hidden = true;
+      errorBox.hidden = false;
+      const msg = container.querySelector('#scPlayerErrorMsg');
+      if (msg) msg.textContent = message;
+    }
+
     /* ── Load resume position (server-stored) ── */
     StudyCoreAPI.getVideoProgress(resourceId).then((p) => {
       resumePos = Number(p.position) || 0;
@@ -180,6 +222,7 @@
 
     /* ── Video events ─────────────────────── */
     video.addEventListener('loadedmetadata', () => {
+      loading.hidden = true;
       // Resume where the student left off (30s+ into the video only,
       // so a fresh lesson isn't dropped near its end).
       if (resumeLoaded && resumePos > 30 && video.duration - resumePos > 30) {
@@ -253,11 +296,7 @@
     container.querySelector('#scPlayerRetry').addEventListener('click', () => {
       errorBox.hidden = true;
       loading.hidden = false;
-      video.load();
-      try {
-        const p = video.play();
-        if (p && typeof p.catch === 'function') p.catch(() => {});
-      } catch { /* no-op */ }
+      attachStream();
     });
 
     // Seek bar: click + drag
@@ -283,15 +322,25 @@
       speedBtn.textContent = `${SPEEDS[speedIdx]}×`;
     });
     function toggleFullscreen() {
-      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-      else shell.requestFullscreen().catch(() => {});
+      const docFs = document.fullscreenElement || document.webkitFullscreenElement;
+      if (docFs) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) exit.call(document);
+        return;
+      }
+      const req = shell.requestFullscreen || shell.webkitRequestFullscreen;
+      if (req) req.call(shell);
+      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
     }
     fsBtn.addEventListener('click', toggleFullscreen);
-    document.addEventListener('fullscreenchange', () => {
-      fsBtn.innerHTML = document.fullscreenElement
+    function syncFsIcon() {
+      const fs = document.fullscreenElement || document.webkitFullscreenElement;
+      fsBtn.innerHTML = fs
         ? SC.icon('minimize', { size: 18 })
         : SC.icon('maximize', { size: 18 });
-    });
+    }
+    document.addEventListener('fullscreenchange', syncFsIcon);
+    document.addEventListener('webkitfullscreenchange', syncFsIcon);
 
     // Keyboard shortcuts (only when the player is in view)
     document.addEventListener('keydown', (e) => {
@@ -345,7 +394,7 @@
     const premiumUrl = '/pages/pricing.html';
     const dashPremium = '/dashboard.html#premium';
     container.innerHTML = `
-      <div class="player-shell" style="aspect-ratio:auto;min-height:420px;">
+      <div class="player-shell lock-wall">
         <div class="player-premium-lock">
           <div class="lock-ring">${SC.icon('lock', { size: 32 })}</div>
           <h3>Premium Video</h3>

@@ -82,12 +82,30 @@
     });
   }
 
+  function inferClientMime(lesson) {
+    const given = String(lesson.mimeType || '').trim();
+    if (given && given !== 'application/octet-stream') return given;
+    const name = String(lesson.fileName || '').toLowerCase();
+    if (name.endsWith('.pdf')) return 'application/pdf';
+    if (name.endsWith('.png')) return 'image/png';
+    if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+    if (name.endsWith('.webp')) return 'image/webp';
+    if (name.endsWith('.gif')) return 'image/gif';
+    if (name.endsWith('.txt')) return 'text/plain';
+    if (name.endsWith('.csv')) return 'text/csv';
+    return given;
+  }
+
+  function renderViewerError(host, title, body) {
+    host.innerHTML = emptyState({ icon: 'alert-triangle', title, body });
+  }
+
   /* ── Document viewer ────────────────────── */
-  function initDocumentViewer(lesson) {
+  async function initDocumentViewer(lesson) {
     const host = $('#lessonPlayerHost');
     if (lesson.locked) {
       host.innerHTML = `
-        <div class="player-shell" style="aspect-ratio:auto;min-height:380px;">
+        <div class="player-shell lock-wall">
           <div class="player-premium-lock">
             <div class="lock-ring">${SC.icon('lock', { size: 32 })}</div>
             <h3>Premium Resource</h3>
@@ -98,39 +116,68 @@
       return;
     }
     const stream = StudyCoreAPI.streamUrl(lesson.id);
-    const mime = lesson.mimeType || '';
-    let body;
-    if (mime.startsWith('application/pdf')) {
-      body = `<iframe src="${stream}" title="${escapeHtml(lesson.title)}" style="width:100%;height:72vh;border:none;border-radius:12px;background:#fff;"></iframe>`;
-    } else if (mime.startsWith('image/')) {
-      body = `<div style="background:#fff;border-radius:12px;padding:18px;text-align:center;"><img src="${stream}" alt="${escapeHtml(lesson.title)}" style="max-height:68vh;margin:0 auto;" /></div>`;
-    } else if (mime.startsWith('text/')) {
-      body = `<pre id="textDocHost" style="background:var(--bg-alt);border-radius:12px;padding:22px;font-size:0.9rem;white-space:pre-wrap;max-height:68vh;overflow-y:auto;">Loading document…</pre>`;
-    } else {
-      body = `
+    const mime = inferClientMime(lesson);
+    const shell = (inner) => `
+      <div class="card doc-viewer">
+        <div class="doc-viewer-head">
+          ${SC.icon('file-text', { size: 17 })}
+          <strong style="font-size:0.9rem;color:var(--ink);flex:1;min-width:0;">${escapeHtml(lesson.title)}</strong>
+          <span class="resource-meta">${lesson.fileSize ? formatFileSize(lesson.fileSize) : ''} · StudyCore Document Viewer</span>
+        </div>
+        <div style="padding:14px;">${inner}</div>
+      </div>`;
+
+    const isPdf = mime.startsWith('application/pdf');
+    const isImage = mime.startsWith('image/');
+    const isText = mime.startsWith('text/');
+
+    if (!isPdf && !isImage && !isText) {
+      host.innerHTML = shell(`
         <div class="empty-state" style="border:none;background:var(--bg-alt);">
           <div class="empty-icon">${SC.icon('file', { size: 28 })}</div>
           <h3>Preview not available in-browser</h3>
           <p>This file type (${escapeHtml(mime || 'unknown')}) can't be rendered directly in the StudyCore viewer. Ask your admin if a PDF or image version is available.</p>
-        </div>`;
+        </div>`);
+      return;
     }
-    host.innerHTML = `
-      <div class="card" style="overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--border);">
-          ${SC.icon('file-text', { size: 17 })}
-          <strong style="font-size:0.9rem;color:var(--ink);">${escapeHtml(lesson.title)}</strong>
-          <span class="resource-meta" style="margin:0 0 0 auto;">${lesson.fileSize ? formatFileSize(lesson.fileSize) : ''} · StudyCore Document Viewer</span>
-        </div>
-        <div style="padding:14px;">${body}</div>
-      </div>`;
-    if (mime.startsWith('text/')) {
-      fetch(stream, { credentials: 'include' }).then((r) => r.text()).then((t) => {
-        const el = document.getElementById('textDocHost');
-        if (el) el.textContent = t;
-      }).catch(() => {
-        const el = document.getElementById('textDocHost');
-        if (el) el.textContent = 'This document could not be loaded.';
-      });
+
+    host.innerHTML = shell(`
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:240px;gap:12px;color:var(--muted);">
+        <div class="player-spinner"></div>
+        <p>Opening document…</p>
+      </div>`);
+
+    try {
+      const res = await fetch(stream, { credentials: 'include' });
+      if (!res.ok) {
+        let message = 'This document could not be opened.';
+        try {
+          const data = await res.json();
+          if (data && data.message) message = data.message;
+        } catch { /* not JSON */ }
+        renderViewerError(host, 'Document unavailable', message);
+        return;
+      }
+      const blob = await res.blob();
+      const typed = blob.type && blob.type !== 'application/octet-stream'
+        ? blob
+        : new Blob([blob], { type: mime || blob.type || 'application/octet-stream' });
+      const url = URL.createObjectURL(typed);
+      let inner;
+      if (isPdf) {
+        inner = `<iframe class="doc-viewer-frame" src="${url}" title="${escapeHtml(lesson.title)}"></iframe>`;
+      } else if (isImage) {
+        inner = `<div style="background:#fff;border-radius:12px;padding:18px;text-align:center;"><img src="${url}" alt="${escapeHtml(lesson.title)}" style="max-height:68vh;margin:0 auto;" /></div>`;
+      } else {
+        const text = await typed.text();
+        inner = `<pre style="background:var(--bg-alt);border-radius:12px;padding:22px;font-size:0.9rem;white-space:pre-wrap;max-height:68vh;overflow-y:auto;"></pre>`;
+        host.innerHTML = shell(inner);
+        host.querySelector('pre').textContent = text;
+        return;
+      }
+      host.innerHTML = shell(inner);
+    } catch (err) {
+      renderViewerError(host, 'Document unavailable', err.message || 'Check your connection and try again.');
     }
   }
 

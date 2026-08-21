@@ -19,6 +19,7 @@
   'use strict';
 
   const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k';
+  const WHATSAPP_GROUP_QR = '/assets/whatsapp-group-qr.jpg';
   const SITE = 'https://studycore.academy/';
 
   const NAV_LINKS = [
@@ -159,7 +160,7 @@
       <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation">
         <a href="/">${SC.icon('home', { size: 20 })} Home</a>
         <a href="/pages/courses.html">${SC.icon('library', { size: 20 })} Courses</a>
-        <button type="button" id="mobileSearchBtn">${SC.icon('search', { size: 20 })} Search</button>
+        <button type="button" id="mobileSearchBtn" data-close-mobile>${SC.icon('search', { size: 20 })} Search</button>
         <a href="/dashboard.html" id="mobileDashLink" style="display:none;">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
         <div class="mobile-nav-divider"></div>
         <div class="mobile-nav-label">More</div>
@@ -167,6 +168,7 @@
         <a href="/pages/announcements.html">${SC.icon('bell', { size: 20 })} Announcements</a>
         <a href="/pages/about.html">${SC.icon('info', { size: 20 })} About StudyCore</a>
         <a href="/pages/pricing.html">${SC.icon('crown', { size: 20 })} Premium</a>
+        <a href="/dashboard.html#community" id="mobileCommunityLink" style="display:none;">${SC.icon('message-circle', { size: 20 })} Community</a>
         <div class="mobile-nav-divider"></div>
         <div id="mobileAuthSlot"></div>
       </nav>
@@ -181,6 +183,8 @@
     const user = await StudyCoreAuth.fetchSession();
     if (user) {
       document.getElementById('mobileDashLink').style.display = 'flex';
+      const communityLink = document.getElementById('mobileCommunityLink');
+      if (communityLink) communityLink.style.display = 'flex';
       slot.innerHTML = `
         <a href="/dashboard.html#profile">${SC.icon('user', { size: 20 })} Profile</a>
         <button type="button" id="mobileLogoutBtn" style="color:var(--red-600);">${SC.icon('log-out', { size: 20 })} Log Out</button>
@@ -383,8 +387,70 @@
     return whatsappPromise;
   }
 
+  /* ── Community panel (channel + group QR) ─ */
+  function communityQrHtml() {
+    return `
+      <div class="qr-frame">
+        <img src="${WHATSAPP_GROUP_QR}" alt="STUDYCORE PREFRESHERS WhatsApp group QR code" width="220" height="220" />
+      </div>
+      <h3>STUDYCORE PREFRESHERS</h3>
+      <p>Official StudyCore WhatsApp group. Open WhatsApp and scan this code to join.</p>
+      <p class="qr-hint">This group QR is private — only share it with StudyCore students.</p>
+      <a class="btn whatsapp-btn btn-sm" id="communityGroupBtn" style="display:none;margin-top:14px;" target="_blank" rel="noopener"></a>
+    `;
+  }
+
+  function bindCommunityGroupBtn(host) {
+    const groupBtn = host && host.querySelector('#communityGroupBtn');
+    if (!groupBtn) return;
+    whatsappLinks().then((links) => {
+      if (links.group) {
+        groupBtn.href = links.group;
+        groupBtn.innerHTML = SC.icon('whatsapp', { size: 16 }) + ' Join the WhatsApp Group';
+        groupBtn.style.display = '';
+      }
+    });
+  }
+
+  function renderCommunityPanel(host) {
+    if (!host) return;
+    host.classList.add('community-panel');
+    host.innerHTML = `
+      <div>
+        <span class="badge badge-white" style="margin-bottom:14px;">${SC.icon('whatsapp', { size: 13 })} Official Academic Channel</span>
+        <h2>Stay Connected With StudyCore</h2>
+        <p>Follow <strong>STUDY-CORE ACADEMIC TIPS &amp; MENTORING</strong> for:</p>
+        <ul class="community-points">
+          <li>${SC.icon('check', { size: 17 })} Academic tips and study strategies</li>
+          <li>${SC.icon('check', { size: 17 })} Mentoring from the StudyCore team</li>
+          <li>${SC.icon('check', { size: 17 })} Important StudyCore updates</li>
+          <li>${SC.icon('check', { size: 17 })} Learning motivation and useful academic information</li>
+        </ul>
+        <a class="btn whatsapp-btn" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">
+          ${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp
+        </a>
+      </div>
+      <div class="qr-card">
+        ${communityQrHtml()}
+      </div>
+    `;
+    bindCommunityGroupBtn(host);
+  }
+
+  function ensureMobileMeta() {
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
+    if (!document.querySelector('meta[name="theme-color"]')) {
+      const theme = document.createElement('meta');
+      theme.name = 'theme-color';
+      theme.content = '#0b2033';
+      document.head.appendChild(theme);
+    }
+  }
+
   /* ── Boot ──────────────────────────────── */
   function init() {
+    ensureMobileMeta();
     renderTopBar();
     renderNav();
     renderMobileNav();
@@ -403,7 +469,16 @@
     });
   }
 
-  global.SCLayout = { init, openSearchOverlay, whatsappLinks, WHATSAPP_CHANNEL_URL };
+  global.SCLayout = {
+    init,
+    openSearchOverlay,
+    whatsappLinks,
+    renderCommunityPanel,
+    communityQrHtml,
+    bindCommunityGroupBtn,
+    WHATSAPP_CHANNEL_URL,
+    WHATSAPP_GROUP_QR
+  };
 
   document.addEventListener('DOMContentLoaded', init);
 })(window);

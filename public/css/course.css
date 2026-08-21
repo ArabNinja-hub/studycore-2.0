@@ -109,8 +109,9 @@ body[data-theme='dark'] .lesson-row-title { color: #fff; }
 }
 
 @media (max-width: 640px) {
-  .course-hero { padding-top: 120px; }
+  .course-hero { padding-top: 88px; padding-bottom: 24px; }
   .lesson-row { flex-wrap: wrap; }
   .course-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
   .course-tab { white-space: nowrap; }
+  .continue-card { padding: 16px; }
 }
