@@ -1,11 +1,10 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
-const { GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const db = require('../db');
 const { createToken, setAuthCookie, clearAuthCookie, requireAuth } = require('../middleware/auth');
-const { r2, bucketName } = require('../lib/r2');
 const { avatarUpload } = require('../middleware/upload');
+const storage = require('../lib/storage');
 
 const router = express.Router();
 
@@ -275,21 +274,19 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
 
   try {
     // Pull the first 16 bytes back from storage and check the real signature.
-    const headCmd = new GetObjectCommand({ Bucket: bucketName, Key: req.file.key, Range: 'bytes=0-15' });
-    const headObj = await r2.send(headCmd);
-    const head = Buffer.from(await headObj.Body.transformToByteArray());
+    const head = await storage.readBytes(req.file.key, 0, 15);
     if (!verifyImageSignature(head)) {
-      r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: req.file.key })).catch(() => {});
+      storage.deleteObject(req.file.key).catch(() => {});
       return res.status(400).json({ message: 'That file is not a valid image. Upload a PNG, JPEG or WebP picture.' });
     }
   } catch (err) {
-    r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: req.file.key })).catch(() => {});
+    storage.deleteObject(req.file.key).catch(() => {});
     return res.status(502).json({ message: 'Could not verify the uploaded image. Please try again.' });
   }
 
   // Replace any previous picture (fire-and-forget delete of the old object).
   if (user.avatar_key && user.avatar_key !== req.file.key) {
-    r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: user.avatar_key })).catch(() => {});
+    storage.deleteObject(user.avatar_key).catch(() => {});
   }
 
   db.prepare('UPDATE users SET avatar_key = ? WHERE id = ?').run(req.file.key, user.id);
@@ -301,7 +298,7 @@ router.delete('/avatar', requireAuth, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
   if (user.avatar_key) {
-    r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: user.avatar_key })).catch(() => {});
+    storage.deleteObject(user.avatar_key).catch(() => {});
   }
   db.prepare('UPDATE users SET avatar_key = NULL WHERE id = ?').run(user.id);
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
@@ -315,13 +312,24 @@ router.get('/avatar', requireAuth, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user || !user.avatar_key) return res.status(404).json({ message: 'No profile picture set.' });
   try {
-    const command = new GetObjectCommand({ Bucket: bucketName, Key: user.avatar_key });
-    const object = await r2.send(command);
-    res.setHeader('Content-Type', object.ContentType || 'image/png');
+    const object = await storage.getObject(user.avatar_key);
+    res.setHeader('Content-Type', object.contentType || 'image/png');
     res.setHeader('Content-Disposition', 'inline; filename="avatar"');
-    res.setHeader('Cache-Control', 'no-cache');
-    object.Body.pipe(res);
-    object.Body.on('error', () => { if (!res.headersSent) res.status(500); res.end(); });
+    res.setHeader('Cache-Control', 'private, no-cache');
+    const body = object.body;
+    if (body && typeof body.pipe === 'function') {
+      body.on('error', () => { if (!res.headersSent) res.status(500); res.end(); });
+      body.pipe(res);
+      return;
+    }
+    const { Readable } = require('stream');
+    if (typeof Readable.fromWeb === 'function' && body && typeof body.getReader === 'function') {
+      const nodeStream = Readable.fromWeb(body);
+      nodeStream.on('error', () => { if (!res.headersSent) res.status(500); res.end(); });
+      nodeStream.pipe(res);
+      return;
+    }
+    return res.status(500).json({ message: 'Profile picture is temporarily unavailable.' });
   } catch {
     res.status(404).json({ message: 'Profile picture is temporarily unavailable.' });
   }

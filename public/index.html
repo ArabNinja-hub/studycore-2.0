@@ -68,12 +68,12 @@
         <!-- Full-bleed photo background: crossfades through the StudyCore
              photos one by one, each slowly panning + zooming while visible. -->
         <div class="hero-bg" id="heroBackground" aria-hidden="true">
-          <img class="hero-bg-slide" src="/assets/hero/slide-1.jpg" alt="" loading="eager" fetchpriority="high" decoding="async" />
-          <img class="hero-bg-slide" src="/assets/hero/slide-2.jpg" alt="" loading="lazy" decoding="async" />
-          <img class="hero-bg-slide" src="/assets/hero/slide-3.jpg" alt="" loading="lazy" decoding="async" />
-          <img class="hero-bg-slide" src="/assets/hero/slide-4.jpg" alt="" loading="lazy" decoding="async" />
-          <img class="hero-bg-slide" src="/assets/hero/slide-5.jpg" alt="" loading="lazy" decoding="async" />
-          <img class="hero-bg-slide" src="/assets/hero/slide-6.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide focus-1" src="/assets/hero/slide-1.jpg" alt="" loading="eager" fetchpriority="high" decoding="async" />
+          <img class="hero-bg-slide focus-2" src="/assets/hero/slide-2.jpg" alt="" loading="eager" decoding="async" />
+          <img class="hero-bg-slide focus-3" src="/assets/hero/slide-3.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide focus-4" src="/assets/hero/slide-4.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide focus-5" src="/assets/hero/slide-5.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide focus-6" src="/assets/hero/slide-6.jpg" alt="" loading="lazy" decoding="async" />
         </div>
         <div class="container">
           <div class="hero-copy">
@@ -98,7 +98,10 @@
             <div class="hero-stat"><div class="num">24/7</div><div class="label">Study on any device</div></div>
           </div>
         </div>
-        <div class="hero-dots" id="heroDots"></div>
+        <div class="hero-dots" id="heroDots" role="tablist" aria-label="Hero photos"></div>
+        <div class="hero-progress" id="heroProgress" hidden>
+          <i id="heroProgressFill"></i>
+        </div>
       </section>
 
       <!-- How it works -->
@@ -288,133 +291,8 @@
     <script src="/js/auth.js"></script>
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
+    <script src="/js/hero-carousel.js"></script>
     <script>
-      // ── Hero background slideshow (cinematic crossfade + Ken Burns) ────
-      // The StudyCore photos fill the whole hero section behind the copy.
-      // Each photo crossfades in one by one while slowly panning and zooming
-      // (Ken Burns), alternating direction slide-by-slide. The motion is
-      // driven by CSS transitions so it stays smooth on lower-end devices.
-      // Respects prefers-reduced-motion and gracefully skips missing images.
-      (function initHeroSlideshow() {
-        const root = document.getElementById('heroBackground');
-        if (!root) return;
-        const hero = root.closest('.hero');
-        const slides = Array.from(root.querySelectorAll('.hero-bg-slide'));
-        const dotsBox = document.getElementById('heroDots');
-        if (!slides.length) return;
-
-        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        const DURATION = 8000; // ms each slide stays on screen
-        const FADE = 2200;     // ms crossfade overlap (sync with CSS --hero-fade)
-
-        // Keep the CSS transition timing in sync with the rotation.
-        root.style.setProperty('--hero-hold', DURATION + 'ms');
-        root.style.setProperty('--hero-fade', FADE + 'ms');
-
-        // Alternate the Ken Burns direction (left/right) slide by slide.
-        slides.forEach((s, i) => s.classList.toggle('pan-left', i % 2 === 1));
-
-        const state = slides.map(() => 'loading'); // 'loading' | 'ready' | 'broken'
-
-        // State (declared before the load tracking below, since a
-        // `complete` image can fire `sync()` synchronously).
-        let order = [];   // ready slide indices, in display order
-        let dots = [];
-        let idx = 0;      // position within `order`
-        let current = -1; // original slide index currently on screen
-        let timer = null;
-        let dotsKey = '';
-
-        // Warm the cache for the next slide so the crossfade never exposes
-        // a white flash or a loading pause.
-        function preload(src) {
-          if (!src) return;
-          const img = new Image();
-          img.src = src;
-        }
-
-        // Track load state so a missing image never leaves an empty frame,
-        // and the background hides itself if every image is missing.
-        slides.forEach((s, i) => {
-          const mark = (ok) => { state[i] = ok ? 'ready' : 'broken'; sync(); };
-          if (s.complete) mark(s.naturalWidth > 0);
-          else {
-            s.addEventListener('load', () => mark(true), { once: true });
-            s.addEventListener('error', () => mark(false), { once: true });
-          }
-        });
-
-        function sync() {
-          order = state.map((v, i) => (v === 'ready' ? i : -1)).filter((i) => i >= 0);
-
-          if (!order.length) {
-            // No usable images — hide the background + dots, keep the
-            // clean gradient hero.
-            root.classList.add('is-empty');
-            dotsBox.style.display = 'none';
-            slides.forEach((s) => s.classList.remove('is-active'));
-            current = -1;
-            stopTimer();
-            return;
-          }
-          root.classList.remove('is-empty');
-          dotsBox.style.display = '';
-
-          // (Re)build the dots only when the set of ready slides changes,
-          // so hover/active state isn't disturbed on every image load.
-          const key = order.join(',');
-          if (key !== dotsKey) {
-            dotsKey = key;
-            dotsBox.innerHTML = '';
-            dots = order.map((origIdx) => {
-              const b = document.createElement('button');
-              b.type = 'button';
-              b.className = 'hero-dot';
-              b.setAttribute('aria-label', 'Show photo ' + (origIdx + 1));
-              b.addEventListener('click', () => { select(order.indexOf(origIdx)); restart(); });
-              dotsBox.appendChild(b);
-              return b;
-            });
-          }
-
-          // Keep the current slide on screen (never jump back) as late
-          // images finish loading.
-          if (current < 0 || order.indexOf(current) < 0) current = order[0];
-          idx = order.indexOf(current);
-
-          select(idx);
-          if (order.length > 1) preload(slides[order[(idx + 1) % order.length]].getAttribute('src'));
-          restart();
-        }
-
-        function select(i) {
-          if (!order.length) return;
-          idx = ((i % order.length) + order.length) % order.length;
-          current = order[idx];
-          slides.forEach((s, k) => s.classList.toggle('is-active', k === current));
-          dots.forEach((d, k) => d.classList.toggle('is-active', k === idx));
-        }
-
-        function restart() {
-          stopTimer();
-          if (reduce || order.length < 2) return;
-          timer = setInterval(() => select(idx + 1), DURATION);
-        }
-
-        function stopTimer() {
-          clearInterval(timer);
-          timer = null;
-        }
-
-        // Pause the rotation while the pointer is over the hero.
-        if (hero) {
-          hero.addEventListener('mouseenter', stopTimer);
-          hero.addEventListener('mouseleave', restart);
-        }
-
-        sync();
-      })();
-
       document.addEventListener('DOMContentLoaded', async () => {
         // Inject the shared icon set into static slots (progressive enhancement)
         document.querySelectorAll('[data-icon]').forEach((el) => {

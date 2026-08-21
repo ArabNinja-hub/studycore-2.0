@@ -3,10 +3,9 @@ const { Readable } = require('stream');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const db = require('../db');
 const { requireAuth, COOKIE_NAME } = require('../middleware/auth');
-const { r2, bucketName } = require('../lib/r2');
+const storage = require('../lib/storage');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'studycore-dev-secret-change-me';
 
@@ -91,16 +90,9 @@ function lockReason(row, access) {
   return null;
 }
 
-// Fetches an object from R2 and pipes it to the response. Honors HTTP Range
-// requests (the browser sends these automatically when someone scrubs/seeks
-// within a video, or resumes an interrupted download) by forwarding the
-// same Range header straight through to R2's GetObjectCommand - without
-// this, video playback would still start fine but skipping ahead in the
-// player wouldn't work properly.
-//
-// Protected media is streamed with no-store so neither the browser nor any
-// intermediate proxy is encouraged to cache a chunk of Premium content that
-// only this authorized session was allowed to fetch.
+// Streams a stored object (Cloudflare R2, or the local-disk fallback) without
+// buffering the file. HTTP Range is parsed and honored so video seeking and
+// progressive PDF rendering can start on the first chunk.
 const MIME_BY_EXT = {
   '.mp4': 'video/mp4',
   '.m4v': 'video/mp4',
@@ -129,7 +121,50 @@ function inferMime(row) {
   return MIME_BY_EXT[ext] || given || 'application/octet-stream';
 }
 
-function pipeBodyToResponse(body, res) {
+function sniffMime(buf) {
+  if (!buf || buf.length < 4) return null;
+  if (buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) return 'application/pdf';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  if (buf.length >= 12 && buf.toString('ascii', 4, 8) === 'ftyp') return 'video/mp4';
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return 'video/webm';
+  return null;
+}
+
+function parseRange(header, size) {
+  if (!header) return null;
+  const m = String(header).trim().match(/^bytes=(\d*)-(\d*)$/i);
+  if (!m) return { unsatisfiable: true };
+  let start;
+  let end;
+  if (m[1] === '' && m[2] !== '') {
+    const suffix = Number(m[2]);
+    if (!Number.isFinite(suffix) || suffix <= 0) return { unsatisfiable: true };
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else if (m[1] !== '') {
+    start = Number(m[1]);
+    end = m[2] === '' ? size - 1 : Number(m[2]);
+  } else {
+    return { unsatisfiable: true };
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || (size > 0 && start >= size) || end < start) {
+    return { unsatisfiable: true };
+  }
+  if (size === 0) return null;
+  return { start, end: Math.min(end, size - 1) };
+}
+
+function contentDisposition(disposition, filename, key) {
+  const raw = String(filename || key || 'file').replace(/[\r\n"]/g, '');
+  const encoded = encodeURIComponent(raw);
+  const kind = disposition === 'attachment' ? 'attachment' : 'inline';
+  return `${kind}; filename="${raw}"; filename*=UTF-8''${encoded}`;
+}
+
+function pipeBodyToResponse(body, res, req) {
   if (!body) {
     if (!res.writableEnded) res.end();
     return;
@@ -138,83 +173,103 @@ function pipeBodyToResponse(body, res) {
     if (!res.headersSent) res.status(500);
     if (!res.writableEnded) res.end();
   };
+  let nodeStream = null;
   if (typeof body.pipe === 'function') {
-    body.on('error', fail);
-    body.pipe(res);
+    nodeStream = body;
+  } else if (typeof Readable.fromWeb === 'function' && typeof body.getReader === 'function') {
+    nodeStream = Readable.fromWeb(body);
+  }
+  if (!nodeStream) {
+    fail();
     return;
   }
-  // AWS SDK v3 may hand back a Web ReadableStream (no .pipe).
-  if (typeof Readable.fromWeb === 'function' && typeof body.getReader === 'function') {
-    const nodeStream = Readable.fromWeb(body);
-    nodeStream.on('error', fail);
-    nodeStream.pipe(res);
-    return;
-  }
-  fail();
+  const abort = () => {
+    if (!res.writableEnded && typeof nodeStream.destroy === 'function') nodeStream.destroy();
+  };
+  if (req) req.on('close', abort);
+  nodeStream.on('error', fail);
+  nodeStream.pipe(res);
 }
 
 function r2StreamError(err, res) {
-  if (err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+  if (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
     return res.status(404).json({ message: 'File is missing from storage.' });
   }
-  console.error('R2 stream error:', err.message);
+  console.error('Storage stream error:', err.message);
   return res.status(502).json({ message: 'Could not reach file storage. Please try again shortly.' });
 }
 
-async function streamR2Object(req, res, key, { disposition, filename, mimeType }) {
-  if (!bucketName || !process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID) {
-    return res.status(503).json({ message: 'File storage is not configured yet, so this file cannot be opened.' });
+async function resolveType(key, storedType, fallbackType) {
+  const stored = String(storedType || '').trim();
+  if (stored && stored !== 'application/octet-stream' && stored !== 'binary/octet-stream') return stored;
+  const given = String(fallbackType || '').trim();
+  if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream') return given;
+  try {
+    const head = await storage.readBytes(key, 0, 15);
+    return sniffMime(head) || given || stored || 'application/octet-stream';
+  } catch {
+    return given || stored || 'application/octet-stream';
+  }
+}
+
+async function streamStoredObject(req, res, key, { disposition, filename, mimeType }) {
+  let meta;
+  try {
+    meta = await storage.headObject(key);
+  } catch (err) {
+    return r2StreamError(err, res);
+  }
+
+  const size = Number(meta.contentLength) || 0;
+  const type = await resolveType(key, meta.contentType, mimeType);
+  const range = parseRange(req.headers.range, size);
+
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Content-Type', type);
+  res.setHeader('Content-Disposition', contentDisposition(disposition, filename, key));
+  // Private cache lets the browser reuse range chunks while seeking / paging
+  // a PDF. The URL is still session-gated — unauthenticated clients cannot
+  // hit this route at all.
+  res.setHeader('Cache-Control', 'private, max-age=120, no-transform');
+  res.setHeader('X-Robots-Tag', 'noindex, noarchive, nosnippet');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  if (range && range.unsatisfiable) {
+    res.setHeader('Content-Range', `bytes */${size}`);
+    return res.status(416).end();
+  }
+
+  if (req.method === 'HEAD') {
+    if (range) {
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+      res.setHeader('Content-Length', String(range.end - range.start + 1));
+    } else {
+      res.status(200);
+      res.setHeader('Content-Length', String(size));
+    }
+    return res.end();
   }
 
   let object;
   try {
-    object = await r2.send(new GetObjectCommand({
-      Bucket: bucketName,
-      Key: key,
-      Range: req.headers.range || undefined
-    }));
+    object = await storage.getObject(key, range || undefined);
   } catch (err) {
-    // A player always sends Range. If the object store rejects it, retry the
-    // full object so playback/preview still starts.
-    if (req.headers.range) {
-      try {
-        object = await r2.send(new GetObjectCommand({ Bucket: bucketName, Key: key }));
-      } catch (err2) {
-        return r2StreamError(err2, res);
-      }
-    } else {
-      return r2StreamError(err, res);
-    }
+    return r2StreamError(err, res);
   }
 
-  const type = (object.ContentType && object.ContentType !== 'application/octet-stream')
-    ? object.ContentType
-    : (mimeType || 'application/octet-stream');
-
-  res.setHeader('Accept-Ranges', 'bytes');
-  res.setHeader('Content-Type', type);
-  if (object.ContentLength !== undefined) res.setHeader('Content-Length', object.ContentLength);
-
-  const safeName = String(filename || key).replace(/"/g, '');
-  const dispositionValue = disposition === 'attachment'
-    ? `attachment; filename="${safeName}"`
-    : `inline; filename="${safeName}"`;
-  res.setHeader('Content-Disposition', dispositionValue);
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('X-Robots-Tag', 'noindex, noarchive, nosnippet');
-  // Allow the same-origin document viewer iframe to embed this stream.
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
-
-  if (object.ContentRange) {
+  if (range) {
     res.status(206);
-    res.setHeader('Content-Range', object.ContentRange);
+    res.setHeader('Content-Range', object.contentRange || `bytes ${range.start}-${range.end}/${size}`);
+    res.setHeader('Content-Length', String(object.contentLength != null ? object.contentLength : (range.end - range.start + 1)));
   } else {
     res.status(200);
+    res.setHeader('Content-Length', String(object.contentLength != null ? object.contentLength : size));
   }
 
-  pipeBodyToResponse(object.Body, res);
+  pipeBodyToResponse(object.body, res, req);
 }
 
 function lockedResponse(res, reason) {
@@ -283,18 +338,21 @@ router.get('/', requireAuth, gate, (req, res) => {
   });
 });
 
-router.get('/:id/stream', requireAuth, gate, async (req, res) => {
+async function handleStream(req, res) {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   if (!row.stored_name && !row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
   if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
-  await streamR2Object(req, res, row.stored_name, {
+  await streamStoredObject(req, res, row.stored_name, {
     disposition: 'inline',
     filename: row.file_name || row.stored_name,
     mimeType: inferMime(row)
   });
-});
+}
+
+router.head('/:id/stream', requireAuth, gate, handleStream);
+router.get('/:id/stream', requireAuth, gate, handleStream);
 
 // ---- Video playback progress (server-stored resume position) ---------------
 //
@@ -477,7 +535,7 @@ router.get('/:id/download', requireAuth, gate, async (req, res) => {
   db.prepare('INSERT INTO downloads (id, resource_id, user_id, created_at) VALUES (?, ?, ?, ?)')
     .run(`dl-${uuidv4()}`, row.id, req.user.id, new Date().toISOString());
 
-  await streamR2Object(req, res, row.stored_name, {
+  await streamStoredObject(req, res, row.stored_name, {
     disposition: 'attachment',
     filename: row.file_name || row.stored_name,
     mimeType: inferMime(row)
