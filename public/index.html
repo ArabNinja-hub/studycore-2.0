@@ -63,34 +63,30 @@
     <main>
       <!-- Hero -->
       <section class="hero">
+        <!-- Full-bleed photo background: crossfades through the tutorial
+             photos one by one, each slowly panning while visible. -->
+        <div class="hero-bg" id="heroBackground" aria-hidden="true">
+          <img class="hero-bg-slide" src="/assets/hero/slide-1.jpg" alt="" loading="eager" decoding="async" />
+          <img class="hero-bg-slide" src="/assets/hero/slide-2.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide" src="/assets/hero/slide-3.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide" src="/assets/hero/slide-4.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide" src="/assets/hero/slide-5.jpg" alt="" loading="lazy" decoding="async" />
+          <img class="hero-bg-slide" src="/assets/hero/slide-6.jpg" alt="" loading="lazy" decoding="async" />
+        </div>
         <div class="container">
-          <div class="hero-grid">
-            <div class="hero-copy">
-              <span class="eyebrow">University Learning Platform</span>
-              <h1>Learn with purpose.<br />Succeed with <em>confidence</em>.</h1>
-              <p class="lead">
-                StudyCore brings your university courses, structured lessons, study notes,
-                video learning, past papers and revision resources together in one place —
-                so everything you need to learn and stay on track is right here.
-              </p>
-              <div class="hero-actions">
-                <a class="btn btn-primary btn-lg" href="/pages/courses.html">Explore Courses</a>
-                <a class="btn btn-ghost btn-lg" style="color:rgba(255,255,255,0.9);border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.06);" href="/signup.html">
-                  Start Free Trial <span aria-hidden="true"></span>
-                </a>
-              </div>
-            </div>
-
-            <div class="hero-slideshow" id="heroSlideshow" role="region" aria-roledescription="carousel" aria-label="StudyCore in action">
-              <div class="hero-slides">
-                <img class="hero-slide" src="/assets/hero/slide-1.jpg" alt="A StudyCore tutorial class in session" loading="eager" decoding="async" />
-                <img class="hero-slide" src="/assets/hero/slide-2.jpg" alt="Students learning together in a StudyCore tutorial" loading="lazy" decoding="async" />
-                <img class="hero-slide" src="/assets/hero/slide-3.jpg" alt="A lesson being taught on a whiteboard" loading="lazy" decoding="async" />
-                <img class="hero-slide" src="/assets/hero/slide-4.jpg" alt="Students revising with StudyCore notes" loading="lazy" decoding="async" />
-                <img class="hero-slide" src="/assets/hero/slide-5.jpg" alt="A study group working through past papers" loading="lazy" decoding="async" />
-                <img class="hero-slide" src="/assets/hero/slide-6.jpg" alt="StudyCore students after completing a course" loading="lazy" decoding="async" />
-              </div>
-              <div class="hero-dots" id="heroDots"></div>
+          <div class="hero-copy">
+            <span class="eyebrow">University Learning Platform</span>
+            <h1>Learn with purpose.<br />Succeed with <em>confidence</em>.</h1>
+            <p class="lead">
+              StudyCore brings your university courses, structured lessons, study notes,
+              video learning, past papers and revision resources together in one place —
+              so everything you need to learn and stay on track is right here.
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary btn-lg" href="/pages/courses.html">Explore Courses</a>
+              <a class="btn btn-ghost btn-lg" style="color:rgba(255,255,255,0.9);border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.06);" href="/signup.html">
+                Start Free Trial <span aria-hidden="true"></span>
+              </a>
             </div>
           </div>
 
@@ -100,6 +96,7 @@
             <div class="hero-stat"><div class="num">24/7</div><div class="label">Study on any device</div></div>
           </div>
         </div>
+        <div class="hero-dots" id="heroDots"></div>
       </section>
 
       <!-- How it works -->
@@ -290,23 +287,30 @@
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
     <script>
-      // ── Hero slideshow (rotating + crossfading image gallery) ──────────
-      // Rotates through the tutorial-class photos with a smooth crossfade
-      // (cross-dissolve) transition between slides.
+      // ── Hero background slideshow (full-bleed crossfade + slow pan) ────
+      // The tutorial photos fill the whole hero section behind the copy.
+      // Each photo crossfades in one by one and slowly pans (translates)
+      // while it is on screen, alternating direction per slide.
       // Respects prefers-reduced-motion and gracefully skips missing images.
       (function initHeroSlideshow() {
-        const root = document.getElementById('heroSlideshow');
+        const root = document.getElementById('heroBackground');
         if (!root) return;
-        const slides = Array.from(root.querySelectorAll('.hero-slide'));
+        const hero = root.closest('.hero');
+        const slides = Array.from(root.querySelectorAll('.hero-bg-slide'));
         const dotsBox = document.getElementById('heroDots');
         if (!slides.length) return;
 
         const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        const DURATION = 5000; // ms per slide
+        const DURATION = 6000; // ms per slide (matches the CSS pan animation)
+        // Keep the CSS pan animation length in sync with the slide timing.
+        root.style.setProperty('--hero-pan', DURATION + 'ms');
         const state = slides.map(() => 'loading'); // 'loading' | 'ready' | 'broken'
 
+        // Alternate the pan direction (left/right) slide by slide.
+        slides.forEach((s, i) => s.classList.toggle('pan-left', i % 2 === 1));
+
         // Track load state so a missing image never leaves an empty frame,
-        // and the panel hides itself if every image is missing.
+        // and the background hides itself if every image is missing.
         slides.forEach((s, i) => {
           if (s.complete) {
             state[i] = s.naturalWidth > 0 ? 'ready' : 'broken';
@@ -328,7 +332,7 @@
             const b = document.createElement('button');
             b.type = 'button';
             b.className = 'hero-dot';
-            b.setAttribute('aria-label', 'Show slide ' + (origIdx + 1));
+            b.setAttribute('aria-label', 'Show photo ' + (origIdx + 1));
             b.addEventListener('click', () => go(order.indexOf(origIdx), true));
             dotsBox.appendChild(b);
             return b;
@@ -337,15 +341,14 @@
           slides.forEach((s) => s.classList.remove('is-active'));
 
           if (!order.length) {
-            // No usable images — collapse to the text-only hero.
+            // No usable images — hide the background + dots, keep the
+            // clean gradient hero.
             root.classList.add('is-empty');
-            const grid = root.closest('.hero-grid');
-            if (grid) grid.classList.add('hero-grid-single');
+            dotsBox.style.display = 'none';
             return;
           }
           root.classList.remove('is-empty');
-          const grid = root.closest('.hero-grid');
-          if (grid) grid.classList.remove('hero-grid-single');
+          dotsBox.style.display = '';
 
           idx = 0;
           go(0);
@@ -366,8 +369,11 @@
           timer = setInterval(() => go(idx + 1), DURATION);
         }
 
-        root.addEventListener('mouseenter', () => clearInterval(timer));
-        root.addEventListener('mouseleave', restart);
+        // Pause the rotation while the pointer is over the hero.
+        if (hero) {
+          hero.addEventListener('mouseenter', () => clearInterval(timer));
+          hero.addEventListener('mouseleave', restart);
+        }
 
         rebuild();
       })();
