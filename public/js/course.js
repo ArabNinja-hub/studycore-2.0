@@ -1,278 +1,271 @@
 // =============================================
-// STUDYCORE — Course Home Module (js/course.js)
-// By Dr. Relentless | Stay Curious & Winning
+// STUDYCORE — Course Home (js/course.js)
 // -----------------------------------------------
-// Everything on this page is real: progress, streak, and completion state
-// all come from actual database records (lesson_progress / quiz_attempts),
-// not anything simulated in the browser. Access control for locked/premium
-// items is enforced server-side regardless of what this page displays -
-// the lock icon here is just an honest reflection of that, not the thing
-// doing the blocking.
+// Powers every /pages/subjects/<slug>.html page:
+// course hero stats, topic grid, lesson list,
+// resources, past papers and progress.
+//
+// Anonymous visitors see the public course
+// structure (counts + topics from GET
+// /api/courses). Logged-in students get their
+// real progress, continue-learning and locked
+// states from GET /api/courses/:subject -
+// access flags are computed server-side.
 // =============================================
 
-let courseData = null;
-let activeTabKey = null;
+(function () {
+  'use strict';
 
-const TAB_DEFS = [
-  { key: 'lectures', label: '🎥 Lectures' },
-  { key: 'notes', label: '📄 Notes' },
-  { key: 'tutorials', label: '📑 Tutorials' },
-  { key: 'pastPapers', label: '📝 Past Papers' },
-  { key: 'quizzes', label: '🧠 Quizzes' },
-  { key: 'assignments', label: '🗂 Resources' },
-  { key: 'announcements', label: '📢 Announcements' }
-];
+  const slug = document.body.dataset.subjectSlug;
+  const subject = document.body.dataset.subject || slug;
+  const $ = (sel) => document.querySelector(sel);
 
-function getSubjectFromUrl() {
-  return new URLSearchParams(window.location.search).get('subject') || '';
-}
+  // Hero visual + icon
+  SC.Hero.init($('#courseHero'), slug);
+  $('#courseHeroIcon').innerHTML = SC.icon(SC.courseIcon(slug), { size: 30 });
 
-function lessonRow(item, opts = {}) {
-  const icon = item.completed ? '✓' : (item.locked ? '🔒' : '▶');
-  const rowClasses = ['lesson-row'];
-  if (item.completed) rowClasses.push('completed');
-  if (item.locked) rowClasses.push('locked');
+  const topicAnchor = (name) => `#lesson-topic-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
-  const meta = [item.subject, item.course].filter(Boolean).join(' • ');
-  const freeBadge = !item.isPremium ? '<span class="free-badge">FREE PREVIEW</span>' : '';
-
-  let scoreBadge = '';
-  if (item.category === 'quiz' && typeof item.bestPercent === 'number') {
-    scoreBadge = `<span class="quiz-score-badge">Best: ${item.bestPercent}%</span>`;
+  function setStats(values) {
+    document.querySelectorAll('[data-stat]').forEach((el) => {
+      el.textContent = values[el.getAttribute('data-stat')] ?? '0';
+    });
   }
 
-  return `
-    <div class="${rowClasses.join(' ')}" data-resource-id="${item.id}" data-category="${item.category}">
-      <div class="lesson-status-icon" data-status-icon>${icon}</div>
-      <div class="lesson-row-main">
-        <div class="lesson-row-title">${escapeHtml(item.title)}${freeBadge}</div>
-        <div class="lesson-row-meta">${escapeHtml(meta)}${item.fileSize ? ` • ${formatFileSize(item.fileSize)}` : ''}</div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        ${scoreBadge}
-        ${item.locked
-          ? `<a class="btn btn-outline btn-sm" href="dashboard.html">Subscribe to unlock</a>`
-          : renderActionButton(item)}
-      </div>
-    </div>
-  `;
-}
+  function renderStreak(streak) {
+    const slot = $('#courseStreakSlot');
+    if (!slot) return;
+    if (streak > 0) {
+      slot.innerHTML = `<span class="course-streak-pill">${SC.icon('flame', { size: 16 })} ${streak} day study streak</span>`;
+    }
+  }
 
-function renderActionButton(item) {
-  if (item.category === 'quiz') {
-    return `<button class="btn btn-primary btn-sm" data-open-quiz="${item.id}">Start Quiz</button>`;
-  }
-  if (item.category === 'video') {
-    return `<a class="btn btn-outline btn-sm" href="/api/resources/${item.id}/stream" target="_blank" rel="noopener">▶ Watch</a>`;
-  }
-  if (item.hasFile) {
+  const fmtTime = (s) => (typeof StudyCorePlayer !== 'undefined' ? StudyCorePlayer.fmtTime(s) : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
+
+  function lessonRowHtml(item) {
+    const icon = item.completed
+      ? SC.icon('check', { size: 16 })
+      : (item.locked ? SC.icon('lock', { size: 15 }) : SC.icon(SC.courseCategoryIcon(item.category), { size: 15 }));
+    const meta = [item.subject && '', item.topic, item.yearLevel].filter(Boolean).map(escapeHtml).join(' · ');
+    const resume = item.videoPosition ? `<span class="lesson-type" style="color:var(--teal-600);">${SC.icon('play', { size: 12 })} Resume at ${fmtTime(item.videoPosition)}</span>` : '';
+    const cta = item.locked
+      ? `<a class="btn btn-amber btn-sm" href="/pages/pricing.html">${SC.icon('crown', { size: 14 })} Premium</a>`
+      : `<span class="lesson-type">${CATEGORY_LABELS[item.category] || 'Resource'}</span>`;
     return `
-      <a class="btn btn-outline btn-sm" href="/api/resources/${item.id}/stream" target="_blank" rel="noopener">👁 View</a>
-      <a class="btn btn-primary btn-sm" href="/api/resources/${item.id}/download">⬇ Download</a>
+      <a class="lesson-row ${item.completed ? 'completed' : ''} ${item.locked ? 'locked' : ''}"
+         href="/pages/lesson.html?id=${item.id}&subject=${encodeURIComponent(item.subject || subject)}"
+         data-topic-anchor="${escapeHtml(topicAnchor(item.topic || 'General'))}">
+        <span class="lesson-status">${icon}</span>
+        <span class="lesson-row-main">
+          <span class="lesson-row-title">${escapeHtml(item.title)}</span>
+          <span class="lesson-row-meta">
+            <span>${meta || CATEGORY_LABELS[item.category] || ''}</span>${resume}
+          </span>
+        </span>
+        <span class="lesson-row-action">${cta}${item.locked ? '' : SC.icon('chevron-right', { size: 17 })}</span>
+      </a>
     `;
   }
-  return '';
-}
 
-function renderLecturesPanel(termGroups, flatFallback) {
-  // If the backend didn't send grouped data for some reason (or every video
-  // is search-filtered into a flat array client-side - see bindSearch()
-  // below), fall back to a plain flat list rather than showing nothing.
-  if (!termGroups || !termGroups.length) {
-    return renderTabPanel('lectures', flatFallback || []);
-  }
-  const body = termGroups.map((group) => `
-    <div class="term-group">
-      <h3 class="term-group-heading">${escapeHtml(group.term)} <span class="resource-meta">(${group.lectures.length})</span></h3>
-      ${group.lectures.map((i) => lessonRow(i)).join('')}
-    </div>
-  `).join('');
-  return `<div class="course-tab-panel" data-panel="lectures">${body}</div>`;
-}
-
-function renderTabPanel(key, items) {
-  if (!items.length) {
-    return `<div class="course-tab-panel" data-panel="${key}"><div class="empty-tab-state">Nothing here yet - check back soon.</div></div>`;
-  }
-  return `<div class="course-tab-panel" data-panel="${key}">${items.map((i) => lessonRow(i)).join('')}</div>`;
-}
-
-function bindLessonInteractions(container) {
-  container.querySelectorAll('[data-open-quiz]').forEach((btn) => {
-    btn.addEventListener('click', () => openQuizWithScoreTracking(btn.getAttribute('data-open-quiz')));
-  });
-}
-
-// openQuiz() (from main.js) now saves every score itself - this wrapper
-// just refreshes the course page's progress/streak display afterward.
-async function openQuizWithScoreTracking(id) {
-  await openQuiz(id, async () => {
-    await reloadCourse();
-  });
-}
-
-async function toggleComplete(resourceId, rowEl) {
-  const isCompleted = rowEl.classList.contains('completed');
-  try {
-    if (isCompleted) {
-      await StudyCoreAPI.markIncomplete(resourceId);
-    } else {
-      await StudyCoreAPI.markComplete(resourceId);
-    }
-    await reloadCourse();
-    // Small completion animation on the icon that now shows the checkmark.
-    const newRow = document.querySelector(`[data-resource-id="${resourceId}"]`);
-    const icon = newRow && newRow.querySelector('[data-status-icon]');
-    if (icon && !isCompleted) {
-      icon.classList.add('just-completed');
-      setTimeout(() => icon.classList.remove('just-completed'), 400);
-    }
-  } catch (err) {
-    showToast(err.message, 'error');
-  }
-}
-
-function renderHeader(data) {
-  document.getElementById('courseEyebrow').textContent = 'Course';
-  document.getElementById('courseTitle').textContent = data.subject;
-  document.title = `${data.subject} | StudyCore`;
-
-  document.getElementById('courseProgressLabel').textContent = `${data.progress.percent}% Complete`;
-  document.getElementById('courseProgressCount').textContent = `${data.progress.completedCount} of ${data.progress.totalCount} items completed`;
-  document.getElementById('courseProgressFill').style.width = `${data.progress.percent}%`;
-
-  const streakEl = document.getElementById('courseStreak');
-  if (data.streak > 0) {
-    streakEl.style.display = 'flex';
-    document.getElementById('courseStreakText').textContent = `${data.streak} day study streak`;
-  } else {
-    streakEl.style.display = 'none';
-  }
-
-  const continueCard = document.getElementById('continueLearningCard');
-  if (data.continueLearning) {
-    continueCard.style.display = 'flex';
-    document.getElementById('continueTitle').textContent = data.continueLearning.title;
-    const btn = document.getElementById('continueBtn');
-    if (data.continueLearning.category === 'quiz') {
-      btn.href = '#';
-      btn.onclick = (e) => { e.preventDefault(); openQuizWithScoreTracking(data.continueLearning.id); };
-    } else if (data.continueLearning.category === 'video') {
-      btn.href = `/api/resources/${data.continueLearning.id}/stream`;
-      btn.target = '_blank';
-      btn.onclick = null;
-    } else {
-      btn.href = `/api/resources/${data.continueLearning.id}/stream`;
-      btn.target = '_blank';
-      btn.onclick = null;
-    }
-  } else {
-    continueCard.style.display = 'none';
-  }
-}
-
-function renderTabs(data) {
-  // Only show tabs that actually have content, per the design brief - an
-  // empty "Tutorials" tab on a subject with no tutorials uploaded yet would
-  // just be clutter.
-  const availableTabs = TAB_DEFS.filter((t) => (data[t.key] || []).length > 0);
-  if (!availableTabs.length) {
-    document.getElementById('courseTabs').innerHTML = '';
-    document.getElementById('courseTabPanels').innerHTML = '<div class="empty-tab-state">No content published for this course yet.</div>';
-    return;
-  }
-
-  if (!activeTabKey || !availableTabs.some((t) => t.key === activeTabKey)) {
-    activeTabKey = availableTabs[0].key;
-  }
-
-  document.getElementById('courseTabs').innerHTML = availableTabs.map((t) => `
-    <button class="course-tab ${t.key === activeTabKey ? 'active' : ''}" data-tab="${t.key}" role="tab">${t.label} (${data[t.key].length})</button>
-  `).join('');
-
-  document.getElementById('courseTabPanels').innerHTML = availableTabs.map((t) =>
-    t.key === 'lectures' ? renderLecturesPanel(data.lecturesByTerm, data.lectures) : renderTabPanel(t.key, data[t.key])
-  ).join('');
-
-  document.querySelectorAll('[data-panel]').forEach((panel) => {
-    panel.classList.toggle('active', panel.getAttribute('data-panel') === activeTabKey);
-  });
-
-  document.querySelectorAll('[data-tab]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activeTabKey = btn.getAttribute('data-tab');
-      document.querySelectorAll('[data-tab]').forEach((b) => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('[data-panel]').forEach((p) => p.classList.toggle('active', p.getAttribute('data-panel') === activeTabKey));
+  /* ── Anonymous / public view ────────────── */
+  function renderPublic(course) {
+    setStats({
+      topics: course.topics.length,
+      lessons: course.counts.lessons,
+      videos: course.counts.videos,
+      papers: course.counts.pastPapers
     });
-  });
+    $('#topicGrid').innerHTML = course.topics.length
+      ? course.topics.map((t) => `
+          <a class="topic-card" href="/signup.html" title="Log in to open this topic">
+            <span class="card-icon">${SC.icon('layers', { size: 20 })}</span>
+            <span class="topic-card-body"><h4>${escapeHtml(t)}</h4><p>Open ${escapeHtml(subject)} to start this topic</p></span>
+          </a>`).join('')
+      : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
+    $('#lessonList').innerHTML = emptyState({
+      icon: 'play', title: 'Lessons appear when you log in',
+      body: `Create a free account to open ${escapeHtml(subject)} lessons, notes and past papers — your 30-day trial starts immediately.`,
+      cta: '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;"><a class="btn btn-primary" href="/signup.html">Start Free Trial</a><a class="btn btn-outline" href="/login.html">Log In</a></div>'
+    });
+    $('#resourceGrid').innerHTML = emptyState({ icon: 'file-text', title: 'Study notes', body: 'Log in to read this course\u2019s notes and tutorial sheets.' });
+    $('#paperGrid').innerHTML = emptyState({ icon: 'file', title: 'Past papers', body: 'Log in to open this course\u2019s past papers.' });
+    $('#progressPanel').innerHTML = `
+      <div class="card card-pad" style="max-width:560px;margin:0 auto;text-align:center;">
+        <div class="card-icon" style="margin:0 auto 14px;">${SC.icon('trending-up', { size: 22 })}</div>
+        <h3>Track your ${escapeHtml(subject)} progress</h3>
+        <p style="margin:8px 0 18px;">Course completion, study streaks and achievements unlock as soon as you have an account.</p>
+        <a class="btn btn-primary" href="/signup.html">Create Free Account</a>
+      </div>`;
+  }
 
-  bindLessonInteractions(document.getElementById('courseTabPanels'));
+  /* ── Logged-in view ─────────────────────── */
+  async function renderStudent(data) {
+    setStats({
+      topics: data.topics.length,
+      lessons: data.progress.totalCount,
+      videos: data.lectures.length,
+      papers: data.pastPapers.length
+    });
+    renderStreak(data.streak);
 
-  // Clicking anywhere on a non-locked, non-quiz row's status icon toggles
-  // completion directly - quizzes get marked complete automatically when
-  // scored, so their icon isn't independently clickable.
-  document.querySelectorAll('.lesson-row:not(.locked)').forEach((row) => {
-    const category = row.getAttribute('data-category');
-    if (category === 'quiz') return;
-    const icon = row.querySelector('[data-status-icon]');
-    icon.style.cursor = 'pointer';
-    icon.title = row.classList.contains('completed') ? 'Mark as not complete' : 'Mark as complete';
-    icon.addEventListener('click', () => toggleComplete(row.getAttribute('data-resource-id'), row));
-  });
-}
+    // Continue learning
+    const cont = data.continueLearning;
+    if (cont) {
+      const section = $('#continueSection');
+      section.style.display = '';
+      $('#continueCard').innerHTML = `
+        <span class="cc-icon">${SC.icon(cont.category === 'video' ? 'play' : 'file-text', { size: 24 })}</span>
+        <span class="cc-body">
+          <span class="cc-eyebrow">Continue where you left off${cont.via === 'recent' ? ' · recent' : ''}</span>
+          <h4>${escapeHtml(cont.title)}</h4>
+          ${cont.topic ? `<span class="lesson-type">${SC.icon('layers', { size: 12 })} ${escapeHtml(cont.topic)}</span>` : ''}
+          ${cont.videoPosition ? `<div class="progress progress-thin" style="max-width:260px;margin-top:8px;"><span style="width:${Math.round((cont.videoPosition / Math.max(1, cont.videoDuration)) * 100)}%"></span></div>` : ''}
+        </span>
+        <a class="btn btn-primary" href="/pages/lesson.html?id=${cont.id}&subject=${encodeURIComponent(cont.subject || subject)}">
+          ${cont.completed ? 'Review lesson' : 'Continue lesson'} ${SC.icon('arrow-right', { size: 16 })}
+        </a>
+      `;
+    }
 
-async function reloadCourse() {
-  const subject = getSubjectFromUrl();
-  courseData = await StudyCoreAPI.courseHome(subject);
-  renderHeader(courseData);
-  renderTabs(courseData);
-}
+    // Topics
+    $('#topicGrid').innerHTML = data.topics.length
+      ? data.topics.map((t) => `
+          <a class="topic-card" href="${topicAnchor(t.name)}">
+            <span class="card-icon">${SC.icon('layers', { size: 20 })}</span>
+            <span class="topic-card-body"><h4>${escapeHtml(t.name)}</h4><p>${t.completed} of ${t.total} lessons complete</p></span>
+            <span class="topic-card-progress">
+              <div class="progress-labels"><span>${t.percent}%</span></div>
+              <div class="progress progress-thin"><span style="width:${t.percent}%"></span></div>
+            </span>
+          </a>`).join('')
+      : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
 
-function bindSearch() {
-  const input = document.getElementById('courseSearch');
-  let debounceTimer;
-  input.addEventListener('input', () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      const term = input.value.trim().toLowerCase();
-      if (!term || !courseData) {
-        renderTabs(courseData);
-        return;
+    // Lessons (grouped under topic headers for a clear hierarchy)
+    const groups = data.topics.length ? data.topics : [{ name: 'All lessons', lessons: data.lessons }];
+    $('#lessonList').innerHTML = groups.length
+      ? groups.map((g) => `
+          <div class="term-group" id="${topicAnchor(g.name)}" style="scroll-margin-top:130px;">
+            <h3 class="term-group-heading">${escapeHtml(g.name)} <span class="resource-meta">${g.completed} / ${g.total} complete</span></h3>
+            ${g.lessons.map(lessonRowHtml).join('')}
+          </div>`).join('')
+      : emptyState({ icon: 'play', title: 'No lessons yet', body: 'Lessons for this course will appear here as soon as they are published.' });
+
+    // Resources (notes + tutorials)
+    const resItems = [...data.notes, ...data.tutorials];
+    const bookmarked = await loadBookmarkedIds();
+    $('#resourceGrid').innerHTML = resItems.length
+      ? resItems.map((r) => resourceCard(r, bookmarked)).join('')
+      : emptyState({ icon: 'file-text', title: 'No resources yet', body: `New ${escapeHtml(subject)} notes and tutorials will appear here soon.` });
+    bindCardInteractions($('#resourceGrid'));
+
+    // Past papers (grouped by year when available)
+    const papers = [...data.pastPapers].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')));
+    const paperGroups = new Map();
+    for (const p of papers) {
+      const year = p.yearLevel ? String(p.yearLevel) : 'All years';
+      if (!paperGroups.has(year)) paperGroups.set(year, []);
+      paperGroups.get(year).push(p);
+    }
+    $('#paperGrid').innerHTML = papers.length
+      ? [...paperGroups.entries()].map(([year, items]) => `
+          <div style="grid-column:1/-1;">
+            <h3 style="margin-bottom:14px;font-size:1.05rem;">${escapeHtml(year)} ${items.length > 1 ? `<span class="resource-meta">(${items.length} papers)</span>` : ''}</h3>
+            <div class="resource-grid">${items.map((r) => resourceCard(r, bookmarked)).join('')}</div>
+          </div>`).join('')
+      : emptyState({ icon: 'file', title: 'No past papers yet', body: `Past papers for ${escapeHtml(subject)} will appear here soon.` });
+    bindCardInteractions($('#paperGrid'));
+
+    // Progress panel
+    const topicsHtml = data.topics.map((t) => `
+      <div style="margin-bottom:14px;">
+        <div class="progress-labels"><span>${escapeHtml(t.name)}</span><span>${t.completed}/${t.total} · ${t.percent}%</span></div>
+        <div class="progress progress-thin"><span style="width:${t.percent}%"></span></div>
+      </div>`).join('');
+    $('#progressPanel').innerHTML = `
+      <div class="card card-pad" style="max-width:680px;margin:0 auto;">
+        <div class="progress-labels" style="font-size:0.95rem;"><strong>${escapeHtml(subject)} overall</strong><strong>${data.progress.percent}% complete</strong></div>
+        <div class="progress" style="height:12px;margin-bottom:22px;"><span style="width:${data.progress.percent}%"></span></div>
+        ${topicsHtml || '<p>No topics yet.</p>'}
+        <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+          <div><div style="font-family:var(--font-display);font-weight:800;font-size:1.3rem;">${data.progress.completedCount}</div><div style="font-size:0.78rem;color:var(--muted);">Lessons completed</div></div>
+          <div><div style="font-family:var(--font-display);font-weight:800;font-size:1.3rem;">${data.progress.totalCount}</div><div style="font-size:0.78rem;color:var(--muted);">Total lessons</div></div>
+          <div><div style="font-family:var(--font-display);font-weight:800;font-size:1.3rem;">${data.streak}</div><div style="font-size:0.78rem;color:var(--muted);">Day streak</div></div>
+        </div>
+      </div>`;
+
+    // Completion banner
+    if (data.progress.courseComplete) {
+      $('#completionSection').style.display = '';
+      $('#completionBanner').innerHTML = `
+        <div class="trophy">${SC.icon('award', { size: 38 })}</div>
+        <h2>${escapeHtml(subject)} Complete</h2>
+        <p>You have completed every lesson in this course. Well done — review anything you like, or explore another course.</p>
+        <div class="cb-stats">
+          <div><div class="num">${data.progress.completedCount}</div><div class="label">Lessons completed</div></div>
+          <div><div class="num">${data.topics.length}</div><div class="label">Topics</div></div>
+          <div><div class="num">${data.streak}</div><div class="label">Day streak</div></div>
+        </div>
+        <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
+          <a class="btn btn-amber" href="#lessons">Review Course</a>
+          <a class="btn btn-ghost" style="color:#fff;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.07);" href="/pages/courses.html">Explore Another Course</a>
+        </div>`;
+    }
+
+    // Primary CTA -> continue
+    if (cont) {
+      const cta = $('#courseCtaPrimary');
+      cta.href = `/pages/lesson.html?id=${cont.id}&subject=${encodeURIComponent(cont.subject || subject)}`;
+      cta.textContent = cont.completed ? 'Review Course' : 'Continue Learning';
+    }
+  }
+
+  async function loadBookmarkedIds() {
+    try {
+      const { resources } = await StudyCoreAPI.myBookmarks();
+      return new Set(resources.map((r) => r.id));
+    } catch { return new Set(); }
+  }
+
+  /* ── Boot ───────────────────────────────── */
+  async function initCoursePage() {
+    const user = await StudyCoreAuth.fetchSession();
+    if (user) {
+      try {
+        const data = await StudyCoreAPI.courseHome(subject);
+        await renderStudent(data);
+      } catch (err) {
+        $('#topicGrid').innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load this course', body: escapeHtml(err.message) });
       }
-      const filtered = { ...courseData };
-      TAB_DEFS.forEach((t) => {
-        filtered[t.key] = (courseData[t.key] || []).filter((item) =>
-          item.title.toLowerCase().includes(term) || (item.description || '').toLowerCase().includes(term)
-        );
-      });
-      // Term groups would otherwise still show the unfiltered lecture list
-      // during a search - clearing this makes the Lectures tab fall back to
-      // the correctly-filtered flat list instead.
-      filtered.lecturesByTerm = null;
-      renderTabs(filtered);
-    }, 250);
-  });
-}
+    } else {
+      try {
+        const { courses } = await StudyCoreAPI.listCourses();
+        const course = courses.find((c) => c.slug === slug);
+        if (course) renderPublic(course);
+      } catch { /* hero + overview remain */ }
+    }
 
-async function initCoursePage() {
-  const user = await StudyCoreAuth.fetchSession();
-  StudyCoreAuth.updateAuthUI();
-  if (!user) { window.location.href = '/login.html'; return; }
+    // Subnav scroll-spy
+    const sections = ['overview', 'topics', 'lessons', 'resources', 'past-papers', 'progress'].map((id) => document.getElementById(id)).filter(Boolean);
+    const links = document.querySelectorAll('#courseSubnav a');
+    if ('IntersectionObserver' in window && sections.length) {
+      const io = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            links.forEach((l) => l.classList.toggle('active', l.getAttribute('href') === `#${entry.target.id}`));
+          }
+        }
+      }, { rootMargin: '-30% 0px -60% 0px' });
+      sections.forEach((s) => io.observe(s));
+    }
 
-  const subject = getSubjectFromUrl();
-  if (!subject) {
-    document.getElementById('courseTitle').textContent = 'No course specified';
-    return;
+    // Topic deep link (#circular-motion)
+    if (location.hash) {
+      setTimeout(() => {
+        const target = document.querySelector(location.hash);
+        if (target) target.scrollIntoView({ behavior: 'smooth' });
+      }, 250);
+    }
   }
 
-  try {
-    await reloadCourse();
-  } catch (err) {
-    document.getElementById('courseTitle').textContent = 'Could not load this course';
-    document.getElementById('courseTabPanels').innerHTML = `<div class="empty-tab-state">${escapeHtml(err.message)}</div>`;
-  }
-
-  bindSearch();
-}
-
-document.addEventListener('DOMContentLoaded', initCoursePage);
+  document.addEventListener('DOMContentLoaded', initCoursePage);
+})();

@@ -38,6 +38,7 @@ function serializeResource(row) {
     category: row.category,
     subject: row.subject,
     course: row.course,
+    topic: row.topic || null,
     yearLevel: row.year_level,
     semester: row.semester,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
@@ -49,6 +50,7 @@ function serializeResource(row) {
     quizData: row.quiz_data ? JSON.parse(row.quiz_data) : null,
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
+    pinned: Boolean(row.pinned),
     publishStatus: row.publish_status,
     downloadCount: row.download_count,
     viewCount: row.view_count,
@@ -90,7 +92,7 @@ router.get('/resources', (req, res) => {
 });
 
 router.post('/resources', upload.single('file'), (req, res) => {
-  const { title, description, category, subject, course, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium } = req.body;
+  const { title, description, category, subject, course, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   if (!title || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
   if (!category) return res.status(400).json({ message: 'Category is required.' });
@@ -136,9 +138,11 @@ router.post('/resources', upload.single('file'), (req, res) => {
     category,
     subject: subject || null,
     course: course || null,
+    topic: (topic || '').trim() || null,
     year_level: yearLevel || null,
     semester: semester || null,
     tags: tags || null,
+    pinned: pinned === 'true' || pinned === '1' ? 1 : 0,
     file_name: req.file ? req.file.originalname : null,
     stored_name: req.file ? req.file.key : null,
     file_size: req.file ? req.file.size : null,
@@ -155,10 +159,10 @@ router.post('/resources', upload.single('file'), (req, res) => {
   };
 
   db.prepare(`
-    INSERT INTO resources (id, title, description, category, subject, course, year_level, semester, tags,
-      file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, publish_status, uploaded_by, created_at, updated_at)
-    VALUES (@id, @title, @description, @category, @subject, @course, @year_level, @semester, @tags,
-      @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @publish_status, @uploaded_by, @created_at, @updated_at)
+    INSERT INTO resources (id, title, description, category, subject, course, topic, year_level, semester, tags,
+      file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status, uploaded_by, created_at, updated_at)
+    VALUES (@id, @title, @description, @category, @subject, @course, @topic, @year_level, @semester, @tags,
+      @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status, @uploaded_by, @created_at, @updated_at)
   `).run(row);
 
   const saved = db.prepare('SELECT * FROM resources WHERE id = ?').get(id);
@@ -173,7 +177,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
 
-  const { title, description, category, subject, course, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium } = req.body;
+  const { title, description, category, subject, course, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   const effectiveCategory = category ?? existing.category;
   const categoryMismatch = validateFileMatchesCategory(effectiveCategory, req.file);
@@ -214,9 +218,11 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     category: category ?? existing.category,
     subject: subject ?? existing.subject,
     course: course ?? existing.course,
+    topic: topic === undefined ? existing.topic : ((topic || '').trim() || null),
     year_level: yearLevel ?? existing.year_level,
     semester: semester ?? existing.semester,
     tags: tags ?? existing.tags,
+    pinned: pinned === undefined ? existing.pinned : (pinned === 'true' || pinned === '1' ? 1 : 0),
     external_url: (category ?? existing.category) === 'video' ? null : (externalUrl ?? existing.external_url),
     quiz_data: quizData ?? existing.quiz_data,
     due_date: dueDate ?? existing.due_date,
@@ -228,8 +234,8 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
 
   db.prepare(`
     UPDATE resources SET title=@title, description=@description, category=@category, subject=@subject, course=@course,
-      year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url, quiz_data=@quiz_data,
-      due_date=@due_date, is_premium=@is_premium, publish_status=@publish_status, updated_at=@updated_at,
+      topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url, quiz_data=@quiz_data,
+      due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status, updated_at=@updated_at,
       file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type, content_hash=@content_hash
     WHERE id=@id
   `).run(updated);

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resources | StudyCore</title>
+    <meta name="description" content="Browse StudyCore resources: study notes, tutorial sheets and past papers across Mathematics, Physics, Chemistry, Biology, Programming and Communication Skills." />
+    <link rel="canonical" href="https://studycore.academy/pages/resources.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="Study Resources | StudyCore" />
+    <meta property="og:description" content="Notes, tutorial sheets and past papers across every StudyCore course." />
+    <meta property="og:url" content="https://studycore.academy/pages/resources.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body data-page="resources">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="eyebrow">Resources</span>
+          <h1>Everything you need to revise</h1>
+          <p>
+            Study notes, tutorial sheets and past papers from every course — read inside
+            StudyCore, filtered by course and type. Video lessons live inside their courses.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:26px;">
+            <div id="courseChips" style="display:flex;gap:10px;flex-wrap:wrap;"></div>
+            <div id="typeChips" style="display:flex;gap:10px;flex-wrap:wrap;"></div>
+          </div>
+          <div id="resourceNotice" class="access-notice" style="margin-bottom:20px;"></div>
+          <div class="resource-grid" id="resourceGrid">
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+          </div>
+          <div style="text-align:center;margin-top:30px;" id="loadMoreWrap" hidden>
+            <button class="btn btn-outline" id="loadMoreBtn">Load more</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        const user = await StudyCoreAuth.fetchSession();
+
+        const params = new URLSearchParams(location.search);
+        let activeCourse = params.get('course') || '';
+        let activeType = params.get('type') || '';
+        let page = 1;
+        let total = 0;
+        let bookmarked = new Set();
+
+        const COURSES = [
+          { value: '', label: 'All courses', icon: 'library' },
+          { value: 'Mathematics', label: 'Mathematics', icon: 'calculator' },
+          { value: 'Physics', label: 'Physics', icon: 'atom' },
+          { value: 'Chemistry', label: 'Chemistry', icon: 'flask' },
+          { value: 'Biology', label: 'Biology', icon: 'dna' },
+          { value: 'Programming', label: 'Programming', icon: 'code' },
+          { value: 'Communication Skills', label: 'Communication Skills', icon: 'message' }
+        ];
+        const TYPES = [
+          { value: '', label: 'All types', icon: 'library' },
+          { value: 'document', label: 'Notes', icon: 'file-text' },
+          { value: 'tutorial', label: 'Tutorial sheets', icon: 'file-text' },
+          { value: 'past_paper', label: 'Past papers', icon: 'file' }
+        ];
+
+        if (user) {
+          try { bookmarked = new Set((await StudyCoreAPI.myBookmarks()).resources.map((r) => r.id)); } catch {}
+        } else {
+          document.getElementById('resourceNotice').innerHTML = `
+            <div class="status-banner trial">
+              <span class="status-icon">${SC.icon('user', { size: 20 })}</span>
+              <div><strong>Log in to open resources</strong><span>Create a free account (30-day trial) to read notes and open past papers inside StudyCore.</span></div>
+              <div style="margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;">
+                <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
+                <a class="btn btn-primary btn-sm" href="/signup.html">Start Free Trial</a>
+              </div>
+            </div>`;
+        }
+
+        async function load(reset) {
+          const grid = document.getElementById('resourceGrid');
+          if (reset) { page = 1; grid.innerHTML = skeletonCards(6); }
+          else {
+            document.getElementById('loadMoreBtn').disabled = true;
+          }
+          const query = {
+            excludeCategory: 'announcement,video,quiz,assignment',
+            subject: activeCourse || undefined,
+            sort: 'newest',
+            page,
+            pageSize: 12
+          };
+          if (activeType) query.category = activeType;
+          try {
+            const data = await StudyCoreAPI.listResources(query);
+            total = data.total;
+            const cards = data.resources.map((r) => resourceCard(r, bookmarked)).join('');
+            if (page === 1) grid.innerHTML = cards || emptyState({
+              icon: 'library', title: 'No resources yet',
+              body: activeCourse ? `New ${activeCourse} resources will appear here soon.` : 'New resources will appear here soon.'
+            });
+            else grid.insertAdjacentHTML('beforeend', cards);
+            const wrap = document.getElementById('loadMoreWrap');
+            wrap.hidden = data.resources.length < 12 || page * 12 >= total;
+          } catch (err) {
+            grid.innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load resources', body: escapeHtml(err.message) });
+          } finally {
+            document.getElementById('loadMoreBtn').disabled = false;
+          }
+        }
+
+        function syncUrl() {
+          const qs = new URLSearchParams();
+          if (activeCourse) qs.set('course', activeCourse);
+          if (activeType) qs.set('type', activeType);
+          history.replaceState(null, '', qs.toString() ? `?${qs}` : location.pathname);
+        }
+
+        function renderChips() {
+          renderChips2(document.getElementById('courseChips'), COURSES, activeCourse, (v) => { activeCourse = v; syncUrl(); load(true); });
+          renderChips2(document.getElementById('typeChips'), TYPES, activeType, (v) => { activeType = v; syncUrl(); load(true); });
+        }
+
+        function renderChips2(container, items, active, onChange) {
+          container.innerHTML = items.map((it) =>
+            `<button class="chip ${it.value === active ? 'active' : ''}" data-chip-val="${escapeHtml(it.value)}">${it.icon ? SC.icon(it.icon, { size: 15 }) : ''}${escapeHtml(it.label)}</button>`
+          ).join(' ');
+          container.querySelectorAll('[data-chip-val]').forEach((btn) => {
+            btn.addEventListener('click', () => onChange(btn.getAttribute('data-chip-val')));
+          });
+        }
+
+        document.getElementById('loadMoreBtn').addEventListener('click', () => { page += 1; load(false); });
+        renderChips();
+        load(true);
+      });
+    </script>
+  </body>
+</html>

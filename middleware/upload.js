@@ -85,4 +85,25 @@ const upload = multer({
   limits: { fileSize: maxMb * 1024 * 1024 }
 });
 
-module.exports = { upload, ALLOWED_EXTENSIONS };
+// Profile pictures get their own, much stricter upload config: real images
+// only (checked again by magic bytes after the stream lands - see
+// routes/auth.routes.js) and a 4MB cap so the avatar pipeline can't be used
+// to stash large or non-image files in the same bucket as course content.
+const AVATAR_MAX_BYTES = 4 * 1024 * 1024;
+const AVATAR_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+function avatarFileFilter(req, file, cb) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (!AVATAR_EXTENSIONS.has(ext)) {
+    return cb(new Error('Profile pictures must be PNG, JPEG or WebP files.'));
+  }
+  cb(null, true);
+}
+
+const avatarUpload = multer({
+  storage: new R2Storage(),
+  fileFilter: avatarFileFilter,
+  limits: { fileSize: AVATAR_MAX_BYTES }
+});
+
+module.exports = { upload, avatarUpload, ALLOWED_EXTENSIONS };

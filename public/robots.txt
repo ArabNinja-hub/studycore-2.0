@@ -1,0 +1,28 @@
+# StudyCore — robots.txt
+# Official website: https://studycore.academy/
+#
+# Public, crawlable pages: homepage, courses, course pages, resources,
+# announcements, pricing, about, and the static brand/SEO assets.
+#
+# Private surfaces (login, signup, dashboard, admin, and all API routes)
+# are NOT listed and are protected server-side regardless of this file —
+# access control is enforced in the application, never by robots.txt.
+
+User-agent: *
+Allow: /
+Allow: /pages/
+Allow: /assets/
+Allow: /css/
+Allow: /js/
+Allow: /favicon.ico
+Allow: /favicon-32x32.png
+Allow: /apple-touch-icon.png
+Allow: /sitemap.xml
+
+Disallow: /login.html
+Disallow: /signup.html
+Disallow: /dashboard.html
+Disallow: /admin.html
+Disallow: /api/
+
+Sitemap: https://studycore.academy/sitemap.xml

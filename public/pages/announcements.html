@@ -3,64 +3,85 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Announcements & Updates | StudyCore</title>
-    <link rel="stylesheet" href="../css/style.css" />
+    <title>Announcements | StudyCore</title>
+    <meta name="description" content="Official StudyCore announcements: new course content, platform updates and important notices for students." />
+    <link rel="canonical" href="https://studycore.academy/pages/announcements.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="Announcements | StudyCore" />
+    <meta property="og:description" content="Official StudyCore announcements and important student notices." />
+    <meta property="og:url" content="https://studycore.academy/pages/announcements.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <div class="top-bar">📢 Stay informed with the latest updates, notices, and study reminders.</div>
-      <nav class="navbar">
-        <div class="container nav-inner">
-          <a href="../index.html" class="nav-brand">
-            <img src="../assets/logo.jpg" alt="StudyCore Logo" />
-            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
-          </a>
-          <ul class="nav-links">
-            <li><a href="../index.html">Home</a></li>
-            <li><a href="about.html">About</a></li>
-            <li><a href="courses.html">Courses</a></li>
-            <li><a href="documents.html">Documents</a></li>
-            <li><a href="videos.html">Videos</a></li>
-            <li><a class="active" href="announcements.html">Announcements</a></li>
-            <li><a href="pricing.html">Pricing</a></li>
-            <li><a href="/dashboard.html">Dashboard</a></li>
-            <li><a href="contact.html">Contact</a></li>
-          </ul>
-          <div class="nav-actions">
-            <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
-            <a class="btn btn-primary btn-sm" href="/signup.html">Sign Up</a>
+  <body data-page="announcements">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="eyebrow">Announcements</span>
+          <h1>Announcement centre</h1>
+          <p>Official notices from StudyCore — new course content, platform updates and anything important you should know.</p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container" style="max-width:860px;">
+          <div class="announcement-list" id="announcementList">
+            <div class="skeleton skeleton-row" style="height:90px;"></div>
+            <div class="skeleton skeleton-row" style="height:90px;"></div>
+            <div class="skeleton skeleton-row" style="height:90px;"></div>
           </div>
         </div>
-      </nav>
+      </section>
+    </main>
 
-      <main class="page-main">
-        <section class="page-hero">
-          <div class="container">
-            <h1>Announcements & Updates</h1>
-            <p>Read the latest news, study tips, and platform updates from StudyCore.</p>
-            <div class="page-actions">
-              <a class="btn btn-primary" href="/dashboard.html">Open Dashboard</a>
-              <button class="btn btn-outline" onclick="history.back()">← Back</button>
-            </div>
-          </div>
-        </section>
+    <div id="siteFooter"></div>
 
-        <section class="section">
-          <div class="container">
-            <div id="announcementList" class="resource-grid"></div>
-          </div>
-        </section>
-      </main>
-    </div>
-    <script src="../js/api.js"></script>
-    <script src="../js/auth.js"></script>
-    <script src="../js/main.js"></script>
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
     <script>
-      document.addEventListener('DOMContentLoaded', () => {
-        renderResourceSection({ category: 'announcement', gridId: 'announcementList' });
+      document.addEventListener('DOMContentLoaded', async () => {
+        const list = document.getElementById('announcementList');
+        const user = await StudyCoreAuth.fetchSession();
+        if (!user) {
+          list.innerHTML = emptyState({
+            icon: 'bell', title: 'Log in to see announcements',
+            body: 'StudyCore announcements are shown to students inside their account.',
+            cta: '<div style="display:flex;gap:10px;"><a class="btn btn-primary" href="/signup.html">Start Free Trial</a><a class="btn btn-outline" href="/login.html">Log In</a></div>'
+          });
+          return;
+        }
+        try {
+          const { resources } = await StudyCoreAPI.listResources({ category: 'announcement', sort: 'newest', pageSize: 30 });
+          if (!resources.length) {
+            list.innerHTML = emptyState({ icon: 'bell', title: 'No announcements yet', body: 'Notices from StudyCore will appear here.' });
+            return;
+          }
+          list.innerHTML = resources.map((a) => `
+            <article class="announcement-card ${a.pinned ? 'pinned' : ''}">
+              <div class="announcement-icon">${a.pinned ? SC.icon('crown', { size: 19 }) : SC.icon('bell', { size: 19 })}</div>
+              <div class="announcement-body" style="flex:1;">
+                <h3>${escapeHtml(a.title)} ${a.pinned ? '<span class="badge badge-amber" style="margin-left:8px;">Pinned</span>' : ''}</h3>
+                ${a.description ? `<p style="white-space:pre-wrap;">${escapeHtml(a.description)}</p>` : ''}
+                <div class="announcement-meta">
+                  ${a.subject ? `<span>${SC.icon('library', { size: 13 })} ${escapeHtml(a.subject)}</span>` : ''}
+                  <span>${SC.icon('calendar', { size: 13 })} ${formatDate(a.createdAt)}</span>
+                </div>
+              </div>
+            </article>
+          `).join('');
+        } catch (err) {
+          list.innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load announcements', body: escapeHtml(err.message) });
+        }
       });
     </script>
   </body>

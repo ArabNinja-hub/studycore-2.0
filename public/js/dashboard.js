@@ -1,288 +1,598 @@
 // =============================================
-// STUDYCORE — Student Dashboard Module (js/dashboard.js)
-// By Dr. Relentless | Stay Curious & Winning
+// STUDYCORE — Student Dashboard (js/dashboard.js)
 // -----------------------------------------------
-// Runs only on views/dashboard.html, which the server refuses to send to
-// anyone who isn't logged in (see middleware/auth.js - requirePageAuth).
+// The student command centre. Runs only on
+// views/dashboard.html, which the server refuses
+// to send to anyone who isn't a logged-in student
+// (middleware/auth.js requirePageAuth).
+//
+// All data is real: progress, streaks,
+// achievements and subscription state come from
+// the database - nothing is simulated.
 // =============================================
 
-function renderProfileHeader(user) {
-  const initials = (user.name || '?')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join('');
-  document.getElementById('profileAvatar').textContent = initials || '?';
-  document.getElementById('profileHeaderName').textContent = user.name || 'Student Dashboard';
-  document.getElementById('profileHeaderEmail').textContent = user.email || '';
-}
+(function () {
+  'use strict';
 
-function renderAccessNotice(user) {
-  const target = document.getElementById('accessNotice');
-  if (!target) return;
-  const status = user.subscriptionStatus || {};
-  if (status.active && user.subscription === 'premium') {
-    target.innerHTML = `<div class="access-banner premium">⭐ Premium active - all resources are unlocked.</div>`;
-  } else if (!status.active && !status.inTrial) {
-    target.innerHTML = `<div class="access-banner locked">Your free trial has ended. Subscribe below to keep learning.</div>`;
-  } else {
-    const daysLeft = status.trialEnd ? Math.max(0, Math.ceil((new Date(status.trialEnd).getTime() - Date.now()) / 86400000)) : 0;
-    target.innerHTML = `<div class="access-banner info">Your free trial is active. ${daysLeft} day${daysLeft === 1 ? '' : 's'} left.</div>`;
-  }
-}
+  const $ = (sel) => document.querySelector(sel);
+  const COURSES = ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'communication'];
 
-function renderSummary(user) {
-  const target = document.getElementById('studentSummary');
-  target.innerHTML = `
-    <div class="info-card"><h3>Welcome</h3><p>${escapeHtml(user.name.split(' ')[0])}</p></div>
-    <div class="info-card"><h3>Subscription</h3><p>${user.subscription === 'premium' ? 'Premium' : 'Free trial'}</p></div>
-    <div class="info-card"><h3>Trial ends</h3><p>${user.trial_end ? new Date(user.trial_end).toLocaleDateString() : '-'}</p></div>
-  `;
-}
+  let user = null;
 
-function fillProfileForm(user) {
-  document.getElementById('profileName').value = user.name || '';
-  document.getElementById('profileSchool').value = user.school || '';
-  document.getElementById('profileGrade').value = user.grade || '';
-  document.getElementById('profileLevel').value = user.learning_level || 'secondary';
-}
-
-async function renderSubscriptionArea(user) {
-  const target = document.getElementById('subscriptionArea');
-  if (user.subscription === 'premium') {
-    target.innerHTML = `
-      <h3>Subscription</h3>
-      <p>⭐ You have an active Premium subscription${user.subscription_end ? ` until ${new Date(user.subscription_end).toLocaleDateString()}` : ''}.</p>
-    `;
-    return;
-  }
-
-  target.innerHTML = `<h3>Subscribe</h3><p class="loading-text">Loading payment details...</p>`;
-  let payTo = { numbers: [{ method: 'MTN MoMo', phone: 'unavailable', name: 'StudyCore' }, { method: 'Airtel Money', phone: 'unavailable', name: 'StudyCore' }] };
-  let amount = 50;
-  try {
-    const info = await StudyCoreAPI.paymentInfo();
-    payTo = info.payTo;
-    amount = info.amount;
-  } catch { /* fall back to defaults above */ }
-
-  const numbersHtml = payTo.numbers.map((n) => `
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border,#ccc);border-radius:8px;margin-bottom:6px;">
-      <span>${escapeHtml(n.method)}<br><span style="font-size:0.8rem;opacity:0.7;">${escapeHtml(n.name)}</span></span>
-      <strong style="font-size:1.05rem;">${escapeHtml(n.phone)}</strong>
-    </div>
-  `).join('');
-
-  target.innerHTML = `
-    <h3>Subscribe</h3>
-    <p>Send <strong>K${amount}</strong> via mobile money to whichever of these matches your network:</p>
-    ${numbersHtml}
-    <p style="font-size:0.85rem;opacity:0.8;margin-top:10px;">After sending, fill this in so the admin can confirm it and activate your account - this is a manual check, not automatic, so it may take a little while.</p>
-    <div class="form-group"><label for="phone">Your phone number (the one you paid from)</label><input id="phone" placeholder="e.g. 0977 123 456" /></div>
-    <div class="form-group">
-      <label for="method">Payment method used</label>
-      <select id="method">
-        <option value="MTN MoMo">MTN Mobile Money</option>
-        <option value="Airtel Money">Airtel Money</option>
-      </select>
-    </div>
-    <div class="form-group"><label for="reference">Transaction reference / confirmation SMS code (optional but helps)</label><input id="reference" placeholder="e.g. MP240613.1234.A56789" /></div>
-    <button class="btn btn-primary" id="subscribeBtn">I've sent the payment</button>
-    <div id="pendingNotice"></div>
-  `;
-  document.getElementById('subscribeBtn').addEventListener('click', async () => {
-    const phone = document.getElementById('phone').value.trim();
-    const method = document.getElementById('method').value;
-    const reference = document.getElementById('reference').value.trim();
-    if (!phone) return showToast('Enter your phone number first.', 'error');
-    const btn = document.getElementById('subscribeBtn');
-    btn.disabled = true;
-    try {
-      const data = await StudyCoreAPI.subscribe({ phone, method, reference });
-      showToast(data.message, 'success');
-      document.getElementById('pendingNotice').innerHTML = `<p style="margin-top:10px;font-size:0.85rem;">✅ Submitted - waiting for admin confirmation.</p>`;
-      btn.textContent = 'Request submitted';
-    } catch (err) {
-      showToast(err.message, 'error');
-      btn.disabled = false;
+  function renderAvatar(slot, lg) {
+    if (!slot) return;
+    slot.innerHTML = StudyCoreAuth.avatarHtml(user, lg ? 'avatar-lg' : '');
+    if (user && user.hasAvatar) {
+      const img = slot.querySelector('img');
+      if (img) img.setAttribute('style', 'width:' + (lg ? 76 : 34) + 'px;height:' + (lg ? 76 : 34) + 'px;');
     }
-  });
-}
+  }
 
-let cachedReferralCode = null;
-async function getReferralCode() {
-  if (cachedReferralCode) return cachedReferralCode;
-  try {
-    const ref = await StudyCoreAPI.myReferral();
-    cachedReferralCode = ref.code;
-  } catch { /* Share buttons just won't render without it */ }
-  return cachedReferralCode;
-}
+  /* ── Welcome hero ───────────────────────── */
+  function renderHero() {
+    renderAvatar($('#dashAvatarSlot'), true);
+    $('#dashName').textContent = `Welcome back, ${(user.name || '').split(' ')[0] || 'there'}`;
+    const label = StudyCoreAuth.subscriptionLabel(user);
+    const s = user.subscriptionStatus || {};
+    let sub = label.label;
+    if (s.state === 'premium_active' && s.subscriptionEnd) sub += ` · until ${new Date(s.subscriptionEnd).toLocaleDateString()}`;
+    $('#dashSub').textContent = `${user.email} · ${sub}`;
+    $('#dashHeroActions').innerHTML = `
+      <a class="btn btn-amber btn-sm" href="#premium">${SC.icon('crown', { size: 15 })} Premium</a>
+      <a class="btn btn-ghost btn-sm" style="color:#fff;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.07);" href="/pages/courses.html">Browse Courses</a>`;
+  }
 
-async function loadBookmarks() {
-  const grid = document.getElementById('bookmarkCards');
-  try {
-    const { resources } = await StudyCoreAPI.myBookmarks();
-    if (!resources.length) {
-      grid.innerHTML = '<div class="info-card"><p>No bookmarks yet - star a resource to save it here.</p></div>';
+  /* ── Status banner ──────────────────────── */
+  function renderStatusBanner() {
+    const slot = $('#statusBannerSlot');
+    const s = user.subscriptionStatus || {};
+    let cls, icon, title, body, cta = '';
+    switch (s.state) {
+      case 'premium_active':
+        cls = 'premium'; icon = 'crown';
+        title = 'Premium Active';
+        body = `You have full Premium access${s.subscriptionEnd ? ` until ${new Date(s.subscriptionEnd).toLocaleDateString()}` : ''} — all videos, notes and past papers are unlocked.`;
+        break;
+      case 'trial_active':
+        cls = 'trial'; icon = 'sparkles';
+        title = `Free Trial Active · ${s.trialDaysLeft} day${s.trialDaysLeft === 1 ? '' : 's'} left`;
+        body = 'Study notes and documents are unlocked during your trial. Video lessons are Premium content.';
+        cta = `<a class="btn btn-amber btn-sm" href="#premium">Upgrade Now</a>`;
+        break;
+      case 'payment_pending':
+        cls = 'pending'; icon = 'clock';
+        title = 'Payment Pending';
+        body = 'We have received your payment request. Premium activates as soon as it is confirmed by the StudyCore team.';
+        break;
+      case 'premium_expired':
+        cls = 'expired'; icon = 'crown';
+        title = 'Premium Expired';
+        body = 'Your Premium period has ended. Renew to keep unlimited video lessons and full access.';
+        cta = `<a class="btn btn-amber btn-sm" href="#premium">Renew Premium</a>`;
+        break;
+      default:
+        cls = 'expired'; icon = 'lock';
+        title = 'Free Trial Ended';
+        body = 'Your free trial has ended. Upgrade to Premium to continue with video lessons and full resource access.';
+        cta = `<a class="btn btn-amber btn-sm" href="#premium">Upgrade Now</a>`;
+    }
+    slot.innerHTML = `
+      <div class="status-banner ${cls}">
+        <span class="status-icon">${SC.icon(icon, { size: 21 })}</span>
+        <div style="flex:1;min-width:200px;"><strong>${title}</strong><span>${body}</span></div>
+        ${cta}
+      </div>`;
+  }
+
+  /* ── Continue learning ──────────────────── */
+  function renderContinue(best) {
+    const slot = $('#continueSlot');
+    if (!best || !best.item) {
+      slot.style.display = 'none';
       return;
     }
-    const bookmarkedIds = new Set(resources.map((r) => r.id));
-    const referralCode = await getReferralCode();
-    grid.innerHTML = resources.map((r) => resourceCard(r, bookmarkedIds, referralCode)).join('');
-    bindCardInteractions(grid);
-  } catch (err) {
-    grid.innerHTML = `<p>${err.message}</p>`;
+    const it = best.item;
+    const resume = it.videoPosition && it.videoDuration
+      ? `<div class="progress progress-thin" style="margin-top:10px;"><span style="width:${Math.round((it.videoPosition / Math.max(1, it.videoDuration)) * 100)}%"></span></div>`
+      : '';
+    slot.innerHTML = `
+      <div class="continue-card">
+        <span class="cc-icon">${SC.icon(it.category === 'video' ? 'play' : 'file-text', { size: 24 })}</span>
+        <span class="cc-body">
+          <span class="cc-eyebrow">Continue learning · ${escapeHtml(best.course.subject)}</span>
+          <h4>${escapeHtml(it.title)}${it.topic ? ` <span style="font-weight:500;color:var(--muted);font-size:0.88rem;">— ${escapeHtml(it.topic)}</span>` : ''}</h4>
+          ${resume}
+        </span>
+        <a class="btn btn-primary" href="/pages/lesson.html?id=${it.id}&subject=${encodeURIComponent(best.course.subject)}">Continue Lesson ${SC.icon('arrow-right', { size: 16 })}</a>
+      </div>`;
   }
-}
 
-async function loadDownloads() {
-  const grid = document.getElementById('downloadCards');
-  try {
-    const { resources } = await StudyCoreAPI.myDownloads();
-    if (!resources.length) {
-      grid.innerHTML = '<div class="info-card"><p>Nothing downloaded yet - anything you download will show up here so you can find it again.</p></div>';
+  /* ── My courses ─────────────────────────── */
+  function renderMyCourses(courseData) {
+    const list = $('#myCoursesList');
+    if (!courseData.length) {
+      list.innerHTML = emptyState({ icon: 'library', title: 'No content yet', body: 'Courses will appear here once lessons are published.' });
       return;
     }
-    let bookmarkedIds = new Set();
-    try {
-      const bm = await StudyCoreAPI.myBookmarks();
-      bookmarkedIds = new Set(bm.resources.map((r) => r.id));
-    } catch { /* ignore */ }
-    const referralCode = await getReferralCode();
-    grid.innerHTML = resources.map((r) => resourceCard(r, bookmarkedIds, referralCode)).join('');
-    bindCardInteractions(grid);
-  } catch (err) {
-    grid.innerHTML = `<p>${err.message}</p>`;
+    list.innerHTML = courseData.map((c) => {
+      const slug = c.course.slug;
+      const p = c.data.progress;
+      return `
+        <a class="course-mini" href="/pages/subjects/${slug}.html">
+          <span class="cm-icon">${SC.icon(SC.courseIcon(slug), { size: 21 })}</span>
+          <span class="cm-body">
+            <strong>${escapeHtml(c.course.subject)}</strong>
+            <span>${p.totalCount} lessons · ${p.completedCount} complete</span>
+          </span>
+          <span style="width:120px;flex-shrink:0;">
+            <div class="progress-labels"><span></span><strong style="font-size:0.78rem;">${p.percent}%</strong></div>
+            <div class="progress progress-thin"><span style="width:${p.percent}%"></span></div>
+          </span>
+          ${SC.icon('chevron-right', { size: 17 })}
+        </a>`;
+    }).join('');
   }
-}
 
-async function loadAnnouncements() {
-  const grid = document.getElementById('announcementCards');
-  try {
-    const { resources } = await StudyCoreAPI.listResources({ category: 'announcement', sort: 'newest', pageSize: 6 });
-    if (!resources.length) {
-      grid.innerHTML = '<div class="info-card"><p>No announcements right now - check back soon.</p></div>';
+  /* ── Stats ──────────────────────────────── */
+  function renderStats(totalLessons, streak) {
+    $('#streakIcon').innerHTML = SC.icon('flame', { size: 24 });
+    $('#streakValue').textContent = streak || 0;
+    $('#lessonsIcon').innerHTML = SC.icon('check-circle', { size: 24 });
+    $('#lessonsValue').textContent = totalLessons || 0;
+  }
+
+  /* ── Achievements ───────────────────────── */
+  function renderAchievements(achievements) {
+    if (!achievements || !achievements.length) { $('#achievementsGrid').innerHTML = ''; return; }
+    $('#achievementsGrid').innerHTML = achievements.map((a) => `
+      <div class="achievement ${a.earned ? 'earned' : ''}" title="${escapeHtml(a.detail)}">
+        <span class="ach-icon">${SC.icon(a.icon, { size: 21 })}</span>
+        <strong>${escapeHtml(a.name)}</strong>
+        <span>${a.earned ? 'Earned' : `${a.value}/${a.target}`}</span>
+      </div>`).join('');
+  }
+
+  /* ── Recent activity ────────────────────── */
+  function renderActivity(items) {
+    const list = $('#activityList');
+    if (!items.length) {
+      list.innerHTML = emptyState({ icon: 'clock', title: 'No activity yet', body: 'Complete your first lesson and it will show up here.' });
       return;
     }
-    let bookmarkedIds = new Set();
-    try {
-      const bm = await StudyCoreAPI.myBookmarks();
-      bookmarkedIds = new Set(bm.resources.map((r) => r.id));
-    } catch { /* ignore */ }
-    const referralCode = await getReferralCode();
-    grid.innerHTML = resources.map((r) => resourceCard(r, bookmarkedIds, referralCode)).join('');
-    bindCardInteractions(grid);
-  } catch (err) {
-    grid.innerHTML = `<p>${err.message}</p>`;
+    list.innerHTML = items.map((a) => `
+      <a class="activity-item" href="/pages/lesson.html?id=${a.id}&subject=${encodeURIComponent(a.subject || '')}" style="text-decoration:none;color:inherit;">
+        <span class="act-icon">${SC.icon(a.category === 'video' ? 'play' : 'check', { size: 16 })}</span>
+        <span class="act-body">
+          <strong>${a.completed ? 'Completed' : 'Studied'} — ${escapeHtml(a.title)}</strong>
+          <span>${escapeHtml(a.subject || '')}${a.topic ? ` · ${escapeHtml(a.topic)}` : ''} · ${timeAgo(a.completedAt || a.updatedAt)}</span>
+        </span>
+        ${SC.icon('chevron-right', { size: 15 })}
+      </a>`).join('');
   }
-}
 
-async function renderReferralArea() {
-  const target = document.getElementById('referralArea');
-  try {
-    const { code, referredCount, bonusDaysPerReferral, rewardCap, rewardedReferrals, capReached } = await StudyCoreAPI.myReferral();
-    const link = `${window.location.origin}/signup.html?ref=${code}`;
-    const shareMessage = `Hey! I've been using StudyCore for revision - notes, past papers, videos, and quizzes all in one place. Sign up with my link and we both get ${bonusDaysPerReferral} bonus days free: ${link}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
+  /* ── Recommended ───────────────────────── */
+  function renderRecommended(items) {
+    const list = $('#recommendedList');
+    if (!items.length) {
+      list.innerHTML = emptyState({ icon: 'sparkles', title: 'Start a course to get recommendations', body: 'Once you begin lessons, we will suggest what to study next.' });
+      return;
+    }
+    list.innerHTML = items.map((r) => `
+      <a class="activity-item" href="/pages/lesson.html?id=${r.id}&subject=${encodeURIComponent(r.subject || '')}" style="text-decoration:none;color:inherit;">
+        <span class="act-icon">${SC.icon(SC.courseCategoryIcon(r.category), { size: 16 })}</span>
+        <span class="act-body">
+          <strong>${escapeHtml(r.title)}</strong>
+          <span>${escapeHtml(r.reason || '')} · ${escapeHtml(r.subject || '')}</span>
+        </span>
+        ${SC.icon('chevron-right', { size: 15 })}
+      </a>`).join('');
+  }
 
-    const progressText = capReached
-      ? `You've already used your one-time referral bonus. Friends can still join with your link and get their own bonus - you just won't earn further extra days yourself.`
-      : `You'll earn ${bonusDaysPerReferral} bonus days the first time a friend joins with your link - this bonus is one-time only.`;
+  /* ── Premium panel ──────────────────────── */
+  const PREMIUM_PERKS = [
+    'Unlimited video lessons in every course',
+    'All study notes, tutorial sheets and past papers',
+    'Video resume and completion tracking',
+    'Progress across all six courses',
+    'Priority access to new content'
+  ];
 
-    target.innerHTML = `
-      <h3>Invite friends</h3>
-      <p>Share your link - the first friend who joins earns you both <strong>${bonusDaysPerReferral} bonus days</strong> of full access (one-time bonus for you; every friend still gets their own).</p>
-      <div style="display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;">
-        <input id="referralLinkInput" type="text" readonly value="${escapeHtml(link)}" style="flex:1;min-width:200px;padding:8px 10px;border-radius:8px;border:1px solid var(--border,#ccc);font-size:0.85rem;" />
-        <button class="btn btn-outline btn-sm" id="copyReferralBtn">Copy</button>
+  function renderPremiumPanel() {
+    const panel = $('#premiumPanel');
+    const s = user.subscriptionStatus || {};
+    let statusLine, actionHtml = '';
+
+    const perks = PREMIUM_PERKS.map((p) => `<li>${SC.icon('check', { size: 16 })}${p}</li>`).join('');
+
+    switch (s.state) {
+      case 'premium_active':
+        statusLine = `<span class="badge badge-amber" style="background:rgba(245,166,35,0.16);color:#ffd080;border-color:rgba(245,166,35,0.4);">${SC.icon('crown', { size: 13 })} Premium Active</span>`;
+        actionHtml = `
+          <p style="color:rgba(255,255,255,0.75);margin:14px 0 0;">
+            Your Premium access runs until <strong style="color:#fff;">${new Date(s.subscriptionEnd).toLocaleDateString()}</strong>
+            (${s.subscriptionDaysLeft} day${s.subscriptionDaysLeft === 1 ? '' : 's'} left).
+            Renew from here to keep studying without interruption.
+          </p>
+          <div id="premiumPaymentForm" style="margin-top:18px;"></div>`;
+        break;
+      case 'payment_pending':
+        statusLine = `<span class="badge badge-amber" style="background:rgba(245,166,35,0.16);color:#ffd080;border-color:rgba(245,166,35,0.4);">${SC.icon('clock', { size: 13 })} Payment Pending</span>`;
+        actionHtml = `<p style="color:rgba(255,255,255,0.75);margin:14px 0 0;">Your payment request is being confirmed by the StudyCore team. Premium activates automatically once it is approved — usually quickly.</p>`;
+        break;
+      default:
+        statusLine = s.state === 'trial_active'
+          ? `<span class="badge badge-white">${SC.icon('sparkles', { size: 13 })} Free Trial · ${s.trialDaysLeft} days left</span>`
+          : `<span class="badge badge-white">${SC.icon('lock', { size: 13 })} ${s.state === 'premium_expired' ? 'Premium expired' : 'Trial ended'}</span>`;
+        actionHtml = `<div id="premiumPaymentForm" style="margin-top:18px;"></div>`;
+    }
+
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div>
+          ${statusLine}
+          <h2 style="margin-top:12px;">StudyCore Premium</h2>
+          <p style="color:rgba(255,255,255,0.75);">Unlock the full Premium learning experience.</p>
+        </div>
+        <div style="text-align:right;">
+          <div class="premium-price">K50 <small>/ 30 days</small></div>
+          <p style="color:rgba(255,255,255,0.55);font-size:0.85rem;">MTN MoMo or Airtel Money</p>
+        </div>
       </div>
-      <a class="btn btn-primary btn-sm" href="${whatsappUrl}" target="_blank" rel="noopener">📱 Share on WhatsApp</a>
-      <p class="resource-meta" style="margin-top:10px;">${referredCount} friend${referredCount === 1 ? '' : 's'} joined through your link so far.</p>
-      <p class="resource-meta">${progressText}</p>
-    `;
+      <ul class="premium-perks">${perks}</ul>
+      ${actionHtml}`;
 
-    document.getElementById('copyReferralBtn').addEventListener('click', async () => {
-      const input = document.getElementById('referralLinkInput');
-      input.select();
+    const formSlot = document.getElementById('premiumPaymentForm');
+    if (formSlot) loadPaymentForm(formSlot);
+  }
+
+  async function loadPaymentForm(slot) {
+    slot.innerHTML = '<p style="color:rgba(255,255,255,0.6);">Loading payment details…</p>';
+    let info = { payTo: { numbers: [{ method: 'MTN MoMo', phone: 'Not configured yet', name: 'StudyCore' }, { method: 'Airtel Money', phone: 'Not configured yet', name: 'StudyCore' }] }, amount: 50 };
+    try { info = await StudyCoreAPI.paymentInfo(); } catch { /* defaults above */ }
+
+    const numbers = info.payTo.numbers.map((n) => `
+      <div class="pay-method" style="background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.2);">
+        <div>
+          <strong style="color:#fff;">${escapeHtml(n.method)}</strong>
+          <small style="color:rgba(255,255,255,0.6);">${escapeHtml(n.name)}</small>
+        </div>
+        <span class="number" style="margin-left:auto;color:#ffd080;">${escapeHtml(n.phone)}</span>
+      </div>`).join('');
+
+    slot.innerHTML = `
+      <div style="max-width:560px;">
+        <p style="color:rgba(255,255,255,0.75);margin-bottom:12px;">Send <strong style="color:#fff;">K${info.amount}</strong> from your own mobile money account, then submit the details below so the team can confirm and activate your Premium.</p>
+        <div class="pay-methods" style="grid-template-columns:1fr 1fr;">${numbers}</div>
+        <form id="premiumPayForm" style="display:grid;gap:12px;margin-top:14px;">
+          <div class="form-row">
+            <div class="form-group" style="margin:0;">
+              <label for="payPhone" style="color:rgba(255,255,255,0.85);">Your phone number</label>
+              <input id="payPhone" class="input" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.25);color:#fff;" placeholder="e.g. 0977 123 456" />
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label for="payMethod" style="color:rgba(255,255,255,0.85);">Method used</label>
+              <select id="payMethod" class="input" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.25);color:#fff;">
+                ${info.payTo.numbers.map((n) => `<option value="${escapeHtml(n.method)}" style="color:#000;">${escapeHtml(n.method)}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label for="payRef" style="color:rgba(255,255,255,0.85);">Transaction reference (helps confirmation)</label>
+            <input id="payRef" class="input" style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.25);color:#fff;" placeholder="e.g. MP240613.1234.A56789" />
+          </div>
+          <button class="btn btn-amber" type="submit">I've Sent the Payment</button>
+          <div id="payNotice"></div>
+        </form>
+        <p style="font-size:0.78rem;color:rgba(255,255,255,0.5);margin-top:10px;">
+          This is a manual confirmation — nothing is charged automatically. Premium activates once the payment is verified.
+        </p>
+      </div>`;
+
+    slot.querySelector('#premiumPayForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById('payPhone').value.trim();
+      const method = document.getElementById('payMethod').value;
+      const reference = document.getElementById('payRef').value.trim();
+      const notice = document.getElementById('payNotice');
+      if (!phone) { notice.innerHTML = '<p style="color:#ffd080;font-size:0.85rem;">Enter the phone number you paid from.</p>'; return; }
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
       try {
-        await navigator.clipboard.writeText(link);
-        showToast('Link copied.', 'success');
-      } catch {
-        // Clipboard API can be blocked in some contexts - the input is
-        // already selected above so the person can still Ctrl+C manually.
-        showToast('Select the link above and copy it manually.', 'info');
+        const data = await StudyCoreAPI.subscribe({ phone, method, reference });
+        notice.innerHTML = `<p style="color:#4ade80;font-size:0.85rem;">${escapeHtml(data.message)}</p>`;
+        btn.textContent = 'Request Submitted';
+        setTimeout(async () => { await StudyCoreAuth.fetchSession().then(() => {}); location.reload(); }, 1200);
+      } catch (err) {
+        notice.innerHTML = `<p style="color:#fca5a5;font-size:0.85rem;">${escapeHtml(err.message)}</p>`;
+        btn.disabled = false;
       }
     });
-  } catch (err) {
-    target.innerHTML = `<h3>Invite friends</h3><p>${escapeHtml(err.message)}</p>`;
-  }
-}
-
-async function initDashboard() {
-  const user = await StudyCoreAuth.fetchSession();
-  StudyCoreAuth.updateAuthUI();
-  if (!user) { window.location.href = '/login.html'; return; }
-
-  // Only plays once, immediately after a real login/signup redirect - the
-  // flag is consumed (removed) on read, so refreshing this page or
-  // navigating here normally from the nav bar never shows it again.
-  const welcomeInfo = StudyCoreAuth.consumeWelcomeFlag();
-  if (welcomeInfo !== null) {
-    StudyCoreAuth.showWelcomeTransition(welcomeInfo.name || user.name, welcomeInfo.type);
   }
 
-  renderProfileHeader(user);
-  renderAccessNotice(user);
-  renderSummary(user);
-  fillProfileForm(user);
-  renderSubscriptionArea(user);
-  renderReferralArea();
-  loadAnnouncements();
-  loadBookmarks();
-  loadDownloads();
-
-  document.getElementById('logoutBtn').addEventListener('click', StudyCoreAuth.logoutUser);
-
-  document.getElementById('profileForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+  /* ── Announcements + bookmarks ──────────── */
+  async function loadAnnouncements() {
+    const list = $('#announcementList');
     try {
-      await StudyCoreAPI.updateProfile({
-        name: document.getElementById('profileName').value.trim(),
-        school: document.getElementById('profileSchool').value.trim(),
-        grade: document.getElementById('profileGrade').value.trim(),
-        learningLevel: document.getElementById('profileLevel').value
+      const { resources } = await StudyCoreAPI.listResources({ category: 'announcement', sort: 'newest', pageSize: 4 });
+      if (!resources.length) { list.innerHTML = '<p>No announcements right now.</p>'; return; }
+      list.innerHTML = resources.map((a) => `
+        <div class="activity-item" style="border-bottom:1px solid var(--border);">
+          <span class="act-icon">${a.pinned ? SC.icon('crown', { size: 15 }) : SC.icon('bell', { size: 15 })}</span>
+          <span class="act-body">
+            <strong style="white-space:normal;">${escapeHtml(a.title)}${a.pinned ? ' <span class="badge badge-amber" style="font-size:0.62rem;padding:1px 8px;">Pinned</span>' : ''}</strong>
+            <span>${formatDate(a.createdAt)}</span>
+          </span>
+        </div>`).join('');
+    } catch (err) {
+      list.innerHTML = `<p style="color:var(--muted);">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  async function loadBookmarks() {
+    const list = $('#bookmarkList');
+    try {
+      const { resources } = await StudyCoreAPI.myBookmarks();
+      if (!resources.length) { list.innerHTML = '<p>No bookmarks yet — save a resource from any lesson page.</p>'; return; }
+      list.innerHTML = resources.slice(0, 6).map((r) => `
+        <a class="activity-item" href="/pages/lesson.html?id=${r.id}&subject=${encodeURIComponent(r.subject || '')}" style="text-decoration:none;color:inherit;">
+          <span class="act-icon">${SC.icon(SC.courseCategoryIcon(r.category), { size: 15 })}</span>
+          <span class="act-body">
+            <strong>${escapeHtml(r.title)}</strong>
+            <span>${escapeHtml(r.subject || '')}${r.topic ? ` · ${escapeHtml(r.topic)}` : ''}</span>
+          </span>
+          ${SC.icon('chevron-right', { size: 15 })}
+        </a>`).join('');
+    } catch (err) {
+      list.innerHTML = `<p style="color:var(--muted);">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  /* ── Referral ───────────────────────────── */
+  async function loadReferral() {
+    const slot = $('#referralArea');
+    try {
+      const { code, referredCount, bonusDaysPerReferral } = await StudyCoreAPI.myReferral();
+      const link = `${window.location.origin}/signup.html?ref=${code}`;
+      slot.innerHTML = `
+        <p style="margin-bottom:10px;">Share your link — the first friend who joins earns you both <strong>${bonusDaysPerReferral} bonus days</strong>.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <input id="referralLinkInput" type="text" readonly value="${escapeHtml(link)}" style="flex:1;min-width:180px;padding:9px 11px;border-radius:9px;border:1.5px solid var(--border-strong);font-size:0.82rem;background:var(--bg-alt);" />
+          <button class="btn btn-outline btn-sm" id="copyReferralBtn">Copy</button>
+        </div>
+        <p style="margin-top:10px;font-size:0.8rem;">${referredCount} friend${referredCount === 1 ? '' : 's'} joined through your link so far.</p>`;
+      document.getElementById('copyReferralBtn').addEventListener('click', async () => {
+        const input = document.getElementById('referralLinkInput');
+        input.select();
+        try {
+          await navigator.clipboard.writeText(link);
+          showToast('Link copied.', 'success');
+        } catch {
+          showToast('Select the link and copy it manually.', 'info');
+        }
       });
-      showToast('Profile updated.', 'success');
     } catch (err) {
-      showToast(err.message, 'error');
+      slot.innerHTML = `<p style="color:var(--muted);">${escapeHtml(err.message)}</p>`;
     }
-  });
+  }
 
-  document.querySelectorAll('[data-toggle-password]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const input = document.getElementById(btn.getAttribute('data-toggle-password'));
-      const showing = input.type === 'text';
-      input.type = showing ? 'password' : 'text';
-      btn.querySelector('.pw-eye-open').style.display = showing ? '' : 'none';
-      btn.querySelector('.pw-eye-closed').style.display = showing ? 'none' : '';
-      btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  /* ── Avatar ─────────────────────────────── */
+  function bindAvatar() {
+    const input = $('#avatarInput');
+    const removeBtn = $('#avatarRemoveBtn');
+    const refresh = () => {
+      renderAvatar($('#profileAvatarSlot'), true);
+      renderAvatar($('#dashAvatarSlot'), true);
+      removeBtn.style.display = user.hasAvatar ? '' : 'none';
+    };
+    refresh();
+
+    input.addEventListener('change', async () => {
+      const file = input.files[0];
+      if (!file) return;
+      if (file.size > 4 * 1024 * 1024) {
+        showToast('Image must be 4MB or smaller.', 'error');
+        return;
+      }
+      try {
+        const data = await StudyCoreAPI.uploadAvatar(file);
+        user = data.user;
+        renderAvatar($('#profileAvatarSlot'), true);
+        renderAvatar($('#dashAvatarSlot'), true);
+        removeBtn.style.display = user.hasAvatar ? '' : 'none';
+        showToast('Profile picture updated.', 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        input.value = '';
+      }
     });
-  });
 
-  document.getElementById('passwordForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const currentPassword = document.getElementById('currentPassword').value;
-    const newPassword = document.getElementById('newPassword').value;
-    try {
-      await StudyCoreAPI.changePassword({ currentPassword, newPassword });
-      showToast('Password updated.', 'success');
-      e.target.reset();
-    } catch (err) {
-      showToast(err.message, 'error');
+    removeBtn.addEventListener('click', async () => {
+      try {
+        const data = await StudyCoreAPI.removeAvatar();
+        user = data.user;
+        renderAvatar($('#profileAvatarSlot'), true);
+        renderAvatar($('#dashAvatarSlot'), true);
+        removeBtn.style.display = 'none';
+        showToast('Profile picture removed.', 'info');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  /* ── Forms ──────────────────────────────── */
+  function bindForms() {
+    $('#profileForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = e.target.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      try {
+        await StudyCoreAPI.updateProfile({
+          name: document.getElementById('profileName').value.trim(),
+          school: document.getElementById('profileSchool').value.trim(),
+          grade: document.getElementById('profileGrade').value.trim(),
+          learningLevel: document.getElementById('profileLevel').value
+        });
+        showToast('Profile updated.', 'success');
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.querySelectorAll('[data-toggle-password]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const input = document.getElementById(btn.getAttribute('data-toggle-password'));
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        btn.querySelector('.pw-eye-open').style.display = showing ? '' : 'none';
+        btn.querySelector('.pw-eye-closed').style.display = showing ? 'none' : '';
+        btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      });
+    });
+
+    $('#passwordForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        await StudyCoreAPI.changePassword({
+          currentPassword: document.getElementById('currentPassword').value,
+          newPassword: document.getElementById('newPassword').value
+        });
+        showToast('Password updated.', 'success');
+        e.target.reset();
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+  }
+
+  /* ── Community ──────────────────────────── */
+  function renderCommunity() {
+    const host = $('#communityPanel');
+    host.innerHTML = `
+      <div>
+        <span class="badge badge-white" style="margin-bottom:14px;">${SC.icon('whatsapp', { size: 13 })} Official Academic Channel</span>
+        <h2>Stay Connected With StudyCore</h2>
+        <p>Follow <strong>STUDY-CORE ACADEMIC TIPS &amp; MENTORING</strong> for:</p>
+        <ul class="community-points">
+          <li>${SC.icon('check', { size: 17 })} Academic tips and study strategies</li>
+          <li>${SC.icon('check', { size: 17 })} Mentoring from the StudyCore team</li>
+          <li>${SC.icon('check', { size: 17 })} Important StudyCore updates</li>
+          <li>${SC.icon('check', { size: 17 })} Learning motivation and useful academic information</li>
+        </ul>
+        <a class="btn whatsapp-btn" href="https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k" target="_blank" rel="noopener">${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp</a>
+      </div>
+      <div class="qr-card">
+        <div class="qr-frame">
+          ${SC.icon('qr-code', { size: 56 })}
+          <span>Official StudyCore WhatsApp group QR code appears here</span>
+        </div>
+        <h3>StudyCore Student Community</h3>
+        <p>Connect with other StudyCore students, stay updated and participate in the academic community.</p>
+        <a class="btn whatsapp-btn btn-sm" id="communityGroupBtn" style="display:none;margin-top:14px;" target="_blank" rel="noopener"></a>
+      </div>`;
+    // Official group invite link (server-managed in .env)
+    const groupBtn = host.querySelector('#communityGroupBtn');
+    if (groupBtn) {
+      SCLayout.whatsappLinks().then((links) => {
+        if (links.group) {
+          groupBtn.href = links.group;
+          groupBtn.innerHTML = SC.icon('whatsapp', { size: 16 }) + ' Join the WhatsApp Group';
+          groupBtn.style.display = '';
+        }
+      });
     }
-  });
-}
+  }
 
-document.addEventListener('DOMContentLoaded', initDashboard);
+  /* ── Boot ──────────────────────────────── */
+  async function initDashboard() {
+    user = await StudyCoreAuth.fetchSession();
+    if (!user) { window.location.href = '/login.html'; return; }
+
+    // One-time welcome transition right after login/signup
+    const welcomeInfo = StudyCoreAuth.consumeWelcomeFlag();
+    if (welcomeInfo !== null) StudyCoreAuth.showWelcomeTransition(welcomeInfo.name || user.name, welcomeInfo.type);
+
+    renderHero();
+    renderStatusBanner();
+    renderPremiumPanel();
+    bindAvatar();
+    bindForms();
+    renderCommunity();
+    loadAnnouncements();
+    loadBookmarks();
+    loadReferral();
+
+    // Fill profile forms
+    document.getElementById('profileName').value = user.name || '';
+    document.getElementById('profileSchool').value = user.school || '';
+    document.getElementById('profileGrade').value = user.grade || '';
+    document.getElementById('profileLevel').value = user.learning_level || 'secondary';
+
+    // Load all six courses (progress, continue, activity, achievements)
+    const results = await Promise.allSettled(
+      COURSES.map(async (slug) => {
+        const course = await StudyCoreAPI.courseHome(slug);
+        return { course, data: course };
+      })
+    );
+    const courseData = results.filter((r) => r.status === 'fulfilled').map((r) => r.value).filter(Boolean);
+
+    renderMyCourses(courseData);
+
+    // Aggregate stats
+    let totalLessons = 0, maxStreak = 0, achievements = null;
+    for (const c of courseData) {
+      totalLessons += c.data.achievements ? c.data.achievements.totalLessons : 0;
+      maxStreak = Math.max(maxStreak, c.data.streak || 0);
+      if (!achievements && c.data.achievements) achievements = c.data.achievements.achievements;
+    }
+    renderStats(totalLessons, maxStreak);
+    renderAchievements(achievements);
+
+    // Continue learning: prefer a course where the student has a real
+    // "recent" lesson (video position or fresh completion); otherwise fall
+    // back to the next uncompleted lesson in the most-advanced course.
+    let best = null;
+    for (const c of courseData) {
+      const cont = c.data.continueLearning;
+      if (cont && cont.via === 'recent') { best = { course: c.course, item: cont }; break; }
+    }
+    if (!best) {
+      let mostAdvanced = null;
+      for (const c of courseData) {
+        if (c.data.progress.totalCount === 0) continue;
+        const cont = c.data.continueLearning;
+        if (!cont) continue;
+        if (!mostAdvanced || c.data.progress.percent > mostAdvanced.data.progress.percent) mostAdvanced = c;
+      }
+      if (mostAdvanced && mostAdvanced.data.continueLearning) {
+        best = { course: mostAdvanced.course, item: mostAdvanced.data.continueLearning };
+      }
+    }
+    renderContinue(best);
+
+    // Recent activity: most recently completed lessons across courses
+    const activity = [];
+    for (const c of courseData) {
+      for (const l of c.data.lessons) {
+        if (l.completed && l.completedAt) activity.push(l);
+      }
+    }
+    activity.sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
+    renderActivity(activity.slice(0, 6));
+
+    // Recommended: collect each course's recommendations, dedupe, take 5
+    const recs = [];
+    for (const c of courseData) {
+      for (const r of (c.data.recommended || [])) {
+        if (r && r.id && !recs.find((x) => x.id === r.id)) recs.push(r);
+      }
+    }
+    renderRecommended(recs.slice(0, 5));
+  }
+
+  document.addEventListener('DOMContentLoaded', initDashboard);
+})();

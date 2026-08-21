@@ -153,6 +153,53 @@ try {
 } catch {
   // already exists - fine
 }
+
+// Course structure: every resource can belong to a named topic inside its
+// subject (e.g. Physics > Circular Motion > "Centripetal Force"). Topics are
+// free-text labels chosen by the admin at upload time - the course page
+// groups and orders lessons by topic, falling back to a single "General"
+// group for content that has no topic set. Safe to run every boot.
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN topic TEXT');
+} catch {
+  // column already exists - fine
+}
+
+// Announcements can be pinned to the top of the announcement centre.
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // column already exists - fine
+}
+
+// Student profile pictures are stored in R2 like every other upload; the
+// key (not a public URL) is kept here on the user row.
+try {
+  db.exec('ALTER TABLE users ADD COLUMN avatar_key TEXT');
+} catch {
+  // column already exists - fine
+}
+
+// Video playback position, per student per lesson - powers "resume where you
+// left off" and the 90%-watched completion signal. Only written server-side
+// for authorized (Premium) playback, never trusted from arbitrary state.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS video_progress (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      position REAL NOT NULL DEFAULT 0,
+      duration REAL NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      UNIQUE(user_id, resource_id)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_video_progress_user ON video_progress(user_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_video_progress_resource ON video_progress(resource_id)');
+} catch {
+  // already exists - fine
+}
 try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS quiz_attempts (

@@ -4,85 +4,172 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Courses | StudyCore</title>
-    <link rel="stylesheet" href="../css/style.css" />
+    <meta name="description" content="Explore StudyCore university courses: Mathematics, Physics, Chemistry, Biology, Programming and Communication Skills — each with structured lessons, study notes, video learning and past papers." />
+    <link rel="canonical" href="https://studycore.academy/pages/courses.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="University Courses | StudyCore" />
+    <meta property="og:description" content="Six university-level courses with structured lessons, study notes, video learning and past papers." />
+    <meta property="og:url" content="https://studycore.academy/pages/courses.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Course",
+      "name": "StudyCore University Courses",
+      "url": "https://studycore.academy/pages/courses.html",
+      "description": "University-level courses on StudyCore covering Mathematics, Physics, Chemistry, Biology, Programming and Communication Skills.",
+      "hasCourseInstance": [
+        { "@type": "CourseInstance", "name": "Mathematics", "url": "https://studycore.academy/pages/subjects/mathematics.html" },
+        { "@type": "CourseInstance", "name": "Physics", "url": "https://studycore.academy/pages/subjects/physics.html" },
+        { "@type": "CourseInstance", "name": "Chemistry", "url": "https://studycore.academy/pages/subjects/chemistry.html" },
+        { "@type": "CourseInstance", "name": "Biology", "url": "https://studycore.academy/pages/subjects/biology.html" },
+        { "@type": "CourseInstance", "name": "Programming", "url": "https://studycore.academy/pages/subjects/programming.html" },
+        { "@type": "CourseInstance", "name": "Communication Skills", "url": "https://studycore.academy/pages/subjects/communication.html" }
+      ]
+    }
+    </script>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <div class="top-bar">📚 Explore dedicated subject pages for every major learning area.</div>
-      <nav class="navbar">
-        <div class="container nav-inner">
-          <a href="../index.html" class="nav-brand">
-            <img src="../assets/logo.jpg" alt="StudyCore Logo" />
-            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
-          </a>
-          <ul class="nav-links">
-            <li><a href="../index.html">Home</a></li>
-            <li><a href="about.html">About</a></li>
-            <li><a class="active" href="courses.html">Courses</a></li>
-            <li><a href="documents.html">Documents</a></li>
-            <li><a href="videos.html">Videos</a></li>
-            <li><a href="announcements.html">Announcements</a></li>
-            <li><a href="pricing.html">Pricing</a></li>
-            <li><a href="/dashboard.html">Dashboard</a></li>
-            <li><a href="contact.html">Contact</a></li>
-          </ul>
-          <div class="nav-actions">
-            <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
-            <a class="btn btn-primary btn-sm" href="/signup.html">Sign Up</a>
+  <body data-page="courses">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="eyebrow">StudyCore Courses</span>
+          <h1>University courses, structured the way you study</h1>
+          <p>
+            Every StudyCore course follows the same clear path: course → topic → lesson → video,
+            notes and past papers → mark complete. Pick a course to open its home page with
+            everything in one place.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div class="course-grid" id="courseGrid">
+            <a class="course-card" href="/pages/subjects/mathematics.html" data-course="mathematics">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Mathematics</h3>
+                <p>Explore functions, calculus, algebra and problem-solving with structured university-level lessons.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Mathematics Lessons</span>
+              </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/physics.html" data-course="physics">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Physics</h3>
+                <p>Master mechanics, waves, electricity and modern physics through lessons, notes and past papers.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Physics Lessons</span>
+              </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/chemistry.html" data-course="chemistry">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Chemistry</h3>
+                <p>Understand atoms, bonding, reactions and quantitative chemistry with guided lessons and notes.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Chemistry Lessons</span>
+              </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/biology.html" data-course="biology">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Biology</h3>
+                <p>Study cells, genetics, physiology and living systems through structured lessons and resources.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Biology Lessons</span>
+              </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/programming.html" data-course="programming">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Programming</h3>
+                <p>Build programming fundamentals, logic and problem-solving skills with step-by-step lessons.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Programming Lessons</span>
+              </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/communication.html" data-course="communication">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Communication Skills</h3>
+                <p>Improve writing, speaking, presentations and academic communication with focused lessons.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Communication Skills</span>
+              </div>
+            </a>
           </div>
         </div>
-      </nav>
+      </section>
 
-      <main class="page-main">
-        <section class="page-hero">
-          <div class="container">
-            <h1>Courses</h1>
-            <p>Select a subject and open its own learning page filled with notes, videos, assignments, revision materials, and quizzes.</p>
-            <div class="page-actions">
-              <a class="btn btn-primary" href="documents.html">Open Documents Library</a>
-              <button class="btn btn-outline" onclick="history.back()">← Back</button>
-            </div>
-            <div id="courseLevelNotice" class="access-notice"></div>
+      <section class="section" style="background:var(--bg-alt);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Inside every course</span>
+            <h2>The same clear structure, every time</h2>
           </div>
-        </section>
+          <div class="course-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+            <div class="card card-pad"><div class="card-icon" data-icon="layers"></div><h3 style="margin-top:14px;">Topics</h3><p>Each course is organised into focused topics, so you always know what to study next.</p></div>
+            <div class="card card-pad"><div class="card-icon" data-icon="video"></div><h3 style="margin-top:14px;">Video lessons</h3><p>Core topics include recorded lessons you watch inside StudyCore — with resume and completion tracking. (Premium)</p></div>
+            <div class="card card-pad"><div class="card-icon" data-icon="file"></div><h3 style="margin-top:14px;">Notes &amp; past papers</h3><p>Every topic pairs theory with study notes and exam papers for real practice.</p></div>
+          </div>
+          <div style="text-align:center;margin-top:40px;">
+            <a class="btn btn-primary" href="/signup.html">Create a Free Account</a>
+          </div>
+        </div>
+      </section>
+    </main>
 
-        <section class="section">
-          <div class="container">
-            <div class="subject-grid">
-              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
-                <a href="subjects/mathematics.html" style="color:inherit;text-decoration:none;">➕ Mathematics</a>
-                <a href="course.html?subject=Mathematics" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
-              </div>
-              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
-                <a href="subjects/programming.html" style="color:inherit;text-decoration:none;">💻 Programming &amp; Computer Science</a>
-                <a href="course.html?subject=Programming" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
-              </div>
-              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
-                <a href="subjects/communication.html" style="color:inherit;text-decoration:none;">🗣 Communication Skills</a>
-                <a href="course.html?subject=Communication" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
-              </div>
-              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
-                <a href="subjects/physics.html" style="color:inherit;text-decoration:none;">⚛ Physics</a>
-                <a href="course.html?subject=Physics" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
-              </div>
-              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
-                <a href="subjects/chemistry.html" style="color:inherit;text-decoration:none;">🧪 Chemistry</a>
-                <a href="course.html?subject=Chemistry" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
-              </div>
-              <div class="subject-card" style="display:flex;flex-direction:column;gap:6px;">
-                <a href="subjects/biology.html" style="color:inherit;text-decoration:none;">🌿 Biology</a>
-                <a href="course.html?subject=Biology" class="btn btn-outline btn-sm" style="align-self:flex-start;">Open Course Home →</a>
-              </div>
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
-    <script src="../js/api.js"></script>
-    <script src="../js/auth.js"></script>
-    <script src="../js/main.js"></script>
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 }); });
+        document.querySelectorAll('[data-course-icon]').forEach((el) => {
+          const slug = el.closest('[data-course]').getAttribute('data-course');
+          el.innerHTML = SC.icon(SC.courseIcon(slug), { size: 20 });
+        });
+        document.querySelectorAll('[data-hero-icon]').forEach((el) => {
+          const slug = el.closest('[data-course]').getAttribute('data-course');
+          el.innerHTML = SC.icon(SC.courseIcon(slug), { size: 54 });
+        });
+        // Live counts
+        try {
+          const { courses } = await StudyCoreAPI.listCourses();
+          const bySlug = Object.fromEntries(courses.map((c) => [c.slug, c]));
+          document.querySelectorAll('[data-course]').forEach((card) => {
+            const slug = card.getAttribute('data-course');
+            const course = bySlug[slug];
+            if (!course) return;
+            card.querySelector('[data-course-counts]').innerHTML = `
+              <span>${SC.icon('video', { size: 14 })} ${course.counts.videos} videos</span>
+              <span>${SC.icon('file-text', { size: 14 })} ${course.counts.documents} notes</span>
+              <span>${SC.icon('file', { size: 14 })} ${course.counts.pastPapers} past papers</span>
+            `;
+          });
+        } catch { /* static cards remain */ }
+      });
+    </script>
   </body>
 </html>

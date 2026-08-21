@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page Not Found | StudyCore</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body data-page="404">
+    <div id="siteNav"></div>
+    <main>
+      <div class="auth-wrap">
+        <div class="card auth-card" style="text-align:center;max-width:520px;">
+          <div class="card-icon" id="nfIcon" style="width:70px;height:70px;margin:0 auto 18px;"></div>
+          <h1 style="font-size:3rem;">404</h1>
+          <p class="auth-sub" style="margin-bottom:24px;">
+            This page doesn't exist — it may have moved, or the link may be out of date.
+            Your courses, lessons and resources are all safe.
+          </p>
+          <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+            <a class="btn btn-primary" href="/">Back to Home</a>
+            <a class="btn btn-outline" href="/pages/courses.html">Browse Courses</a>
+          </div>
+        </div>
+      </div>
+    </main>
+    <div id="siteFooter"></div>
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        document.getElementById('nfIcon').innerHTML = SC.icon('circle-help', { size: 34 });
+      });
+    </script>
+  </body>
+</html>
