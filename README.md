@@ -1,19 +1,102 @@
 # StudyCore
 
-A secondary-school and university learning platform for students in Zambia and across Africa - documents, videos, quizzes, assignments, and announcements, managed through a real admin dashboard.
+A modern **university learning platform** — courses, structured lessons, video learning,
+study notes, past papers and revision resources together in one place, built around a
+clear **Course → Topic → Lesson** hierarchy.
 
-This is a full rebuild of the previous prototype. Every feature described below is wired to a real Node/Express backend, a real SQLite database, and real file storage on disk - there is no mock data, no localStorage-based "fake backend", and no placeholder buttons.
+Full rebuild of the student experience on top of the same battle-tested backend:
+Node 22 / Express / SQLite (`node:sqlite`) with JWT cookie sessions, Cloudflare R2 file
+storage, and manual mobile-money (MTN MoMo / Airtel Money) subscription approval.
 
-## What's real here
+## The learning model
 
-- **Authentication**: bcrypt-hashed passwords, JWT sessions stored in an httpOnly cookie (not readable or spoofable from the browser console).
-- **Roles**: `ADMIN` and `STUDENT`, stored in the `users` table. The public signup form can only ever create `STUDENT` accounts - the only way to get an admin account is the seeded one (see below) or `npm run make-admin`.
-- **Route protection**: `/admin.html` and `/dashboard.html` are gated **server-side** (see `middleware/auth.js` → `requirePageAuth`). An unauthenticated request is redirected before the HTML is ever sent - it isn't just hidden by JavaScript. Every `/api/admin/*` route re-checks the role from the database on every request.
-- **File uploads**: real drag-and-drop upload in the admin dashboard, streamed directly to Cloudflare R2 (S3-compatible object storage) as they arrive - never buffered in full on the server or written to local disk, even for large videos - with metadata (title, description, category, subject, course, year, semester, tags, file size, uploader) written to SQLite. Uploads are never served as static files - they can only be reached through the authenticated `/api/resources/:id/download` and `/api/resources/:id/stream` routes, which check the student's subscription/trial status, log downloads, and support HTTP Range requests so video scrubbing/seeking works correctly.
-- **CRUD**: create, edit (including replacing the file), delete, publish/unpublish - all from the admin table, all hitting real endpoints.
-- **Search, filter, sort**: by category, subject, and keyword, with newest/oldest/most-downloaded/title sort - both for students browsing and for admins managing resources.
-- **Analytics**: total uploads, total downloads, total users, premium students, revenue, most-downloaded resources, uploads by category - computed live from the database, not hardcoded.
-- **Bookmarks**: students can save resources and see them on their dashboard.
+```
+StudyCore
+└── Course            (Mathematics, Physics, Chemistry, Biology, Programming, Communication Skills)
+    └── Topic         (e.g. Physics → Circular Motion)   — set per resource by the admin
+        └── Lesson    (video lesson / notes / tutorial sheet / past paper)
+            ├── Video        (StudyCore in-app player — Premium only)
+            ├── Notes        (StudyCore document viewer — free during trial)
+            ├── Related resources
+            ├── Mark complete
+            └── Previous / Next lesson
+```
+
+- **Course home page** (`/pages/subjects/<slug>.html`): unique animated hero per course
+  (lightweight canvas, respects `prefers-reduced-motion`, loaded only on course pages),
+  continue-learning card, topics with per-topic progress, all lessons, notes, past papers
+  (grouped by year) and overall progress.
+- **Lesson experience** (`/pages/lesson.html?id=…&subject=…`): breadcrumbs, the StudyCore
+  video player (resume position, speed, fullscreen, progress + completion tracking) or the
+  StudyCore document viewer, key concepts, related resources, mark-complete, and
+  previous/next navigation.
+- **Quizzes & assignments**: removed from the student experience. The backend keeps their
+  tables and admin upload options for compatibility, but they never appear in the student
+  UI, course listings, or search.
+
+## Access control (enforced server-side)
+
+| Content                | Free trial (30 days) | Trial expired | Premium active |
+|------------------------|----------------------|---------------|----------------|
+| Video lessons          | **locked** (Premium only) | locked | unlocked |
+| Notes / tutorials / past papers | unlocked | **locked** unless free preview | unlocked |
+| Free previews (`is_premium = 0`) | unlocked | unlocked | unlocked |
+| Announcements          | unlocked | unlocked | unlocked |
+
+Everything is checked against the **users table on every request** — never against the
+client. Video *stream* URLs are only reachable through `GET /api/resources/:id/stream`,
+which re-verifies the session and subscription; streams are served with
+`Cache-Control: no-store` and no permanent public URL ever exists. Video playback
+position is stored per student (`video_progress`) and is itself only readable by
+authorized Premium sessions. 90% watched auto-completes the lesson server-side.
+
+Subscription states computed in `routes/auth.routes.js → subscriptionStatus()`:
+`trial_active`, `trial_expired`, `premium_active`, `premium_expired`, `payment_pending`.
+
+## Payments
+
+Manual mobile-money flow (no merchant API required):
+1. Student pays K50 to the configured MTN/Airtel number (shown by `GET /api/auth/payment-info`).
+2. Student submits phone + method + reference from the dashboard **Premium section**
+   (`/dashboard.html#premium`) → creates a `PENDING` payment.
+3. Admin confirms receipt on their phone and **Approves** in the admin dashboard →
+   30 days of Premium is activated. Rejecting leaves the student's plan unchanged.
+
+The public Pricing page routes logged-out visitors to signup and logged-in students
+straight to the dashboard Premium payment section.
+
+## Profile pictures
+
+`POST /api/auth/avatar` streams the image to R2, then **verifies the actual file
+signature** (PNG/JPEG/WebP magic bytes) by reading the first bytes back from storage — a
+disguised file is deleted and rejected. 4MB cap, image-only extension filter, stored
+under a private key; only the owner's own avatar is ever served
+(`GET /api/auth/avatar`). Displayed in the nav account menu, dashboard hero and profile
+section, with a professional User-icon fallback (never an emoji).
+
+## Project structure
+
+```
+server.js               entry point - static public/, gated views/, API routes, real 404
+db/index.js             SQLite schema + safe column migrations (topic, pinned, avatar, video_progress)
+middleware/auth.js      JWT cookie auth, role checks, page-level gating
+middleware/security.js  security headers + in-memory rate limiting (auth endpoints)
+middleware/upload.js    streaming R2 upload (SHA-256) + strict avatar upload config
+lib/r2.js               Cloudflare R2 client (S3-compatible)
+routes/auth.routes.js   register/login/me, profile, password, avatar, subscribe, payment-info
+routes/courses.routes.js  public course directory, course home (topics/progress/continue), lesson flow
+routes/resources.routes.js  resource list/detail/stream/download, search, bookmarks,
+                            completion, video progress, quiz compatibility endpoints
+routes/admin.routes.js  resource CRUD (incl. topic + pinned), users, payments, analytics
+views/dashboard.html    student dashboard (Premium section #premium, profile #profile, community #community)
+views/admin.html        admin dashboard (uploads, topics, announcements, payments, students)
+public/js/icons.js      single SVG icon system (Lucide-style) - no emoji in the UI
+public/js/layout.js     shared navbar / mobile nav / account menu / footer / global search overlay
+public/js/player.js     StudyCore video player (custom controls, resume, progress, premium wall)
+public/js/hero.js       per-course canvas hero animations (math/physics/chem/bio/code/comm)
+public/sitemap.xml      public pages only - no dashboards, auth or admin URLs
+public/robots.txt       allows public pages + brand assets; disallows private surfaces
+```
 
 ## Getting started
 
@@ -23,72 +106,70 @@ cp .env.example .env   # then edit .env - see below
 npm start
 ```
 
-The server starts on `http://localhost:3000` (or whatever `PORT` you set).
-
-### First run
-
-On first boot, StudyCore seeds one admin account from your `.env` file:
-
-```
-ADMIN_EMAIL=admin@studycore.com
-ADMIN_PASSWORD=ChangeMe123!
-```
-
-**Log in and change this password immediately** (Dashboard → Change password). If you don't set `ADMIN_PASSWORD` yourself, the default above is used and printed to the console - do not leave it as-is on a real deployment.
-
-To promote another account to admin later, or create an additional admin:
-
-```bash
-npm run make-admin -- someone@example.com "Full Name"
-```
-
 ### Environment variables (`.env`)
 
 | Variable | Purpose |
 |---|---|
-| `PORT` | Port the server listens on (default 3000) |
-| `NODE_ENV` | Set to `production` when deployed - this makes auth cookies `secure` (HTTPS-only) |
-| `JWT_SECRET` | **Change this** - a long random string used to sign session tokens |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Seeded admin account, created once on first boot |
-| `MAX_UPLOAD_MB` | Max file size for uploads (default 2000MB / 2GB - enough for a full lecture video) |
+| `PORT` / `NODE_ENV` | Port; `production` makes cookies `secure` |
+| `JWT_SECRET` | **Change this** - signs session tokens |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Seeded admin, created once on first boot |
+| `MAX_UPLOAD_MB` | Max upload size (default 2000MB) |
+| `DATA_DIR` | Persistent disk path for the SQLite file (Render etc.) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage |
+| `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
+| `WHATSAPP_CHANNEL_URL` | Official academic channel link (community panels, footer) |
+| `WHATSAPP_GROUP_URL` | Official WhatsApp group invite link ("Join the WhatsApp Group" buttons) |
 
-## Project structure
-
-```
-server.js               entry point - wires routes, serves public/, gates views/
-db/index.js              SQLite connection, schema, admin seeding
-middleware/auth.js        JWT cookie auth, role checks, page-level gating
-middleware/upload.js      multer disk storage + file-type/size limits
-routes/auth.routes.js     register, login, logout, me, profile, password, subscribe
-routes/resources.routes.js  public browse/search/download/stream/bookmarks
-routes/admin.routes.js    admin-only resource CRUD, users, analytics
-scripts/make-admin.js     CLI to promote/create admin accounts
-public/                  everything served as static files (css, js, marketing pages,
-                          student content pages under public/pages/)
-views/                   admin.html and dashboard.html - only reachable through the
-                          authenticated Express routes in server.js, never as static files
-lib/r2.js                Cloudflare R2 client (S3-compatible) - all uploaded files live here
-data/                    studycore.sqlite lives here (gitignored)
-```
+Promote another admin later: `npm run make-admin -- someone@example.com "Full Name"`.
 
 ## Deploying
 
-This is a normal Node app - deploy it anywhere that runs **Node 22.5+** (Render, Railway, Fly.io, a VPS, etc). It uses Node's built-in `node:sqlite` module, so there's nothing to compile - `npm install` never touches a C++ toolchain, Python, or Visual Studio Build Tools. (`node:sqlite` is still marked "experimental" by Node itself - it prints one harmless warning line on startup - but it's stable enough for this project's needs. If a future Node release changes its API, only `db/index.js` would need updating.)
+Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
 
-Two things matter for a real deployment:
+1. **Persistent disk for `data/`** (the SQLite file). Uploaded files live in R2 and
+   survive on their own.
+2. **Real environment variables** - `JWT_SECRET`, `ADMIN_PASSWORD`,
+   `NODE_ENV=production`, the four `R2_*` variables.
 
-1. **Persistent disk for the database only.** `data/studycore.sqlite` must live on a persistent volume, not an ephemeral filesystem - otherwise every deploy wipes your accounts, resource metadata, and download stats. Render/Railway/Fly all support mounting a persistent disk; point it at this app's `data/` directory. Uploaded *files themselves* (documents, videos, images) no longer need this - they live in Cloudflare R2, which survives deploys/restarts on its own.
-2. **Set real environment variables** - `JWT_SECRET`, `ADMIN_PASSWORD`, `NODE_ENV=production`, and the four `R2_*` variables from `.env.example` - before going live.
+### Search Console / SEO
 
-If you outgrow a single SQLite file (many concurrent admins, very high traffic), the cleanest next step is swapping `node:sqlite` for a hosted Postgres database - file storage is already handled by R2 regardless of that choice, so this migration would only touch `db/` and the route files, not `middleware/upload.js` or `lib/r2.js`.
+- `https://studycore.academy/sitemap.xml` - submit in Google Search Console after verifying
+  the domain.
+- `https://studycore.academy/robots.txt` - allows public pages and brand assets, disallows
+  private surfaces.
+- Homepage + course pages carry canonical URLs, meta descriptions, Open Graph tags and
+  JSON-LD (`Organization`, `WebSite`, `Course` per subject).
+- Indexing, rankings, favicon display and AI-search visibility are decided by Google -
+  these files only make the signals accurate and crawlable.
 
-## Known limitation: mobile money payments require manual approval
+## What changed from v2
 
-The subscription flow (`POST /api/auth/subscribe`) creates a real `payments` row with status `PENDING` and shows the student your MTN/Airtel numbers to pay to. Actually charging a phone number automatically requires a merchant account and API credentials with MTN Mobile Money or Airtel Money, which no one can generate on your behalf - so instead, the admin dashboard's "Subscription payments" section lets you manually confirm you received the money (checking your own phone/app) and approve or reject each request, which is what activates a student's premium access. When you have real merchant credentials, this could be automated by adding a webhook handler for the provider's payment-confirmation callback in `routes/auth.routes.js`.
-
-## Removed from the previous version
-
-- The entire `src/`, `supabase/` React/TanStack/Supabase scaffold - it was unused boilerplate, never wired to anything on the live site.
-- The duplicate `public/` copy of the whole site and the duplicate `pages/admin.html`, `pages/dashboard.html`, `pages/login.html`, `pages/signup.html` - there is now exactly one canonical copy of every page.
-- The public "upload" and "post announcement" forms that used to sit directly on `documents.html`, `videos.html`, `announcements.html`, and every subject page - anyone visiting those pages could submit them. Uploading now only exists inside the authenticated, role-gated admin dashboard.
-- All `localStorage`-backed "fake backend" code in `js/main.js`, `js/admin.js`, and `js/auth.js` - including the rule that granted admin access based on a hardcoded email address. Roles are now assigned once, server-side, at account creation, and are never re-derived from anything the client sends.
+- Student experience rebuilt around **Course → Topic → Lesson** (topics are a real,
+  admin-set field on every resource).
+- New **lesson experience page** with the StudyCore video player (resume, speed,
+  completion) and document viewer; videos and documents are watched/read inside
+  StudyCore with no external links, no download/share controls.
+- **Videos are strictly Premium** - trial students can no longer stream them; the gate is
+  server-side and covers streams, downloads, detail fetches and progress endpoints.
+- Quizzes & assignments removed from the student UI (backend kept for compatibility).
+- Standalone **Documents** and **Videos** pages removed - documents/videos live inside
+  courses, lessons and the unified **Resources** page (filterable by course and type).
+- Global navigation redesigned to a learning-first model
+  (Home · Courses · Resources · Announcements · About · Search · Dashboard · Profile)
+  with a deliberate mobile menu; course pages get their own sub-nav
+  (Overview · Topics · Lessons · Resources · Past Papers · Progress).
+- **Premium dashboard section** (`/dashboard.html#premium`) with real subscription
+  states, trial countdown, payment flow and renewal; Pricing page connects into it.
+- **Profile pictures** with server-side validation, plus achievements, study streak,
+  recent activity and recommendations on the dashboard.
+- Course completion experience at 100%, per-topic progress, continue-learning across
+  courses, and global search (permission-aware) from the nav bar.
+- All emoji UI replaced by a single Lucide-style SVG icon system; new professional
+  brand icon, favicon set and Open Graph image.
+- **Legal**: public Terms & Conditions and Privacy Policy pages (legal-entity details are
+  marked placeholders for the owner), linked from the footer and referenced at signup.
+- **Community**: official WhatsApp academic channel section
+  (`https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k`) and a WhatsApp group QR slot
+  awaiting the official QR code.
+- SEO: sitemap, robots.txt, canonicals, JSON-LD, per-course meta.
+- Real 404 page (unknown URLs no longer silently serve the homepage).

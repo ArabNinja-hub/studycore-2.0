@@ -1,12 +1,11 @@
 // =============================================
-// STUDYCORE — Session & Nav Module (js/auth.js)
-// By Dr. Relentless | Stay Curious & Winning
+// STUDYCORE — Session & UI State (js/auth.js)
 // -----------------------------------------------
 // Role is decided ONLY by the server (see middleware/auth.js -
 // requireAuth always re-reads the role from the users table, never trusts
 // the JWT payload alone). This file just asks the server "who am I?" via
-// GET /api/auth/me and renders the nav / redirects accordingly. It cannot
-// grant anyone admin access - it can only reflect what the server says.
+// GET /api/auth/me and renders the UI accordingly. It cannot grant anyone
+// access - it can only reflect what the server says.
 // =============================================
 
 (function (global) {
@@ -20,14 +19,11 @@
     return !!user && user.role === 'ADMIN';
   }
 
-  // All app pages live at the site root when served (index.html, login.html,
-  // signup.html) or are gated view routes (dashboard.html, admin.html) - both
-  // are always reachable at the root path regardless of how deeply nested the
-  // current page is (e.g. /pages/subjects/mathematics.html). Absolute paths
-  // avoid the class of bug where a relative link resolves against the wrong
-  // directory depth.
+  // All app pages are reachable at fixed root paths (/login.html,
+  // /dashboard.html, /pages/...). Absolute paths avoid the class of bug
+  // where a relative link resolves against the wrong directory depth.
   function getPageLink(fileName) {
-    return fileName === 'index.html' ? '/' : `/${fileName}`;
+    return `/${fileName}`;
   }
 
   function getDashboardPage(user) {
@@ -35,10 +31,9 @@
   }
 
   async function fetchSession() {
-    // If a check is already in flight (e.g. main.js's initPage kicked one
-    // off a moment ago), reuse that same promise instead of firing a second
-    // request and risking two different pieces of code reading the result
-    // at two different times.
+    // If a check is already in flight, reuse that same promise instead of
+    // firing a second request and risking two different pieces of code
+    // reading the result at two different times.
     if (sessionPromise) return sessionPromise;
     sessionPromise = (async () => {
       try {
@@ -63,125 +58,88 @@
     const resolved = theme || localStorage.getItem('studycore_theme') || 'light';
     document.body.dataset.theme = resolved;
     localStorage.setItem('studycore_theme', resolved);
-    const toggle = document.getElementById('themeToggle');
-    if (toggle) toggle.textContent = resolved === 'dark' ? '☀️' : '🌙';
   }
 
   async function logoutUser() {
     try { await StudyCoreAPI.logout(); } catch { /* ignore network errors on logout */ }
     cachedUser = null;
-    window.location.href = getPageLink('index.html');
+    window.location.href = '/';
   }
 
-  function updateAuthUI() {
-    const navActions = document.querySelector('.nav-actions');
-    if (!navActions) return;
-
-    const themeControl = document.createElement('button');
-    themeControl.id = 'themeToggle';
-    themeControl.className = 'btn btn-outline btn-sm';
-    themeControl.type = 'button';
-    themeControl.setAttribute('aria-label', 'Toggle theme');
-    themeControl.addEventListener('click', () => {
-      applyTheme(document.body.dataset.theme === 'dark' ? 'light' : 'dark');
-    });
-
-    navActions.innerHTML = '';
-    navActions.appendChild(themeControl);
-
-    if (cachedUser) {
-      const dashboardLink = isAdmin(cachedUser)
-        ? `<a class="btn btn-outline btn-sm" href="${getPageLink('admin.html')}">Admin Dashboard</a>`
-        : `<a class="btn btn-outline btn-sm" href="${getPageLink('dashboard.html')}">Dashboard</a>`;
-      navActions.insertAdjacentHTML('beforeend', `
-        ${dashboardLink}
-        <button id="logoutBtn" class="btn btn-primary btn-sm" type="button">Log Out</button>
-      `);
-      document.getElementById('logoutBtn')?.addEventListener('click', logoutUser);
-    } else {
-      navActions.insertAdjacentHTML('beforeend', `
-        <a class="btn btn-outline btn-sm" href="${getPageLink('login.html')}">Log In</a>
-        <a class="btn btn-primary btn-sm" href="${getPageLink('signup.html')}">Get Started</a>
-      `);
+  // Human label + icon for the server's subscription state.
+  function subscriptionLabel(user) {
+    const s = (user && user.subscriptionStatus) || {};
+    switch (s.state) {
+      case 'premium_active': return { label: 'Premium Active', icon: 'crown', cls: 'premium' };
+      case 'trial_active': return { label: `Free Trial · ${s.trialDaysLeft || 0} days left`, icon: 'sparkles', cls: 'trial' };
+      case 'payment_pending': return { label: 'Payment Pending', icon: 'clock', cls: 'pending' };
+      case 'premium_expired': return { label: 'Premium Expired', icon: 'lock', cls: 'expired' };
+      default: return { label: 'Trial Expired', icon: 'lock', cls: 'expired' };
     }
-
-    applyTheme();
   }
+
+  // Avatar markup: real picture when one exists, otherwise a professional
+  // User-icon circle (never an emoji).
+  function avatarHtml(user, sizeCls) {
+    const cls = `avatar ${sizeCls || ''}`;
+    if (user && user.hasAvatar) {
+      return `<img class="${cls}" src="${StudyCoreAPI.avatarUrl()}" alt="" />`;
+    }
+    const initials = user && user.name
+      ? user.name.split(' ').filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('')
+      : '';
+    const inner = SC.icon('user', { size: sizeCls === 'avatar-lg' ? 30 : 17, stroke: 2 });
+    return `<span class="${cls} avatar-fallback">${inner}</span>`;
+  }
+
+  /* ── Toasts ─────────────────────────────── */
+  const TOAST_ICONS = { success: 'check-circle', error: 'alert-triangle', info: 'info' };
 
   function showToast(message, type = 'info') {
     let container = document.getElementById('scToastContainer');
     if (!container) {
       container = document.createElement('div');
       container.id = 'scToastContainer';
-      container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:10px;max-width:340px;';
+      container.setAttribute('role', 'status');
       document.body.appendChild(container);
     }
     const toast = document.createElement('div');
-    const colors = { success: '#1A9E8F', error: '#D64545', info: '#1A3A5C' };
-    toast.textContent = message;
-    toast.style.cssText = `background:${colors[type] || colors.info};color:#fff;padding:12px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.2);font-size:0.9rem;font-weight:500;animation:sc-toast-in 0.25s ease;`;
+    toast.className = `sc-toast ${type}`;
+    toast.innerHTML = `${SC.icon(TOAST_ICONS[type] || 'info', { size: 18 })}<span>${escapeHtml(message)}</span>`;
     container.appendChild(toast);
     setTimeout(() => {
-      toast.style.opacity = '0';
       toast.style.transition = 'opacity 0.3s';
-      setTimeout(() => toast.remove(), 300);
-    }, 3500);
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 320);
+    }, 4200);
   }
 
-  if (!document.getElementById('scToastStyle')) {
-    const style = document.createElement('style');
-    style.id = 'scToastStyle';
-    style.textContent = '@keyframes sc-toast-in { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }';
-    document.head.appendChild(style);
-  }
-
-  // Every page includes this script, so wiring the mobile menu up here once
-  // means it works everywhere automatically - no per-page JS needed. If a
-  // page's navbar markup doesn't have a hamburger button yet, one is
-  // created and inserted automatically so older/uncopied pages still work.
+  /* ── Mobile navigation (wired once, works on every page) ── */
   function initMobileNav() {
-    const navbar = document.querySelector('.navbar');
-    const navInner = document.querySelector('.nav-inner');
-    if (!navbar || !navInner) return;
-    if (navbar.dataset.mobileNavReady === 'true') return; // never attach the click listener twice
-    navbar.dataset.mobileNavReady = 'true';
+    const hamburger = document.getElementById('hamburgerBtn');
+    const menu = document.getElementById('mobileNav');
+    const backdrop = document.getElementById('navBackdrop');
+    if (!hamburger || !menu) return;
 
-    let hamburger = navbar.querySelector('.hamburger');
-    if (!hamburger) {
-      hamburger = document.createElement('button');
-      hamburger.className = 'hamburger';
-      hamburger.type = 'button';
-      hamburger.setAttribute('aria-label', 'Toggle menu');
-      hamburger.innerHTML = '<span></span><span></span><span></span>';
-      navInner.appendChild(hamburger);
-    }
-
-    hamburger.addEventListener('click', () => {
-      navbar.classList.toggle('nav-open');
-    });
-
-    // Tapping any link inside the open mobile menu should close it, rather
-    // than leaving the panel open over the page the person just navigated
-    // to (or leaving it awkwardly open if they tapped a link that reloads
-    // the same page, e.g. an anchor).
-    navbar.addEventListener('click', (e) => {
-      if (e.target.tagName === 'A' && navbar.classList.contains('nav-open')) {
-        navbar.classList.remove('nav-open');
-      }
-    });
+    const setOpen = (open) => {
+      menu.classList.toggle('open', open);
+      if (backdrop) backdrop.classList.toggle('open', open);
+      document.body.style.overflow = open ? 'hidden' : '';
+      hamburger.setAttribute('aria-expanded', String(open));
+    };
+    hamburger.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
+    if (backdrop) backdrop.addEventListener('click', () => setOpen(false));
+    menu.querySelectorAll('a, button[data-close-mobile]').forEach((el) =>
+      el.addEventListener('click', () => setOpen(false))
+    );
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
   }
 
-  document.addEventListener('DOMContentLoaded', initMobileNav);
-
-  // Shown exactly once, right after a successful login - never on regular
-  // page navigation. login.html sets a sessionStorage flag right before
-  // redirecting; the destination page (dashboard.html/admin.html) checks
-  // for it once on load via consumeWelcomeFlag() below, which immediately
-  // removes the flag so refreshing or navigating back never retriggers it.
+  /* ── Post-login welcome transition ──────── */
   const WELCOME_FLAG_KEY = 'sc_show_welcome';
 
   function setWelcomeFlag(name, type) {
-    try { sessionStorage.setItem(WELCOME_FLAG_KEY, JSON.stringify({ name: name || '', type: type || 'login' })); } catch { /* storage unavailable - transition just won't show, not fatal */ }
+    try { sessionStorage.setItem(WELCOME_FLAG_KEY, JSON.stringify({ name: name || '', type: type || 'login' })); } catch { /* not fatal */ }
   }
 
   function consumeWelcomeFlag() {
@@ -189,23 +147,15 @@
       const raw = sessionStorage.getItem(WELCOME_FLAG_KEY);
       sessionStorage.removeItem(WELCOME_FLAG_KEY);
       if (!raw) return null;
-      try {
-        return JSON.parse(raw);
-      } catch {
-        // Backward compatible with the old plain-string format, in case a
-        // flag was set by an older cached copy of login.html mid-deploy.
-        return { name: raw, type: 'login' };
-      }
-    } catch {
-      return null;
-    }
+      try { return JSON.parse(raw); } catch { return { name: raw, type: 'login' }; }
+    } catch { return null; }
   }
 
   function showWelcomeTransition(name, type) {
     return new Promise((resolve) => {
       const firstName = (name || 'there').split(' ')[0];
-      const safeName = typeof escapeHtml === 'function' ? escapeHtml(firstName) : firstName;
-      const firstMessage = type === 'signup' ? 'Welcome to StudyCore!' : `Welcome back, ${safeName}`;
+      const safeName = escapeHtml(firstName);
+      const firstMessage = type === 'signup' ? 'Welcome to StudyCore' : `Welcome back, ${safeName}`;
 
       const overlay = document.createElement('div');
       overlay.className = 'welcome-transition-overlay';
@@ -215,8 +165,6 @@
         <div class="welcome-transition-dots"><span></span><span></span><span></span></div>
       `;
       document.body.appendChild(overlay);
-      // Added and faded in on the next frame so the CSS transition actually
-      // runs, rather than starting at opacity:1 with nothing to animate from.
       requestAnimationFrame(() => overlay.classList.add('visible'));
 
       setTimeout(() => {
@@ -225,11 +173,7 @@
       }, 900);
 
       setTimeout(() => overlay.classList.add('leaving'), 1800);
-
-      setTimeout(() => {
-        overlay.remove();
-        resolve();
-      }, 2300);
+      setTimeout(() => { overlay.remove(); resolve(); }, 2300);
     });
   }
 
@@ -239,13 +183,14 @@
     getDashboardPage,
     fetchSession,
     getCurrentUser,
-    updateAuthUI,
     logoutUser,
     applyTheme,
-    showToast,
+    subscriptionLabel,
+    avatarHtml,
     setWelcomeFlag,
     consumeWelcomeFlag,
     showWelcomeTransition,
+    initMobileNav,
     get sessionChecked() { return sessionChecked; }
   };
 

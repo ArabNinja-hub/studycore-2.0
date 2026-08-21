@@ -4,48 +4,51 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Admin Dashboard | StudyCore</title>
-    <link rel="stylesheet" href="/css/style.css" />
+    <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <nav class="navbar">
-        <div class="container nav-inner">
-          <a href="/" class="nav-brand">
-            <img src="/assets/logo.jpg" alt="StudyCore Logo" />
-            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
-          </a>
-          <div class="nav-actions">
-            <button class="btn btn-primary btn-sm" id="logoutBtn">Log Out</button>
-          </div>
+  <body data-page="admin">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero" style="padding:40px 0 28px;">
+        <div class="container">
+          <span class="eyebrow">Admin</span>
+          <h1>Admin Dashboard</h1>
+          <p>Manage every resource on StudyCore — upload, edit, organise and track engagement.</p>
         </div>
-      </nav>
-      <main class="page-main">
-        <section class="page-hero">
-          <div class="container">
-            <h1>Admin Dashboard</h1>
-            <p>Manage every resource on StudyCore - upload, edit, organize, and track engagement.</p>
-          </div>
-        </section>
+      </section>
 
-        <section class="section">
-          <div class="container">
-            <div id="adminAnalytics" class="card-grid"><p class="loading-text">Loading analytics…</p></div>
+      <section class="section-tight">
+        <div class="container">
+          <!-- Analytics -->
+          <div id="adminAnalytics" class="dash-grid" style="margin-bottom:32px;">
+            <div class="skeleton skeleton-card span-3" style="height:96px;"></div>
+            <div class="skeleton skeleton-card span-3" style="height:96px;"></div>
+            <div class="skeleton skeleton-card span-3" style="height:96px;"></div>
+            <div class="skeleton skeleton-card span-3" style="height:96px;"></div>
           </div>
-        </section>
 
-        <section class="section alt-section">
-          <div class="container">
-            <div class="section-heading">
-              <h2>📢 Post an announcement</h2>
-              <p>A quick notice for students - shown in the Announcements banner, not as a file upload.</p>
-            </div>
-            <form id="announcementForm" class="upload-form">
-              <div class="form-group">
-                <label for="annTitle">Title</label>
-                <input id="annTitle" type="text" placeholder="e.g. New past papers uploaded for Physics" required />
+          <!-- Announcements -->
+          <div class="card card-pad" style="margin-bottom:28px;">
+            <h3 style="display:flex;align-items:center;gap:10px;" id="annTitleHeading"><span data-ann-icon></span> Post an announcement</h3>
+            <p style="margin:6px 0 18px;">A quick notice for students — shown in the announcement centre and dashboards. Pinned announcements stay on top.</p>
+            <form id="announcementForm" class="upload-form" style="max-width:720px;">
+              <input type="hidden" id="annId" value="" />
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="annTitle">Title</label>
+                  <input id="annTitle" type="text" placeholder="e.g. New past papers uploaded for Physics" required />
+                </div>
+                <div class="form-group">
+                  <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+                    <input type="checkbox" id="annPinned" style="width:18px;height:18px;accent-color:var(--teal-500);" /> Pin to top
+                  </label>
+                </div>
               </div>
               <div class="form-group">
                 <label for="annMessage">Message</label>
@@ -54,41 +57,38 @@
               <button class="btn btn-primary" type="submit" id="announcementSubmitBtn">Post Announcement</button>
             </form>
           </div>
-        </section>
 
-        <section class="section alt-section">
-          <div class="container">
-            <div class="section-heading">
-              <h2 id="uploadFormTitle">Upload a new resource</h2>
-              <p>Drag a file in, fill in the details, and publish. Every upload is saved to disk and tracked in the database.</p>
+          <!-- Upload -->
+          <div class="card card-pad" style="margin-bottom:28px;">
+            <h3 id="uploadFormTitle">Upload a new resource</h3>
+            <p style="margin:6px 0 18px;">Choose a file, set the topic, and publish. Every upload is streamed straight to secure cloud storage and tracked in the database.</p>
+
+            <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
+              <button class="btn btn-outline btn-sm" data-quick-category="document">New Document</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="video">New Video</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="tutorial">New Tutorial</button>
+              <button class="btn btn-outline btn-sm" data-quick-category="past_paper">New Past Paper</button>
             </div>
 
-            <div class="quick-actions" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
-              <button class="btn btn-outline btn-sm" data-quick-category="document">📄 New Document</button>
-              <button class="btn btn-outline btn-sm" data-quick-category="video">🎬 New Video</button>
-              <button class="btn btn-outline btn-sm" data-quick-category="tutorial">📑 New Tutorial</button>
-              <button class="btn btn-outline btn-sm" data-quick-category="past_paper">📝 New Past Paper</button>
-              <button class="btn btn-outline btn-sm" data-quick-category="quiz">🧠 New Quiz</button>
-              <button class="btn btn-outline btn-sm" data-quick-category="assignment">🗂 New Assignment</button>
-            </div>
-
-            <div class="upload-box">
-              <div id="dropZone" class="video-upload-slot" style="cursor:pointer;">
-                <span class="upload-icon">📁</span>
-                <strong id="dropZoneLabel">Drag & drop a file here, or click to browse</strong>
-                <span id="uploadSizeLabel" style="font-size:0.85rem;opacity:0.75;">PDF, Word, PowerPoint, Excel, images, ZIP, video, or audio - up to 2000MB</span>
+            <div style="background:var(--bg-alt);border:2px dashed var(--border-strong);border-radius:var(--radius);padding:26px;text-align:center;">
+              <div id="dropZone" style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;">
+                <span id="dropZoneIcon" style="color:var(--teal-600);display:inline-flex;"></span>
+                <strong id="dropZoneLabel" style="color:var(--ink);">Drag &amp; drop a file here, or click to browse</strong>
+                <span id="uploadSizeLabel" style="font-size:0.82rem;color:var(--muted);">PDF, Word, PowerPoint, Excel, images, ZIP, video or audio</span>
                 <input type="file" id="fileInput" style="display:none;" />
               </div>
-              <div id="fileChosenLabel" style="margin-top:8px;font-size:0.9rem;"></div>
-              <div id="uploadProgressWrap" style="display:none;margin-top:10px;">
-                <div style="background:rgba(0,0,0,0.08);border-radius:20px;height:10px;overflow:hidden;">
-                  <div id="uploadProgressBar" style="background:var(--teal,#1A9E8F);height:100%;width:0%;transition:width 0.2s;"></div>
+              <div id="fileChosenLabel" style="margin-top:10px;font-size:0.88rem;color:var(--teal-700);font-weight:600;"></div>
+              <div id="uploadProgressWrap" style="display:none;margin-top:10px;max-width:420px;margin-left:auto;margin-right:auto;">
+                <div style="background:var(--border);border-radius:20px;height:10px;overflow:hidden;">
+                  <div id="uploadProgressBar" style="background:var(--teal-500);height:100%;width:0%;transition:width 0.2s;"></div>
                 </div>
-                <span id="uploadProgressText" style="font-size:0.8rem;"></span>
+                <span id="uploadProgressText" style="font-size:0.8rem;color:var(--muted);display:block;margin-top:5px;"></span>
               </div>
+            </div>
 
-              <form id="resourceForm" class="upload-form" style="margin-top:18px;" enctype="multipart/form-data">
-                <input type="hidden" id="resourceId" value="" />
+            <form id="resourceForm" class="upload-form" style="margin-top:22px;max-width:860px;" enctype="multipart/form-data">
+              <input type="hidden" id="resourceId" value="" />
+              <div class="form-row">
                 <div class="form-group">
                   <label for="resCategory">Category</label>
                   <select id="resCategory" required>
@@ -96,37 +96,46 @@
                     <option value="video">Video Lesson</option>
                     <option value="tutorial">Tutorial Sheet</option>
                     <option value="past_paper">Past Paper</option>
-                    <option value="quiz">Quiz</option>
-                    <option value="assignment">Assignment</option>
+                    <option value="quiz">Quiz (admin-only)</option>
+                    <option value="assignment">Assignment (admin-only)</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="resTitle">Title</label>
-                  <input id="resTitle" type="text" placeholder="Introduction to Quadratic Equations" required />
-                </div>
-                <div class="form-group">
-                  <label for="resDescription">Description</label>
-                  <textarea id="resDescription" placeholder="Short summary students will see"></textarea>
-                </div>
-                <div class="form-group">
-                  <label for="resSubject">Subject</label>
+                  <label for="resSubject">Subject / Course</label>
                   <select id="resSubject">
                     <option value="">General</option>
                     <option>Mathematics</option>
                     <option>Physics</option>
                     <option>Chemistry</option>
                     <option>Biology</option>
-                    <option>Communication</option>
+                    <option>Communication Skills</option>
                     <option>Programming</option>
                   </select>
                 </div>
+              </div>
+              <div class="form-row">
                 <div class="form-group">
-                  <label for="resCourse">Course</label>
+                  <label for="resTitle">Title</label>
+                  <input id="resTitle" type="text" placeholder="Centripetal Force" required />
+                </div>
+                <div class="form-group">
+                  <label for="resTopic">Topic (groups lessons in the course)</label>
+                  <input id="resTopic" type="text" placeholder="e.g. Circular Motion" list="topicSuggest" />
+                  <datalist id="topicSuggest"></datalist>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="resDescription">Description</label>
+                <textarea id="resDescription" rows="3" placeholder="Short summary students will see on the lesson page"></textarea>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;" class="admin-four-col">
+                <div class="form-group">
+                  <label for="resCourse">Course (optional)</label>
                   <input id="resCourse" type="text" placeholder="e.g. Pure Mathematics" />
                 </div>
                 <div class="form-group">
-                  <label for="resYear">Year / Grade</label>
-                  <input id="resYear" type="text" placeholder="e.g. Grade 11, University Year 1" />
+                  <label for="resYear">Year / Exam</label>
+                  <input id="resYear" type="text" placeholder="e.g. 2025, Year 1" />
                 </div>
                 <div class="form-group">
                   <label for="resSemester">Term</label>
@@ -139,87 +148,87 @@
                 </div>
                 <div class="form-group">
                   <label for="resTags">Tags (comma separated)</label>
-                  <input id="resTags" type="text" placeholder="algebra, revision, exam-pack" />
+                  <input id="resTags" type="text" placeholder="revision, exam-pack" />
                 </div>
-                <div class="form-group" id="resDueDateGroup" style="display:none;">
-                  <label for="resDueDate">Due date</label>
-                  <input id="resDueDate" type="date" />
-                </div>
-                <div class="form-group" id="resQuizGroup" style="display:none;">
-                  <label for="resQuizData">Quiz questions (JSON array)</label>
-                  <textarea id="resQuizData" placeholder='[{"question":"What is 2+2?","options":["3","4","5"],"answer":1}]'></textarea>
-                </div>
-                <div class="form-group">
+              </div>
+              <div class="form-group" id="resDueDateGroup" style="display:none;max-width:260px;">
+                <label for="resDueDate">Due date</label>
+                <input id="resDueDate" type="date" />
+              </div>
+              <div class="form-group" id="resQuizGroup" style="display:none;">
+                <label for="resQuizData">Quiz questions (JSON array)</label>
+                <textarea id="resQuizData" rows="3" placeholder='[{"question":"What is 2+2?","options":["3","4","5"],"answer":1}]'></textarea>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:end;" class="admin-two-col">
+                <div class="form-group" style="margin:0;">
                   <label for="resPublishStatus">Status</label>
                   <select id="resPublishStatus">
                     <option value="published">Published (visible to students)</option>
                     <option value="draft">Draft (hidden from students)</option>
                   </select>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="margin:0;">
                   <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
-                    <input type="checkbox" id="resIsFree" style="width:auto;" />
-                    Make this a free preview (visible even without an active subscription/trial)
+                    <input type="checkbox" id="resIsFree" style="width:18px;height:18px;accent-color:var(--teal-500);" /> Free preview (visible without an active plan)
+                  </label>
+                  <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-top:8px;">
+                    <input type="checkbox" id="resPinned" style="width:18px;height:18px;accent-color:var(--teal-500);" /> Pin announcement to top
                   </label>
                 </div>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
                 <button class="btn btn-primary" type="submit" id="resourceSubmitBtn">Publish Resource</button>
                 <button class="btn btn-outline" type="button" id="resourceCancelEditBtn" style="display:none;">Cancel edit</button>
-              </form>
-            </div>
+              </div>
+            </form>
           </div>
-        </section>
 
-        <section class="section">
-          <div class="container">
-            <div class="section-heading">
-              <h2>Manage resources</h2>
-              <p>Search, filter, sort, edit, delete, and publish/unpublish anything you've uploaded.</p>
-            </div>
-            <div id="adminToolbar"></div>
-            <div id="adminResourceTableWrap" style="overflow-x:auto;">
-              <table class="table" style="width:100%;border-collapse:collapse;">
+          <!-- Manage resources -->
+          <div class="card card-pad" style="margin-bottom:28px;">
+            <h3 style="margin-bottom:14px;">Manage resources</h3>
+            <div id="adminToolbar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
+            <div class="table-wrap" id="adminResourceTableWrap">
+              <table class="table" style="width:100%;">
                 <thead>
-                  <tr style="text-align:left;border-bottom:2px solid var(--border,#ddd);">
-                    <th style="padding:8px;">Title</th>
-                    <th style="padding:8px;">Category</th>
-                    <th style="padding:8px;">Subject</th>
-                    <th style="padding:8px;">Status</th>
-                    <th style="padding:8px;">Downloads</th>
-                    <th style="padding:8px;">Uploaded</th>
-                    <th style="padding:8px;">Actions</th>
+                  <tr>
+                    <th>Title</th>
+                    <th>Category</th>
+                    <th>Subject</th>
+                    <th>Topic</th>
+                    <th>Status</th>
+                    <th>Access</th>
+                    <th>Downloads</th>
+                    <th>Views</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
-                <tbody id="adminResourceTableBody">
-                  <tr><td colspan="7" style="padding:12px;">Loading…</td></tr>
-                </tbody>
+                <tbody id="adminResourceTbody"></tbody>
               </table>
             </div>
           </div>
-        </section>
 
-        <section class="section alt-section">
-          <div class="container">
-            <div class="section-heading">
-              <h2>Subscription payments</h2>
-              <p>Students submit these after paying by mobile money. Confirm you actually received the money (check your phone) before approving.</p>
-            </div>
-            <div id="paymentsList" class="info-card">Loading…</div>
+          <!-- Payments -->
+          <div class="card card-pad" style="margin-bottom:28px;">
+            <h3 style="margin-bottom:6px;">Subscription payments</h3>
+            <p style="margin-bottom:16px;">Confirm you actually received the mobile-money payment on your phone before approving.</p>
+            <div id="paymentsList"><p class="loading-text">Loading…</p></div>
           </div>
-        </section>
 
-        <section class="section alt-section">
-          <div class="container">
-            <div class="section-heading">
-              <h2>Students</h2>
-              <p>Everyone who has signed up, with subscription status.</p>
-            </div>
-            <div id="usersList" class="info-card">Loading…</div>
+          <!-- Students -->
+          <div class="card card-pad">
+            <h3 style="margin-bottom:16px;">Students</h3>
+            <div id="usersList"><p class="loading-text">Loading…</p></div>
           </div>
-        </section>
-      </main>
-    </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
     <script src="/js/api.js"></script>
     <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
     <script src="/js/admin.js"></script>
   </body>

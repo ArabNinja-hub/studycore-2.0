@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lesson | StudyCore</title>
+    <meta name="robots" content="noindex, follow" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body data-page="lesson">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero" style="padding:40px 0 32px;">
+        <div class="container">
+          <nav class="breadcrumb" id="lessonBreadcrumb" aria-label="Breadcrumb">
+            <a href="/">StudyCore</a>
+            <span class="sep" aria-hidden="true"></span>
+            <a href="/pages/courses.html">Courses</a>
+          </nav>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <span class="card-icon" id="lessonIcon" style="width:52px;height:52px;"></span>
+            <div style="min-width:0;">
+              <h1 id="lessonTitle" style="font-size:clamp(1.5rem,3.4vw,2.2rem);">Loading lesson…</h1>
+              <p id="lessonMeta" style="margin-top:4px;"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section-tight" style="padding-top:34px;">
+        <div class="container">
+          <div id="lessonLoading">
+            <div class="skeleton" style="height:380px;border-radius:20px;margin-bottom:24px;"></div>
+            <div class="skeleton skeleton-text w80"></div>
+            <div class="skeleton skeleton-text w60"></div>
+          </div>
+          <div id="lessonContent" hidden>
+            <div class="lesson-layout">
+              <div>
+                <!-- Player / viewer -->
+                <div id="lessonPlayerHost" style="margin-bottom:24px;"></div>
+
+                <!-- About this lesson -->
+                <div class="card card-pad" style="margin-bottom:20px;" id="aboutCard"></div>
+
+                <!-- Key concepts -->
+                <div class="card card-pad" style="margin-bottom:20px;" id="conceptsCard" hidden>
+                  <h3 style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+                    <span style="color:var(--teal-600);display:inline-flex;"></span> Key concepts
+                  </h3>
+                  <ul class="key-concepts" id="keyConcepts"></ul>
+                </div>
+
+                <!-- Related resources -->
+                <div class="card card-pad" style="margin-bottom:20px;" id="relatedCard" hidden>
+                  <h3 style="margin-bottom:6px;">Related resources</h3>
+                  <p style="margin-bottom:16px;">More from this topic — notes, tutorials and past papers to go with this lesson.</p>
+                  <div class="resource-grid" id="relatedGrid" style="grid-template-columns:repeat(2,minmax(0,1fr));"></div>
+                </div>
+
+                <!-- Complete / continue bar -->
+                <div class="complete-bar" id="completeBar"></div>
+              </div>
+
+              <aside class="lesson-sidebar">
+                <div class="card lesson-nav-card" id="navCard"></div>
+                <div class="card card-pad" id="topicProgressCard" hidden></div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/player.js"></script>
+    <script src="/js/lesson.js"></script>
+  </body>
+</html>

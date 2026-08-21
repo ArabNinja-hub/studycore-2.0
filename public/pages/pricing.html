@@ -3,69 +3,132 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Pricing | StudyCore</title>
-    <link rel="stylesheet" href="../css/style.css" />
+    <title>StudyCore Premium | StudyCore</title>
+    <meta name="description" content="StudyCore Premium: unlimited access to all video lessons, study notes, tutorial sheets and past papers across every course. K50 for 30 days, pay by MTN MoMo or Airtel Money." />
+    <link rel="canonical" href="https://studycore.academy/pages/pricing.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="StudyCore Premium" />
+    <meta property="og:description" content="Unlock every video lesson, note and past paper across all StudyCore courses." />
+    <meta property="og:url" content="https://studycore.academy/pages/pricing.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <div class="top-bar">💳 StudyCore offers a free student experience for now, with practical plans coming soon.</div>
-      <nav class="navbar">
-        <div class="container nav-inner">
-          <a href="../index.html" class="nav-brand">
-            <img src="../assets/logo.jpg" alt="StudyCore Logo" />
-            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
-          </a>
-          <ul class="nav-links">
-            <li><a href="../index.html">Home</a></li>
-            <li><a href="about.html">About</a></li>
-            <li><a href="courses.html">Courses</a></li>
-            <li><a href="documents.html">Documents</a></li>
-            <li><a href="videos.html">Videos</a></li>
-            <li><a class="active" href="pricing.html">Pricing</a></li>
-            <li><a href="/dashboard.html">Dashboard</a></li>
-            <li><a href="announcements.html">Announcements</a></li>
-            <li><a href="contact.html">Contact</a></li>
-          </ul>
-          <div class="nav-actions">
-            <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
-            <a class="btn btn-primary btn-sm" href="/signup.html">Sign Up</a>
+  <body data-page="premium">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="eyebrow">Pricing</span>
+          <h1>StudyCore Premium</h1>
+          <p>
+            One plan, every course. Premium unlocks all video lessons, every study note,
+            tutorial sheet and past paper — across the entire platform.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container" style="max-width:980px;">
+          <div style="display:grid;grid-template-columns:1fr 1.1fr;gap:24px;align-items:stretch;" id="plansGrid">
+            <!-- Free trial -->
+            <div class="card card-pad" style="display:flex;flex-direction:column;">
+              <span class="badge" style="align-self:flex-start;">Free Trial</span>
+              <h2 style="margin:14px 0 6px;">Start learning today</h2>
+              <div style="font-family:var(--font-display);font-weight:800;font-size:2.2rem;">K0 <small style="font-size:1rem;color:var(--muted);font-weight:600;">/ 30 days</small></div>
+              <ul class="premium-perks" style="margin:20px 0;">
+                <li data-perk>Access to study notes and documents</li>
+                <li data-perk>Course structure, topics and past paper access during trial</li>
+                <li data-perk>Progress tracking, streaks and achievements</li>
+                <li data-perk>Video lessons locked (Premium content)</li>
+              </ul>
+              <div id="trialCta" style="margin-top:auto;"></div>
+            </div>
+
+            <!-- Premium -->
+            <div class="premium-card" style="display:flex;flex-direction:column;">
+              <span class="badge badge-amber" style="align-self:flex-start;background:rgba(245,166,35,0.16);color:#ffd080;border-color:rgba(245,166,35,0.4);">
+                StudyCore Premium
+              </span>
+              <h2 style="margin:14px 0 6px;color:#fff;">The full experience</h2>
+              <div class="premium-price" style="margin-top:6px;">K50 <small>/ 30 days</small></div>
+              <ul class="premium-perks" style="margin:20px 0;">
+                <li data-perk>Unlimited video lessons in every course</li>
+                <li data-perk>All study notes, tutorial sheets and past papers</li>
+                <li data-perk>Video resume position and completion tracking</li>
+                <li data-perk>Full progress across all six courses</li>
+                <li data-perk>Priority access to new content</li>
+              </ul>
+              <div id="premiumCta" style="margin-top:auto;"></div>
+            </div>
+          </div>
+
+          <!-- How payment works -->
+          <div class="card card-pad" style="margin-top:28px;" id="payHowCard">
+            <h3 style="display:flex;align-items:center;gap:10px;" id="payHowTitle">How to pay</h3>
+            <p style="margin:10px 0 16px;" id="payHowText">
+              Payments are made by mobile money and confirmed by the StudyCore team. After you
+              send the payment, submit your reference from your dashboard — once confirmed,
+              Premium activates immediately.
+            </p>
+            <div class="pay-methods" id="payMethods" hidden></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;" id="payHowCta"></div>
           </div>
         </div>
-      </nav>
+      </section>
+    </main>
 
-      <main class="page-main">
-        <section class="page-hero">
-          <div class="container">
-            <h1>Subscription and Pricing</h1>
-            <p>Students can enjoy a free and complete learning experience for now, with future premium plans in development.</p>
-            <div class="page-actions">
-              <a class="btn btn-primary" href="/dashboard.html">Open Dashboard</a>
-              <button class="btn btn-outline" onclick="history.back()">← Back</button>
-            </div>
-            <div id="accessNotice" class="access-notice"></div>
-          </div>
-        </section>
+    <div id="siteFooter"></div>
 
-        <section class="section">
-          <div class="container card-grid">
-            <div class="info-card">
-              <h3>🆓 Free Plan</h3>
-              <p>Access the full student dashboard, resources, and learning pages completely free.</p>
-            </div>
-            <div class="info-card">
-              <h3>🌟 Premium Plan</h3>
-              <p>Coming soon with deeper study packs, live tutoring support, and advanced revision tools.</p>
-              <button class="btn btn-primary" id="subscribeBtn" type="button">Subscribe for K50/month</button>
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
-    <script src="../js/api.js"></script>
-    <script src="../js/auth.js"></script>
-    <script src="../js/main.js"></script>
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        // iconify perks
+        document.querySelectorAll('[data-perk]').forEach((li) => {
+          li.insertAdjacentHTML('afterbegin', SC.icon('check', { size: 16 }));
+        });
+        const user = await StudyCoreAuth.fetchSession();
+        const premiumCta = document.getElementById('premiumCta');
+        const trialCta = document.getElementById('trialCta');
+        const payHowCta = document.getElementById('payHowCta');
+
+        if (user) {
+          // Already logged in -> straight to the dashboard Premium payment section
+          premiumCta.innerHTML = `<a class="btn btn-amber btn-lg btn-block" href="/dashboard.html#premium">${SC.icon('crown', { size: 18 })} Go to Premium Payment</a>`;
+          trialCta.innerHTML = `<a class="btn btn-outline btn-lg btn-block" href="/dashboard.html">Open My Dashboard</a>`;
+          payHowCta.innerHTML = `<a class="btn btn-primary btn-sm" href="/dashboard.html#premium">Continue to payment</a>`;
+          try {
+            const info = await StudyCoreAPI.paymentInfo();
+            const methods = document.getElementById('payMethods');
+            methods.hidden = false;
+            document.getElementById('payHowText').textContent = `Send K${info.amount} to one of the numbers below from your own mobile money account, then submit the reference from your dashboard.`;
+            methods.innerHTML = info.payTo.numbers.map((n) => `
+              <div class="pay-method">
+                <div>
+                  <strong>${escapeHtml(n.method)}</strong>
+                  <small>${escapeHtml(n.name)}</small>
+                </div>
+                <span class="number" style="margin-left:auto;">${escapeHtml(n.phone)}</span>
+              </div>`).join('');
+          } catch { /* generic copy remains */ }
+        } else {
+          // Not logged in -> create account first, then the dashboard Premium section
+          premiumCta.innerHTML = `<a class="btn btn-amber btn-lg btn-block" href="/signup.html">${SC.icon('user-plus', { size: 18 })} Create Account, Then Upgrade</a>`;
+          trialCta.innerHTML = `<a class="btn btn-primary btn-lg btn-block" href="/signup.html">Start Free Trial</a>
+            <p style="font-size:0.8rem;text-align:center;margin-top:10px;">Already have an account? <a href="/login.html">Log in</a></p>`;
+          payHowCta.innerHTML = `<a class="btn btn-outline btn-sm" href="/login.html">Log In to Continue</a>`;
+        }
+      });
+    </script>
+    <style>@media (max-width:860px){ #plansGrid{grid-template-columns:1fr !important;} }</style>
   </body>
 </html>

@@ -1,24 +1,51 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const { GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const db = require('../db');
 const { createToken, setAuthCookie, clearAuthCookie, requireAuth } = require('../middleware/auth');
+const { r2, bucketName } = require('../lib/r2');
+const { avatarUpload } = require('../middleware/upload');
 
 const router = express.Router();
 
 function publicUser(user) {
   if (!user) return null;
-  const { password, ...safe } = user;
-  return safe;
+  const { password, avatar_key, ...safe } = user;
+  // Only expose that a picture exists - never the storage key itself.
+  return { ...safe, hasAvatar: Boolean(avatar_key) };
 }
 
+// Single source of truth for "what plan is this student on right now".
+// Everything is computed from the server clock + the users table on each
+// call, so clients can neither reset nor fake any of these states.
 function subscriptionStatus(user) {
   const now = Date.now();
   const trialEnd = new Date(user.trial_end || 0).getTime();
   const subEnd = new Date(user.subscription_end || 0).getTime();
   const active = user.role === 'ADMIN' || (user.subscription === 'premium' && now < subEnd);
   const inTrial = user.role !== 'ADMIN' && !active && now < trialEnd;
-  return { active, inTrial, trialEnd: user.trial_end, subscriptionEnd: user.subscription_end };
+  const paymentPending = Boolean(
+    db.prepare(`SELECT 1 x FROM payments WHERE user_id = ? AND status = 'PENDING'`).get(user.id)
+  );
+
+  let state;
+  if (user.role === 'ADMIN') state = 'premium_active';
+  else if (active) state = 'premium_active';
+  else if (user.subscription === 'premium') state = paymentPending ? 'payment_pending' : 'premium_expired';
+  else if (inTrial) state = 'trial_active';
+  else state = 'trial_expired';
+
+  return {
+    active,
+    inTrial,
+    paymentPending,
+    state,
+    trialEnd: user.trial_end,
+    subscriptionEnd: user.subscription_end,
+    trialDaysLeft: inTrial ? Math.max(0, Math.ceil((trialEnd - now) / 86400000)) : 0,
+    subscriptionDaysLeft: active && user.role !== 'ADMIN' ? Math.max(0, Math.ceil((subEnd - now) / 86400000)) : 0
+  };
 }
 
 router.post('/register', async (req, res) => {
@@ -210,6 +237,94 @@ router.get('/config', requireAuth, (req, res) => {
   res.json({
     maxUploadMB: Number(process.env.MAX_UPLOAD_MB || 2000)
   });
+});
+
+// ---------------------------------------------------------------------------
+// Profile pictures
+//
+// Uploads stream to R2 under avatars/<userId> (the strict avatarUpload
+// config in middleware/upload.js limits the file to real image extensions and
+// 4MB). The extension check alone is NOT trusted - after the stream lands we
+// fetch the first 16 bytes back from storage and verify the image signature
+// (PNG/JPEG/WebP magic bytes). A mismatch means the object is deleted and
+// the request fails, so the avatar pipeline cannot be used to store
+// disguised files in the bucket.
+// ---------------------------------------------------------------------------
+
+const IMAGE_SIGNATURES = [
+  { name: 'png', bytes: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], offset: 0 },
+  { name: 'jpeg', bytes: [0xff, 0xd8, 0xff], offset: 0 },
+  // WebP: "RIFF" at 0 and "WEBP" at 8
+  { name: 'webp', bytes: [0x52, 0x49, 0x46, 0x46], offset: 0, bytes2: [0x57, 0x45, 0x42, 0x50], offset2: 8 }
+];
+
+function verifyImageSignature(head) {
+  for (const sig of IMAGE_SIGNATURES) {
+    const ok1 = sig.bytes.every((b, i) => head[i + sig.offset] === b);
+    if (!ok1) continue;
+    if (sig.bytes2 && !sig.bytes2.every((b, i) => head[i + sig.offset2] === b)) continue;
+    return true;
+  }
+  return false;
+}
+
+router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  if (!req.file) return res.status(400).json({ message: 'Please choose an image file to upload.' });
+
+  try {
+    // Pull the first 16 bytes back from storage and check the real signature.
+    const headCmd = new GetObjectCommand({ Bucket: bucketName, Key: req.file.key, Range: 'bytes=0-15' });
+    const headObj = await r2.send(headCmd);
+    const head = Buffer.from(await headObj.Body.transformToByteArray());
+    if (!verifyImageSignature(head)) {
+      r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: req.file.key })).catch(() => {});
+      return res.status(400).json({ message: 'That file is not a valid image. Upload a PNG, JPEG or WebP picture.' });
+    }
+  } catch (err) {
+    r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: req.file.key })).catch(() => {});
+    return res.status(502).json({ message: 'Could not verify the uploaded image. Please try again.' });
+  }
+
+  // Replace any previous picture (fire-and-forget delete of the old object).
+  if (user.avatar_key && user.avatar_key !== req.file.key) {
+    r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: user.avatar_key })).catch(() => {});
+  }
+
+  db.prepare('UPDATE users SET avatar_key = ? WHERE id = ?').run(req.file.key, user.id);
+  const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  res.status(201).json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
+});
+
+router.delete('/avatar', requireAuth, async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  if (user.avatar_key) {
+    r2.send(new DeleteObjectCommand({ Bucket: bucketName, Key: user.avatar_key })).catch(() => {});
+  }
+  db.prepare('UPDATE users SET avatar_key = NULL WHERE id = ?').run(user.id);
+  const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  res.json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
+});
+
+// Serves the student's own picture for display (nav, dashboard, profile).
+// Authenticated and scoped to the caller's own row - there is no route that
+// accepts another user's id.
+router.get('/avatar', requireAuth, async (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user || !user.avatar_key) return res.status(404).json({ message: 'No profile picture set.' });
+  try {
+    const command = new GetObjectCommand({ Bucket: bucketName, Key: user.avatar_key });
+    const object = await r2.send(command);
+    res.setHeader('Content-Type', object.ContentType || 'image/png');
+    res.setHeader('Content-Disposition', 'inline; filename="avatar"');
+    res.setHeader('Cache-Control', 'no-cache');
+    object.Body.pipe(res);
+    object.Body.on('error', () => { if (!res.headersSent) res.status(500); res.end(); });
+  } catch {
+    res.status(404).json({ message: 'Profile picture is temporarily unavailable.' });
+  }
 });
 
 router.get('/payment-info', requireAuth, (req, res) => {

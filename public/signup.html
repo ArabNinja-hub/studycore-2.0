@@ -3,109 +3,131 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Sign Up | StudyCore</title>
-    <link rel="stylesheet" href="css/style.css" />
+    <title>Create Account | StudyCore</title>
+    <meta name="description" content="Create a free StudyCore account and start your 30-day trial — courses, lessons, study notes and past papers." />
+    <meta name="robots" content="noindex, follow" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <nav class="navbar">
-        <div class="container nav-inner">
-          <a href="index.html" class="nav-brand"><span>Study</span><span>Core</span></a>
-        </div>
-      </nav>
-      <main class="page-main">
-        <section class="section">
-          <div class="container" style="max-width: 480px; margin: 60px auto;">
-            <div class="info-card">
-              <h2>Create your student account</h2>
-              <p>Start your 30-day free trial - no payment required.</p>
-              <div id="referralBanner" style="display:none;background:rgba(26,158,143,0.1);border:1px solid rgba(26,158,143,0.3);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.9rem;"></div>
-              <form id="signupForm" class="upload-form" novalidate>
-                <div class="form-group">
-                  <label for="name">Full name</label>
-                  <input id="name" type="text" required autocomplete="name" />
-                </div>
-                <div class="form-group">
-                  <label for="email">Email</label>
-                  <input id="email" type="email" required autocomplete="email" />
-                </div>
-                <div class="form-group">
-                  <label for="password">Password</label>
-                  <div class="password-field-wrap">
-                    <input id="password" type="password" required autocomplete="new-password" minlength="6" />
-                    <button type="button" class="password-toggle-btn" data-toggle-password="password" aria-label="Show password">
-                      <svg class="pw-eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
-                      <svg class="pw-eye-closed" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18M10.6 10.7a3.2 3.2 0 0 0 4.5 4.5M7.4 7.5C4.7 9 2.9 12 2.9 12s3.5 7 9.1 7c1.7 0 3.2-.5 4.4-1.2M12.2 5c6.4-.2 9.9 7 9.9 7a15 15 0 0 1-2.5 3.3"/></svg>
-                    </button>
-                  </div>
-                  <span style="font-size:0.8rem;opacity:0.7;">At least 6 characters</span>
-                </div>
-                <div class="form-group">
-                  <label for="learningLevel">Learning level</label>
-                  <select id="learningLevel">
-                    <option value="secondary">Secondary school</option>
-                    <option value="tertiary">University / Tertiary</option>
-                  </select>
-                </div>
-                <div id="signupError" style="color:#D64545;display:none;font-size:0.9rem;"></div>
-                <button class="btn btn-primary" type="submit" id="signupSubmitBtn">Create account</button>
-              </form>
-              <p style="margin-top: 12px;">Already have an account? <a href="login.html">Log in</a></p>
+  <body data-page="auth">
+    <div id="siteNav"></div>
+
+    <main>
+      <div class="auth-wrap">
+        <div class="card auth-card">
+          <h1>Create your account</h1>
+          <p class="auth-sub">Start your 30-day free trial — no payment required.</p>
+          <div class="auth-trial-note" id="referralBanner" style="display:none;"></div>
+          <form id="signupForm" novalidate>
+            <div class="form-group">
+              <label for="name">Full name</label>
+              <input id="name" name="name" type="text" required autocomplete="name" />
             </div>
-          </div>
-        </section>
-      </main>
-    </div>
-    <script src="js/api.js"></script>
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" required autocomplete="email" />
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <div class="password-field-wrap">
+                <input id="password" name="password" type="password" required autocomplete="new-password" minlength="6" />
+                <button type="button" class="password-toggle-btn" data-toggle-password="password" aria-label="Show password">
+                  <svg class="pw-eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+                  <svg class="pw-eye-closed" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18M10.6 10.7a3.2 3.2 0 0 0 4.5 4.5M7.4 7.5C4.7 9 2.9 12 2.9 12s3.5 7 9.1 7c1.7 0 3.2-.5 4.4-1.2M12.2 5c6.4-.2 9.9 7 9.9 7a15 15 0 0 1-2.5 3.3"/></svg>
+                </button>
+              </div>
+              <div class="hint">At least 6 characters.</div>
+            </div>
+            <div class="form-group">
+              <label for="learningLevel">Learning level</label>
+              <select id="learningLevel" name="learningLevel">
+                <option value="secondary">Secondary school</option>
+                <option value="tertiary">University / Tertiary</option>
+              </select>
+            </div>
+            <div class="form-group" id="refGroup" style="display:none;">
+              <label for="ref">Friend's invite code (optional)</label>
+              <input id="ref" name="ref" type="text" placeholder="6 characters" />
+              <div class="hint">You'll both get 7 bonus trial days.</div>
+            </div>
+            <div class="checkbox-row" style="margin:4px 0 14px;">
+              <input type="checkbox" id="agreeTerms" />
+              <label for="agreeTerms" style="font-weight:500;color:var(--muted);">I agree to the <a href="/pages/terms.html">Terms &amp; Conditions</a> and <a href="/pages/privacy.html">Privacy Policy</a></label>
+            </div>
+            <div id="signupError" style="color:var(--red-600);display:none;font-size:0.88rem;margin-bottom:12px;"></div>
+            <button class="btn btn-primary btn-block btn-lg" type="submit" id="signupSubmitBtn">Create account</button>
+          </form>
+          <p style="margin-top:16px;text-align:center;font-size:0.92rem;">
+            Already have an account? <a href="/login.html">Log in</a>
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
     <script>
-      const refCode = new URLSearchParams(window.location.search).get('ref');
-      if (refCode) {
-        const banner = document.getElementById('referralBanner');
-        banner.textContent = `🎉 You were invited by a friend! Sign up now and you'll both get 7 bonus days of full access.`;
-        banner.style.display = 'block';
-      }
+      document.addEventListener('DOMContentLoaded', () => {
+        // Referral invite landing
+        const refCode = new URLSearchParams(window.location.search).get('ref');
+        if (refCode) {
+          const banner = document.getElementById('referralBanner');
+          banner.style.display = 'flex';
+          banner.innerHTML = `${SC.icon('sparkles', { size: 18 })}<span>You were invited by a friend — enter the invite code below to get 7 bonus trial days.</span>`;
+          document.getElementById('refGroup').style.display = '';
+          document.getElementById('ref').value = refCode;
+        }
 
-      document.querySelectorAll('[data-toggle-password]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const input = document.getElementById(btn.getAttribute('data-toggle-password'));
-          const showing = input.type === 'text';
-          input.type = showing ? 'password' : 'text';
-          btn.querySelector('.pw-eye-open').style.display = showing ? '' : 'none';
-          btn.querySelector('.pw-eye-closed').style.display = showing ? 'none' : '';
-          btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+        document.querySelectorAll('[data-toggle-password]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const input = document.getElementById(btn.getAttribute('data-toggle-password'));
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            btn.querySelector('.pw-eye-open').style.display = showing ? '' : 'none';
+            btn.querySelector('.pw-eye-closed').style.display = showing ? 'none' : '';
+            btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+          });
         });
-      });
 
-      const form = document.getElementById('signupForm');
-      const errorBox = document.getElementById('signupError');
-      form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        errorBox.style.display = 'none';
-        const name = document.getElementById('name').value.trim();
-        const email = document.getElementById('email').value.trim();
-        const password = document.getElementById('password').value;
-        const learningLevel = document.getElementById('learningLevel').value;
-        if (!name || !email || password.length < 6) {
-          errorBox.textContent = 'Please fill in every field. Passwords need at least 6 characters.';
-          errorBox.style.display = 'block';
-          return;
-        }
-        const btn = document.getElementById('signupSubmitBtn');
-        btn.disabled = true;
-        btn.textContent = 'Creating account...';
-        try {
-          const data = await StudyCoreAPI.register({ name, email, password, learningLevel, ref: refCode });
-          try { sessionStorage.setItem('sc_show_welcome', JSON.stringify({ name: (data.user && data.user.name) || name, type: 'signup' })); } catch { /* not fatal - transition just won't show */ }
-          window.location.href = '/dashboard.html';
-        } catch (err) {
-          errorBox.textContent = err.message;
-          errorBox.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = 'Create account';
-        }
+        const form = document.getElementById('signupForm');
+        const errorBox = document.getElementById('signupError');
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          errorBox.style.display = 'none';
+          const name = document.getElementById('name').value.trim();
+          const email = document.getElementById('email').value.trim();
+          const password = document.getElementById('password').value;
+          const learningLevel = document.getElementById('learningLevel').value;
+          const ref = document.getElementById('ref').value.trim();
+          const agree = document.getElementById('agreeTerms').checked;
+          if (!name || !email || password.length < 6) {
+            errorBox.textContent = 'Please fill in every field. Passwords need at least 6 characters.';
+            errorBox.style.display = 'block';
+            return;
+          }
+          if (!agree) {
+            errorBox.textContent = 'Please accept the Terms & Conditions and Privacy Policy to continue.';
+            errorBox.style.display = 'block';
+            return;
+          }
+          const btn = document.getElementById('signupSubmitBtn');
+          btn.disabled = true;
+          btn.textContent = 'Creating your account…';
+          try {
+            const data = await StudyCoreAPI.register({ name, email, password, learningLevel, ref: ref || undefined });
+            StudyCoreAuth.setWelcomeFlag(data.user.name, 'signup');
+            window.location.href = StudyCoreAuth.getDashboardPage(data.user);
+          } catch (err) {
+            errorBox.textContent = err.message;
+            errorBox.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Create account';
+          }
+        });
       });
     </script>
   </body>

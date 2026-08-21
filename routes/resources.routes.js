@@ -1,9 +1,12 @@
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const db = require('../db');
-const { requireAuth, attachUser } = require('../middleware/auth');
+const { requireAuth, COOKIE_NAME } = require('../middleware/auth');
 const { r2, bucketName } = require('../lib/r2');
+
+const JWT_SECRET = process.env.JWT_SECRET || 'studycore-dev-secret-change-me';
 
 const router = express.Router();
 
@@ -15,6 +18,7 @@ function serializeResource(row) {
     category: row.category,
     subject: row.subject,
     course: row.course,
+    topic: row.topic || null,
     yearLevel: row.year_level,
     semester: row.semester,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
@@ -26,6 +30,7 @@ function serializeResource(row) {
     quizData: row.quiz_data ? JSON.parse(row.quiz_data) : null,
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
+    pinned: Boolean(row.pinned),
     publishStatus: row.publish_status,
     downloadCount: row.download_count,
     viewCount: row.view_count,
@@ -34,23 +39,54 @@ function serializeResource(row) {
   };
 }
 
-// A resource is freely accessible without an active subscription/trial if
-// it's an announcement (always has been) or if an admin has explicitly
-// flagged it as a free preview (is_premium = 0).
-function isFreelyAccessible(row) {
-  return row.category === 'announcement' || !row.is_premium;
+// ---------------------------------------------------------------------------
+// ACCESS MODEL (enforced server-side on every content request)
+//
+//   premium = ADMIN, or STUDENT with subscription='premium' that has not
+//             expired (checked against the clock on every request, never
+//             trusted from the client).
+//   trial   = STUDENT who is not premium but whose server-stored trial_end
+//             is still in the future.
+//
+//   Video lessons   -> premium ONLY. A trial (or expired) student never
+//                      receives a video source, at any point.
+//   Documents/notes -> premium OR active trial. Free previews (is_premium=0)
+//                      and announcements are open to every logged-in student.
+//
+// The client never decides any of this - it only reflects it.
+// ---------------------------------------------------------------------------
+
+function accessFor(user) {
+  const now = Date.now();
+  const subEnd = new Date(user.subscription_end || 0).getTime();
+  const trialEnd = new Date(user.trial_end || 0).getTime();
+  const premium = user.role === 'ADMIN' || (user.subscription === 'premium' && now < subEnd);
+  const trial = !premium && user.role === 'STUDENT' && now < trialEnd;
+  return { user, premium, trial };
 }
 
-function subscriptionGate(req, res, next) {
+function gate(req, res, next) {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
-  const now = Date.now();
-  const trialEnd = new Date(user.trial_end || 0).getTime();
-  const subEnd = new Date(user.subscription_end || 0).getTime();
-  const active = user.role === 'ADMIN' || (user.subscription === 'premium' && now < subEnd);
-  const inTrial = user.role !== 'ADMIN' && !active && now < trialEnd;
-  req.subscriptionOk = active || inTrial || user.role === 'ADMIN';
+  req.user = user; // freshest row - never act on the token payload alone
+  req.access = accessFor(user);
   next();
+}
+
+// Can this student open this specific resource right now?
+function canAccess(row, access) {
+  if (row.category === 'announcement') return true;
+  if (!row.is_premium) return true; // free preview
+  if (row.category === 'video') return access.premium; // videos are Premium-only, always
+  return access.premium || access.trial; // documents, tutorials, past papers
+}
+
+// Why it's locked (drives the exact upgrade message the student sees):
+// 'video' -> Premium Video wall; 'premium' -> trial expired wall.
+function lockReason(row, access) {
+  if (row.category === 'video' && !access.premium) return 'video';
+  if (!access.premium && !access.trial) return 'premium';
+  return null;
 }
 
 // Fetches an object from R2 and pipes it to the response. Honors HTTP Range
@@ -59,6 +95,10 @@ function subscriptionGate(req, res, next) {
 // same Range header straight through to R2's GetObjectCommand - without
 // this, video playback would still start fine but skipping ahead in the
 // player wouldn't work properly.
+//
+// Protected media is streamed with no-store so neither the browser nor any
+// intermediate proxy is encouraged to cache a chunk of Premium content that
+// only this authorized session was allowed to fetch.
 async function streamR2Object(req, res, key, { disposition, filename, mimeType }) {
   try {
     const command = new GetObjectCommand({
@@ -76,6 +116,11 @@ async function streamR2Object(req, res, key, { disposition, filename, mimeType }
       ? `attachment; filename="${(filename || key).replace(/"/g, '')}"`
       : 'inline';
     res.setHeader('Content-Disposition', dispositionValue);
+    // Never cacheable, never indexable: this stream only exists for the
+    // authorized session that just asked for it.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('X-Robots-Tag', 'noindex, noarchive, nosnippet');
 
     if (object.ContentRange) {
       res.status(206);
@@ -95,27 +140,41 @@ async function streamR2Object(req, res, key, { disposition, filename, mimeType }
   }
 }
 
+function lockedResponse(res, reason) {
+  const messages = {
+    video: 'Video lessons are available exclusively to StudyCore Premium students. Upgrade to unlock this video.',
+    premium: 'Your free access period has ended. Upgrade to StudyCore Premium to continue reading this resource.'
+  };
+  return res.status(403).json({ message: messages[reason] || 'This content is not available with your current plan.', locked: true, lockReason: reason });
+}
+
 // GET /api/resources?category=&subject=&course=&year=&semester=&search=&sort=&page=&pageSize=
-router.get('/', requireAuth, subscriptionGate, (req, res) => {
-  const { category, excludeCategory, subject, course, year, semester, search, sort = 'newest', page = 1, pageSize = 24 } = req.query;
+//
+// Returns every PUBLISHED resource (admins' drafts never appear) with a
+// `locked` flag computed per the student's current server-side access.
+// Locked items are listed so the UI can show an honest "Premium" upgrade
+// card - but their files are still only served after the checks above.
+router.get('/', requireAuth, gate, (req, res) => {
+  const { category, excludeCategory, subject, course, topic, year, semester, search, sort = 'newest', page = 1, pageSize = 24 } = req.query;
+
+  // category / excludeCategory accept comma-separated lists
+  // (e.g. excludeCategory=video,quiz,assignment)
+  const cats = String(category || '').split(',').map((c) => c.trim()).filter(Boolean);
+  const excluded = String(excludeCategory || '').split(',').map((c) => c.trim()).filter(Boolean);
 
   const clauses = [`publish_status = 'published'`];
   const params = {};
-  // Without an active subscription/trial, only announcements and resources
-  // an admin has explicitly flagged as free previews are visible - rather
-  // than blocking the whole request, this narrows the results so a free
-  // preview genuinely shows up when browsing.
-  if (!req.subscriptionOk) {
-    clauses.push(`(category = 'announcement' OR is_premium = 0)`);
-  }
-  if (category) { clauses.push('category = @category'); params.category = category; }
-  if (excludeCategory) { clauses.push('category != @excludeCategory'); params.excludeCategory = excludeCategory; }
+  if (cats.length === 1) { clauses.push('category = @category'); params.category = cats[0]; }
+  else if (cats.length > 1) { clauses.push(`category IN (${cats.map((_, i) => `@cat${i}`).join(',')})`); cats.forEach((c, i) => { params[`cat${i}`] = c; }); }
+  if (excluded.length === 1) { clauses.push('category != @excluded'); params.excluded = excluded[0]; }
+  else if (excluded.length > 1) { clauses.push(`category NOT IN (${excluded.map((_, i) => `@exc${i}`).join(',')})`); excluded.forEach((c, i) => { params[`exc${i}`] = c; }); }
   if (subject) { clauses.push('LOWER(subject) = LOWER(@subject)'); params.subject = subject; }
   if (course) { clauses.push('course = @course'); params.course = course; }
+  if (topic) { clauses.push('LOWER(topic) = LOWER(@topic)'); params.topic = topic; }
   if (year) { clauses.push('year_level = @year'); params.year = year; }
   if (semester) { clauses.push('semester = @semester'); params.semester = semester; }
   if (search) {
-    clauses.push('(title LIKE @search OR description LIKE @search OR subject LIKE @search OR tags LIKE @search)');
+    clauses.push('(title LIKE @search OR description LIKE @search OR subject LIKE @search OR tags LIKE @search OR topic LIKE @search)');
     params.search = `%${search}%`;
   }
 
@@ -134,30 +193,91 @@ router.get('/', requireAuth, subscriptionGate, (req, res) => {
   const total = db.prepare(`SELECT COUNT(*) as count FROM resources ${where}`).get(params).count;
   const rows = db.prepare(`SELECT * FROM resources ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`).all(params);
 
-  res.json({ resources: rows.map(serializeResource), total, page: Number(page), pageSize: limit });
+  res.json({
+    resources: rows.map((row) => ({
+      ...serializeResource(row),
+      locked: canAccess(row, req.access) ? null : lockReason(row, req.access),
+      completed: db.prepare('SELECT 1 AS x FROM lesson_progress WHERE user_id = ? AND resource_id = ?').get(req.user.id, row.id) ? true : false
+    })),
+    total,
+    page: Number(page),
+    pageSize: limit,
+    access: { premium: req.access.premium, trial: req.access.trial }
+  });
 });
 
-router.get('/:id/stream', requireAuth, subscriptionGate, async (req, res) => {
+router.get('/:id/stream', requireAuth, gate, async (req, res) => {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
-  if (!req.subscriptionOk && !isFreelyAccessible(row)) {
-    return res.status(403).json({ message: 'Your trial has ended. Subscribe to unlock this content.', locked: true });
-  }
-  if (!row.stored_name) return res.status(404).json({ message: 'This resource has no previewable file.' });
+  if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
+  if (!row.stored_name && !row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
+  if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
   await streamR2Object(req, res, row.stored_name, { disposition: 'inline', mimeType: row.mime_type });
 });
 
-router.get('/bookmarks/mine', requireAuth, (req, res) => {
+// ---- Video playback progress (server-stored resume position) ---------------
+//
+// Only Premium-authorized video playback may read or write progress: the
+// resume position of a protected video is itself protected content, so a
+// trial/expired student querying it gets the same 403 as the stream.
+
+router.post('/:id/video-progress', requireAuth, gate, (req, res) => {
+  const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
+  if (!row || row.category !== 'video') return res.status(404).json({ message: 'Video lesson not found.' });
+  if (!canAccess(row, req.access)) return lockedResponse(res, 'video');
+
+  const { position, duration } = req.body || {};
+  const pos = Number(position);
+  const dur = Number(duration);
+  // Reject garbage before it ever touches the database - a position is a
+  // sane number of seconds, bounded to a 6-hour "video".
+  if (!Number.isFinite(pos) || !Number.isFinite(dur) || pos < 0 || dur <= 0 || dur > 21600 || pos > dur) {
+    return res.status(400).json({ message: 'Invalid playback position.' });
+  }
+
+  const now = new Date().toISOString();
+  try {
+    db.prepare(`
+      INSERT INTO video_progress (id, user_id, resource_id, position, duration, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, resource_id) DO UPDATE SET position = excluded.position, duration = excluded.duration, updated_at = excluded.updated_at
+    `).run(`vp-${uuidv4()}`, req.user.id, row.id, pos, dur, now);
+  } catch (err) {
+    return res.status(500).json({ message: 'Could not save your position.' });
+  }
+
+  // 90% of the way through counts as having watched the lesson - the
+  // completion itself is the real progress record, written server-side.
+  if (pos / dur >= 0.9) {
+    try {
+      db.prepare('INSERT INTO lesson_progress (id, user_id, resource_id, completed_at) VALUES (?, ?, ?, ?)')
+        .run(`lp-${uuidv4()}`, req.user.id, row.id, now);
+    } catch { /* already complete - idempotent */ }
+  }
+
+  res.json({ message: 'Position saved.' });
+});
+
+router.get('/:id/video-progress', requireAuth, gate, (req, res) => {
+  const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
+  if (!row || row.category !== 'video') return res.status(404).json({ message: 'Video lesson not found.' });
+  if (!canAccess(row, req.access)) return lockedResponse(res, 'video');
+
+  const saved = db.prepare('SELECT position, duration, updated_at FROM video_progress WHERE user_id = ? AND resource_id = ?').get(req.user.id, row.id);
+  res.json({ position: saved ? saved.position : 0, duration: saved ? saved.duration : 0, updatedAt: saved ? saved.updated_at : null });
+});
+
+router.get('/bookmarks/mine', requireAuth, gate, (req, res) => {
   const rows = db.prepare(`
     SELECT r.* FROM bookmarks b
     JOIN resources r ON r.id = b.resource_id
     WHERE b.user_id = ? AND r.publish_status = 'published'
     ORDER BY b.created_at DESC
   `).all(req.user.id);
-  res.json({ resources: rows.map(serializeResource) });
+  res.json({ resources: rows.map((r) => ({ ...serializeResource(r), locked: canAccess(r, req.access) ? null : lockReason(r, req.access) })) });
 });
 
-router.get('/downloads/mine', requireAuth, (req, res) => {
+router.get('/downloads/mine', requireAuth, gate, (req, res) => {
   // Downloads have always been logged (see the /:id/download route below) -
   // this just surfaces that existing history so a student can find
   // something they downloaded before without re-searching for it, since
@@ -172,31 +292,98 @@ router.get('/downloads/mine', requireAuth, (req, res) => {
     ORDER BY last_downloaded_at DESC
   `).all(req.user.id);
   res.json({
-    resources: rows.map((r) => ({ ...serializeResource(r), lastDownloadedAt: r.last_downloaded_at }))
+    resources: rows.map((r) => ({ ...serializeResource(r), lastDownloadedAt: r.last_downloaded_at, locked: canAccess(r, req.access) ? null : lockReason(r, req.access) }))
   });
 });
 
-router.get('/:id', requireAuth, subscriptionGate, (req, res) => {
+router.get('/search', (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const limit = Math.min(Number(req.query.limit) || 8, 20);
+  if (!q) return res.json({ query: '', courses: [], topics: [], results: [], authenticated: false });
+
+  // Optional session - search works for anonymous visitors at a reduced scope.
+  let user = null;
+  const token = req.cookies && req.cookies[COOKIE_NAME];
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET);
+      user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id);
+    } catch { user = null; }
+  }
+  const access = user ? accessFor(user) : { premium: false, trial: false };
+  const ql = `%${q}%`;
+
+  // 1) Courses (always public - they are the site's core navigation).
+  const courses = COURSE_SUBJECTS.filter((c) => c.subject.toLowerCase().includes(q.toLowerCase()))
+    .map((c) => ({ slug: c.slug, subject: c.subject }));
+
+  // 2) Topics (names only - public structure of each course).
+  const topicRows = db.prepare(`
+    SELECT DISTINCT topic, LOWER(subject) AS subject_key, subject
+    FROM resources
+    WHERE publish_status = 'published' AND topic IS NOT NULL AND topic != ''
+    ORDER BY topic ASC
+  `).all();
+  const topics = topicRows
+    .filter((t) => t.topic.toLowerCase().includes(q.toLowerCase()) || (t.subject || '').toLowerCase().includes(q.toLowerCase()))
+    .slice(0, limit)
+    .map((t) => ({ topic: t.topic, subject: t.subject, slug: COURSE_SUBJECTS.find((c) => c.subject === t.subject)?.slug || '' }));
+
+  // 3) Content (only for logged-in students, permission-flagged).
+  let results = [];
+  if (user) {
+    const rows = db.prepare(`
+      SELECT * FROM resources
+      WHERE publish_status = 'published'
+        AND category NOT IN ('announcement', 'quiz', 'assignment')
+        AND (title LIKE ? OR description LIKE ? OR topic LIKE ? OR tags LIKE ? OR subject LIKE ?)
+      ORDER BY
+        CASE category WHEN 'video' THEN 0 WHEN 'document' THEN 1 WHEN 'tutorial' THEN 2 ELSE 3 END,
+        created_at DESC
+      LIMIT ?
+    `).all(ql, ql, ql, ql, ql, limit);
+
+    const completed = new Set(
+      db.prepare('SELECT resource_id FROM lesson_progress WHERE user_id = ?').all(user.id).map((r) => r.resource_id)
+    );
+    results = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      subject: row.subject,
+      topic: row.topic || null,
+      completed: completed.has(row.id),
+      locked: canAccess(row, access) ? null : lockReason(row, access)
+    }));
+  }
+
+  res.json({
+    query: q,
+    courses,
+    topics,
+    results,
+    authenticated: Boolean(user)
+  });
+});
+
+router.get('/:id', requireAuth, gate, (req, res) => {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
-  if (!req.subscriptionOk && !isFreelyAccessible(row)) {
-    return res.status(403).json({ message: 'Your trial has ended. Subscribe to unlock this content.', locked: true });
-  }
+  if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   db.prepare('UPDATE resources SET view_count = view_count + 1 WHERE id = ?').run(row.id);
   res.json({ resource: serializeResource(row) });
 });
 
-router.get('/:id/download', requireAuth, subscriptionGate, async (req, res) => {
+router.get('/:id/download', requireAuth, gate, async (req, res) => {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
-  if (!req.subscriptionOk && !isFreelyAccessible(row)) {
-    return res.status(403).json({ message: 'Your trial has ended. Subscribe to unlock downloads.', locked: true });
-  }
+  if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   if (row.category === 'video') {
     // Videos are stream-only, matching the "watch in the app, don't keep a
     // copy" model - enforced here so this can't be bypassed just by hitting
     // this URL directly instead of clicking a (deliberately absent) button.
-    return res.status(403).json({ message: 'Videos are available to stream online only and cannot be downloaded.' });
+    return res.status(403).json({ message: 'Videos are available to stream online only and cannot be downloaded.', locked: true });
   }
 
   if (row.external_url) {
@@ -233,6 +420,26 @@ router.delete('/:id/bookmark', requireAuth, (req, res) => {
   res.json({ message: 'Bookmark removed.' });
 });
 
+// ---------------------------------------------------------------------------
+// GLOBAL SEARCH (permission-aware)
+//
+// One query across courses, topics, lessons, past papers and announcements.
+// Anonymous visitors get courses + topics only (that is public knowledge);
+// logged-in students also get content results - each with the same `locked`
+// flag the rest of the platform uses, so a trial student searching never
+// receives a protected video result they could open, only an honest
+// "Premium" card. Results link to pages, never to raw file URLs.
+// ---------------------------------------------------------------------------
+
+const COURSE_SUBJECTS = [
+  { slug: 'mathematics', subject: 'Mathematics' },
+  { slug: 'physics', subject: 'Physics' },
+  { slug: 'chemistry', subject: 'Chemistry' },
+  { slug: 'biology', subject: 'Biology' },
+  { slug: 'programming', subject: 'Programming' },
+  { slug: 'communication', subject: 'Communication Skills' }
+];
+
 // ---- Lesson completion tracking (real, per student) -----------------------
 
 router.post('/:id/complete', requireAuth, (req, res) => {
@@ -257,7 +464,12 @@ router.get('/completed/mine', requireAuth, (req, res) => {
   res.json({ completed: rows.map((r) => ({ resourceId: r.resource_id, completedAt: r.completed_at })) });
 });
 
-// ---- Quiz attempts (real score history, not just an in-browser popup) -----
+// ---- Quiz attempts (kept for backend/admin compatibility) ------------------
+//
+// Quizzes are no longer part of the student learning experience, but the
+// storage and endpoints remain so admin-managed quiz records (and any
+// historical score data) stay intact and nothing referencing the table
+// breaks.
 
 router.post('/:id/quiz-attempt', requireAuth, (req, res) => {
   const { score, total } = req.body;

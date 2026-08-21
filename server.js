@@ -32,6 +32,19 @@ const authRateLimit = rateLimit({ windowMs: 60 * 1000, max: 20 });
 app.use('/api/auth/login', authRateLimit);
 app.use('/api/auth/register', authRateLimit);
 app.use('/api/auth', authRoutes);
+
+// Public site config. Official WhatsApp links live in .env so the owner can
+// rotate them without touching page code; the community panels on every page
+// fetch them here on load. No auth required - nothing in this payload is
+// private.
+app.get('/api/config', (req, res) => {
+  res.json({
+    whatsapp: {
+      channel: process.env.WHATSAPP_CHANNEL_URL || 'https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k',
+      group: process.env.WHATSAPP_GROUP_URL || ''
+    }
+  });
+});
 app.use('/api/resources', resourceRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/admin', adminRoutes);
@@ -65,8 +78,15 @@ app.use(express.static(path.join(__dirname, 'public'), {
   etag: true
 }));
 
+// Anything that did not match a real page, asset, or API route gets a real
+// 404 (a proper page, not a silent redirect to the homepage) - so dead or
+// mistyped URLs are honest, and search engines do not treat typos as
+// duplicates of the site. Unknown API paths get JSON, not HTML.
 app.get('*', (req, res) => {
-  res.status(404).sendFile(path.join(__dirname, 'public', 'index.html'));
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ message: 'Not found.' });
+  }
+  res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
 });
 
 // ---- Error handling ---------------------------------------------------------

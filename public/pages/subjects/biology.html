@@ -4,57 +4,189 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Biology | StudyCore</title>
-    <link rel="stylesheet" href="../../css/style.css" />
+    <meta name="description" content="Study Biology with StudyCore through structured university-level lessons covering cells, genetics, physiology and living systems, with video learning, study notes and past papers." />
+    <link rel="canonical" href="https://studycore.academy/pages/subjects/biology.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="Biology | StudyCore" />
+    <meta property="og:description" content="Structured university Biology: cells, genetics, physiology, video learning, study notes and past papers." />
+    <meta property="og:url" content="https://studycore.academy/pages/subjects/biology.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Course",
+      "name": "Biology",
+      "description": "A university-level Biology course on StudyCore: structured lessons, video learning, study notes and past-paper resources.",
+      "url": "https://studycore.academy/pages/subjects/biology.html",
+      "provider": {
+        "@type": "Organization",
+        "name": "StudyCore",
+        "url": "https://studycore.academy/"
+      }
+    }
+    </script>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <div class="top-bar">🌿 Biology lessons with notes, experiments, and revision resources.</div>
-      <nav class="navbar">
+  <body data-page="course" data-subject-slug="biology" data-subject="Biology">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <!-- Course hero: unique animated visual identity per course -->
+      <section class="course-hero" id="courseHero">
+        <div class="container">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="/">StudyCore</a>
+            <span class="sep" aria-hidden="true"></span>
+            <a href="/pages/courses.html">Courses</a>
+            <span class="sep" aria-hidden="true"></span>
+            <span class="current">Biology</span>
+          </nav>
+          <div class="course-hero-top">
+            <div>
+              <h1><span class="hero-course-icon" id="courseHeroIcon"></span> Biology</h1>
+            </div>
+            <div id="courseStreakSlot"></div>
+          </div>
+          <p class="lead">
+            Cells, genetics, physiology and the systems that keep living things running — study them the way examiners expect, with structured lessons, video learning, study notes and past papers for every topic.
+          </p>
+          <div class="course-hero-stats" id="courseHeroStats">
+            <div class="course-hero-stat"><div class="num" data-stat="topics">—</div><div class="label">Topics</div></div>
+            <div class="course-hero-stat"><div class="num" data-stat="lessons">—</div><div class="label">Lessons</div></div>
+            <div class="course-hero-stat"><div class="num" data-stat="videos">—</div><div class="label">Video lessons</div></div>
+            <div class="course-hero-stat"><div class="num" data-stat="papers">—</div><div class="label">Past papers</div></div>
+          </div>
+          <div class="hero-actions">
+            <a class="btn btn-primary" id="courseCtaPrimary" href="#topics">Start Learning</a>
+            <a class="btn btn-ghost" style="color:#fff;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.07);" href="#past-papers">View Past Papers</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Course-specific navigation -->
+      <div class="course-subnav">
         <div class="container nav-inner">
-          <a href="../../index.html" class="nav-brand">
-            <img src="../../assets/logo.jpg" alt="StudyCore Logo" />
-            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
-          </a>
-          <ul class="nav-links">
-            <li><a href="../../index.html">Home</a></li>
-            <li><a href="../courses.html">Courses</a></li>
-            <li><a href="../documents.html">Documents</a></li>
-            <li><a href="../videos.html">Videos</a></li>
-            <li><a href="/dashboard.html">Dashboard</a></li>
+          <ul class="subnav-links" id="courseSubnav">
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#topics">Topics</a></li>
+            <li><a href="#lessons">Lessons</a></li>
+            <li><a href="#resources">Resources</a></li>
+            <li><a href="#past-papers">Past Papers</a></li>
+            <li><a href="#progress">Progress</a></li>
           </ul>
         </div>
-      </nav>
-      <main class="page-main">
-        <section class="page-hero">
-          <div class="container">
-            <h1>Biology</h1>
-            <p id="subjectIntro">Explore cells, ecosystems, genetics, human biology, and revision resources.</p>
-            <div class="page-actions">
-              <a class="btn btn-primary" href="../course.html?subject=Biology">🎓 Open Course Home</a>
-              <button class="btn btn-outline" onclick="history.back()">← Back</button>
-            </div>
+      </div>
+
+      <!-- Completion banner (hidden until 100%) -->
+      <section class="section-tight" id="completionSection" style="display:none;">
+        <div class="container"><div class="complete-banner" id="completionBanner"></div></div>
+      </section>
+
+      <!-- Continue learning -->
+      <section class="section-tight" id="continueSection" style="display:none;">
+        <div class="container">
+          <div class="continue-card" id="continueCard"></div>
+        </div>
+      </section>
+
+      <!-- Overview -->
+      <section class="section" id="overview">
+        <div class="container" style="max-width:860px;">
+          <span class="eyebrow">Course overview</span>
+          <h2>What you will study in Biology</h2>
+          <p style="margin-top:14px;">
+            The Biology course on StudyCore builds from the cell outward: structure, function, genetics and the major physiological systems. Each topic pairs a clear explanation with diagrams, worked examples, study notes and past-paper practice, so the subject stops being memorisation and starts being understanding. Work through topics at your own pace: watch the lesson, read the notes, attempt the papers, then mark the lesson complete. Your progress is saved automatically and carries across every device.
+          </p>
+        </div>
+      </section>
+
+      <!-- Topics -->
+      <section class="section" id="topics" style="background:var(--bg-alt);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Topics</span>
+            <h2>Study topic by topic</h2>
+            <p id="topicsSubheading">Each topic groups its lessons, notes and past papers together — with your own progress on each.</p>
           </div>
-        </section>
-      </main>
-    </div>
-    <script src="../../js/api.js"></script>
-    <script src="../../js/auth.js"></script>
-    <script src="../../js/main.js"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', async () => {
-        await StudyCoreAuth.fetchSession();
-        StudyCoreAuth.updateAuthUI();
-        const user = StudyCoreAuth.getCurrentUser();
-        const subjectSlug = 'biology';
-        document.body.setAttribute('data-subject', 'biology');
-        if (user && user.learning_level === 'tertiary') {
-          const intro = document.getElementById('subjectIntro');
-          if (intro) intro.textContent = intro.textContent + ' (Showing tertiary-level framing where available.)';
-        }
-      });
-    </script>
+          <div class="topic-grid" id="topicGrid">
+            <div class="skeleton skeleton-card" style="height:84px;"></div>
+            <div class="skeleton skeleton-card" style="height:84px;"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Lessons -->
+      <section class="section" id="lessons">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Lessons</span>
+            <h2>All lessons in this course</h2>
+            <p>Video lessons, notes, tutorials and past papers in course order. Open any lesson to learn inside StudyCore.</p>
+          </div>
+          <div class="lesson-list" id="lessonList">
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Resources (notes + tutorials) -->
+      <section class="section" id="resources" style="background:var(--bg-alt);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Resources</span>
+            <h2>Notes &amp; tutorial sheets</h2>
+            <p>Structured documents for this course, read inside the StudyCore document viewer.</p>
+          </div>
+          <div class="resource-grid" id="resourceGrid">
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Past papers -->
+      <section class="section" id="past-papers">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Past papers</span>
+            <h2>Practice with real exams</h2>
+            <p>Organised by year and examination — the fastest way to turn what you've learned into marks.</p>
+          </div>
+          <div class="resource-grid" id="paperGrid">
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Progress -->
+      <section class="section" id="progress" style="background:var(--bg-alt);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Progress</span>
+            <h2>Your progress in Biology</h2>
+          </div>
+          <div id="progressPanel"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/hero.js"></script>
+    <script src="/js/course.js"></script>
   </body>
 </html>

@@ -1,6 +1,5 @@
 // =============================================
 // STUDYCORE — API Client (js/api.js)
-// By Dr. Relentless | Stay Curious & Winning
 // -----------------------------------------------
 // Every request goes through here. Auth is a real httpOnly cookie set by
 // the server on login/signup (see server.js + middleware/auth.js) - the
@@ -27,6 +26,7 @@
       const error = new Error((data && data.message) || `Request failed (${res.status})`);
       error.status = res.status;
       error.locked = Boolean(data && data.locked);
+      error.lockReason = data && data.lockReason ? data.lockReason : null;
       throw error;
     }
     return data;
@@ -45,20 +45,36 @@
     config: () => request('/api/auth/config'),
     myReferral: () => request('/api/auth/referral'),
 
-    // Course Home
+    // Profile picture (server validates type + signature, stores in R2)
+    avatarUrl: () => '/api/auth/avatar',
+    uploadAvatar: (file) => {
+      const fd = new FormData();
+      fd.append('avatar', file);
+      return request('/api/auth/avatar', { method: 'POST', body: fd });
+    },
+    removeAvatar: () => request('/api/auth/avatar', { method: 'DELETE' }),
+
+    // Courses
+    listCourses: () => request('/api/courses'),
     courseHome: (subject) => request(`/api/courses/${encodeURIComponent(subject)}`),
+    lessonFlow: (id) => request(`/api/courses/lesson/${encodeURIComponent(id)}`),
+
+    // Progress
     markComplete: (id) => request(`/api/resources/${id}/complete`, { method: 'POST' }),
     markIncomplete: (id) => request(`/api/resources/${id}/complete`, { method: 'DELETE' }),
     myCompleted: () => request('/api/resources/completed/mine'),
-    submitQuizAttempt: (id, score, total) => request(`/api/resources/${id}/quiz-attempt`, { method: 'POST', body: JSON.stringify({ score, total }) }),
-    myQuizAttempts: (id) => request(`/api/resources/${id}/quiz-attempts/mine`),
+    saveVideoProgress: (id, position, duration) => request(`/api/resources/${id}/video-progress`, {
+      method: 'POST', body: JSON.stringify({ position, duration })
+    }),
+    getVideoProgress: (id) => request(`/api/resources/${id}/video-progress`),
 
-    // Public/student resources
+    // Resources
     listResources: (params = {}) => {
       const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));
       return request(`/api/resources?${qs.toString()}`);
     },
     getResource: (id) => request(`/api/resources/${id}`),
+    streamUrl: (id) => `/api/resources/${id}/stream`,
     downloadUrl: (id) => `/api/resources/${id}/download`,
     myBookmarks: () => request('/api/resources/bookmarks/mine'),
     myDownloads: () => request('/api/resources/downloads/mine'),
@@ -94,7 +110,11 @@
         let data = null;
         try { data = JSON.parse(xhr.responseText); } catch { data = null; }
         if (xhr.status >= 200 && xhr.status < 300) resolve(data);
-        else reject(new Error((data && data.message) || `Upload failed (${xhr.status})`));
+        else {
+          const err = new Error((data && data.message) || `Upload failed (${xhr.status})`);
+          err.status = xhr.status;
+          reject(err);
+        }
       };
       xhr.onerror = () => reject(new Error('Network error during upload.'));
       xhr.send(formData);

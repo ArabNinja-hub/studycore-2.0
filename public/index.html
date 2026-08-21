@@ -3,189 +3,370 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StudyCore</title>
-    <meta name="description" content="Study Core is a learning platform for students." />
+    <title>StudyCore — Your University Learning Platform</title>
+    <meta name="description" content="StudyCore is a modern university learning platform that brings courses, lessons, study notes, video learning, past papers and revision resources together in one place." />
+    <link rel="canonical" href="https://studycore.academy/" />
+    <meta name="author" content="StudyCore" />
+
+    <!-- Social preview -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="StudyCore — Your University Learning Platform" />
+    <meta property="og:description" content="Courses, lessons, study notes, video learning, past papers and revision resources together in one place — helping university students learn smarter and stay on track." />
+    <meta property="og:url" content="https://studycore.academy/" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="StudyCore — Your University Learning Platform" />
+    <meta name="twitter:description" content="Courses, lessons, study notes, video learning, past papers and revision resources together in one place." />
+    <meta name="twitter:image" content="https://studycore.academy/assets/images/og-image.png" />
+
+    <!-- Structured data: Organization + WebSite -->
     <script type="application/ld+json">
     {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "StudyCore",
-        "alternateName": "StudyCore",
-        "url": "https://studycore.academy/",
-        "logo": "https://studycore.academy/assets/logo.jpg"
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "StudyCore",
+      "alternateName": "Study Core",
+      "url": "https://studycore.academy/",
+      "logo": "https://studycore.academy/assets/logo-icon.jpg",
+      "description": "StudyCore is a modern university learning platform that brings courses, lessons, study notes, video learning, past papers and revision resources together in one place."
     }
     </script>
-    <link rel="stylesheet" href="css/style.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "StudyCore",
+      "alternateName": "Study Core",
+      "url": "https://studycore.academy/",
+      "description": "A modern university learning platform with courses, structured lessons, study notes, video learning, past papers and revision resources.",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://studycore.academy/pages/search.html?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
   </head>
-  <body>
-    <div class="page-shell">
-      <div class="top-bar">🎓 New lesson packs and live updates are now available for every student journey.</div>
+  <body data-page="home">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
 
-      <nav class="navbar">
-        <div class="container nav-inner">
-          <a href="index.html" class="nav-brand">
-            <img src="assets/logo.jpg" alt="StudyCore Logo" />
-            <span class="nav-brand-text"><span>Study</span><span>Core</span></span>
-          </a>
-          <ul class="nav-links">
-            <li><a class="active" href="index.html">Home</a></li>
-            <li><a href="pages/about.html">About</a></li>
-            <li><a href="pages/courses.html">Courses</a></li>
-            <li><a href="pages/documents.html">Documents</a></li>
-            <li><a href="pages/videos.html">Videos</a></li>
-            <li><a href="pages/announcements.html">Announcements</a></li>
-            <li><a href="pages/pricing.html">Pricing</a></li>
-            <li><a href="/dashboard.html">Dashboard</a></li>
-            <li><a href="pages/contact.html">Contact</a></li>
-          </ul>
-          <div class="nav-actions">
-            <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
-            <a class="btn btn-primary btn-sm" href="/signup.html">Get Started</a>
+    <main>
+      <!-- Hero -->
+      <section class="hero">
+        <div class="container">
+          <span class="eyebrow">University Learning Platform</span>
+          <h1>Learn with purpose.<br />Succeed with <em>confidence</em>.</h1>
+          <p class="lead">
+            StudyCore brings your university courses, structured lessons, study notes,
+            video learning, past papers and revision resources together in one place —
+            so everything you need to learn and stay on track is right here.
+          </p>
+          <div class="hero-actions">
+            <a class="btn btn-primary btn-lg" href="/pages/courses.html">Explore Courses</a>
+            <a class="btn btn-ghost btn-lg" style="color:rgba(255,255,255,0.9);border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.06);" href="/signup.html">
+              Start Free Trial <span aria-hidden="true"></span>
+            </a>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat"><div class="num">6</div><div class="label">University courses</div></div>
+            <div class="hero-stat"><div class="num">30<span>-day</span></div><div class="label">Free trial on signup</div></div>
+            <div class="hero-stat"><div class="num">24/7</div><div class="label">Study on any device</div></div>
           </div>
         </div>
-      </nav>
+      </section>
 
-      <main>
-        <section class="hero hero-home">
-          <div class="hero-bg-slideshow" aria-hidden="true">
-            <img src="assets/hero-bg/campus-1.jpg" alt="" />
-            <img src="assets/hero-bg/campus-2.jpg" alt="" />
-            <img src="assets/hero-bg/campus-3.jpg" alt="" />
-            <img src="assets/hero-bg/campus-4.jpg" alt="" />
-            <img src="assets/hero-bg/campus-5.jpg" alt="" />
-            <img src="assets/hero-bg/campus-6.jpg" alt="" />
+      <!-- How it works -->
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">How StudyCore works</span>
+            <h2>One clear path from course to exam-ready</h2>
+            <p>Everything happens inside StudyCore — no tabs, no scattered files, no guesswork.</p>
           </div>
-          <div class="container hero-inner">
-            <div class="hero-content">
-              <div class="hero-badge">🌍 A complete learning portal for students</div>
-              <h1>Learn with purpose, move with confidence.</h1>
-              <p>
-                StudyCore gives students a real online learning experience with subject pages, lessons, documents,
-                announcements, pricing, and an interactive dashboard.
-              </p>
-              <div class="hero-actions">
-                <a class="btn btn-primary" href="pages/courses.html">Explore Courses</a>
-                <a class="btn btn-outline" href="pages/about.html">About StudyCore</a>
+          <div class="course-grid" id="howItWorksGrid" style="grid-template-columns:repeat(4,minmax(0,1fr));">
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="library"></div>
+              <h3 style="margin-top:14px;">1. Choose a course</h3>
+              <p>Open Mathematics, Physics, Chemistry, Biology, Programming or Communication Skills.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="layers"></div>
+              <h3 style="margin-top:14px;">2. Pick a topic</h3>
+              <p>Move through a course topic by topic — each one builds on the last.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="play"></div>
+              <h3 style="margin-top:14px;">3. Work the lesson</h3>
+              <p>Watch the video, read the notes, practice with past papers — then mark it complete.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="trending-up"></div>
+              <h3 style="margin-top:14px;">4. Track your progress</h3>
+              <p>Streaks, achievements and course completion keep you moving forward.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Courses -->
+      <section class="section" style="background:var(--bg-alt);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Courses</span>
+            <h2>Every course, built for real exams</h2>
+            <p>Structured university-level courses with lessons, notes and past papers organised the way you actually study.</p>
+          </div>
+          <div class="course-grid" id="courseGrid">
+            <!-- Course cards: static content for crawlers, counts/progress
+                 enhanced by JS from GET /api/courses -->
+            <a class="course-card" href="/pages/subjects/mathematics.html" data-course="mathematics">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Mathematics</h3>
+                <p>Explore functions, calculus, algebra and problem-solving with structured university-level lessons.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Mathematics Lessons</span>
               </div>
-              <div class="hero-stats">
-                <div class="stat">
-                  <div class="stat-num">6+</div>
-                  <div class="stat-label">Core Subjects</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-num">100%</div>
-                  <div class="stat-label">Free Dashboard</div>
-                </div>
-                <div class="stat">
-                  <div class="stat-num">24/7</div>
-                  <div class="stat-label">Student Access</div>
-                </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/physics.html" data-course="physics">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Physics</h3>
+                <p>Master mechanics, waves, electricity and modern physics through lessons, notes and past papers.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Physics Lessons</span>
               </div>
-            </div>
-            <div class="hero-visual">
-              <div class="hero-visual-card">
-                <img src="assets/logo.jpg" alt="StudyCore Logo" />
-                <h3>StudyCore</h3>
-                <p>Professional learning portal for students in school and university.</p>
+            </a>
+            <a class="course-card" href="/pages/subjects/chemistry.html" data-course="chemistry">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Chemistry</h3>
+                <p>Understand atoms, bonding, reactions and quantitative chemistry with guided lessons and notes.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Chemistry Lessons</span>
               </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/biology.html" data-course="biology">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Biology</h3>
+                <p>Study cells, genetics, physiology and living systems through structured lessons and resources.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Biology Lessons</span>
+              </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/programming.html" data-course="programming">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Programming</h3>
+                <p>Build programming fundamentals, logic and problem-solving skills with step-by-step lessons.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Programming Lessons</span>
+              </div>
+            </a>
+            <a class="course-card" href="/pages/subjects/communication.html" data-course="communication">
+              <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
+              <div class="course-card-body">
+                <h3><span data-course-icon></span> Communication Skills</h3>
+                <p>Improve writing, speaking, presentations and academic communication with focused lessons.</p>
+                <div class="course-card-meta"><span data-course-counts></span></div>
+                <div class="course-card-progress" data-course-progress hidden></div>
+                <span class="course-card-cta">Explore Communication Skills</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Why StudyCore</span>
+            <h2>Everything you need, in one platform</h2>
+            <p>Not a folder of files. A real learning environment designed around how university students actually study.</p>
+          </div>
+          <div class="course-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));">
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="video"></div>
+              <h3 style="margin-top:14px;">Video lessons</h3>
+              <p>Every major topic has a proper video lesson, watched inside StudyCore with resume and progress tracking. Premium content.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="file-text"></div>
+              <h3 style="margin-top:14px;">Study notes &amp; documents</h3>
+              <p>Structured notes, tutorial sheets and revision guides you can read in the StudyCore document viewer — free during your trial.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="file"></div>
+              <h3 style="margin-top:14px;">Past papers</h3>
+              <p>Organised by course, year and examination, so exam practice is always one step away from the topic you just studied.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="trending-up"></div>
+              <h3 style="margin-top:14px;">Progress that motivates</h3>
+              <p>Course, topic and lesson progress, study streaks and academic achievements — a clear picture of how far you've come.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="crown"></div>
+              <h3 style="margin-top:14px;">30-day free trial</h3>
+              <p>Create an account and start learning immediately. When your trial ends, upgrade to Premium to keep the full experience.</p>
+            </div>
+            <div class="card card-pad card-hover">
+              <div class="card-icon" data-icon="message-circle"></div>
+              <h3 style="margin-top:14px;">Academic community</h3>
+              <p>Join the official StudyCore WhatsApp channel for academic tips, study strategies, mentoring and updates.</p>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section class="section">
-          <div class="container">
-            <div class="section-heading">
-              <h2>Choose your study path</h2>
-              <p>Every page is connected so students can move through the platform naturally.</p>
+      <!-- Premium band -->
+      <section class="section" style="padding-top:0;">
+        <div class="container">
+          <div class="premium-card">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+              <span class="badge badge-amber" style="background:rgba(245,166,35,0.15);color:#ffd080;border-color:rgba(245,166,35,0.4);">StudyCore Premium</span>
             </div>
-            <div class="card-grid">
-              <a class="info-card" href="pages/courses.html">
-                <h3>📚 Courses</h3>
-                <p>Open dedicated subject pages for mathematics, programming, communication skills, physics, chemistry, and biology.</p>
-              </a>
-              <a class="info-card" href="pages/documents.html">
-                <h3>📄 Documents</h3>
-                <p>Access notes, revision guides, assignments, and past papers in one library.</p>
-              </a>
-              <a class="info-card" href="pages/videos.html">
-                <h3>🎬 Video Learning</h3>
-                <p>Watch guided lessons and continue learning through a structured video library.</p>
-              </a>
-              <a class="info-card" href="/dashboard.html">
-                <h3>🧑‍🎓 Student Dashboard</h3>
-                <p>Track subscriptions, saved resources, progress, and recommended materials.</p>
-              </a>
+            <h2 style="margin-bottom:10px;">Unlock the full learning experience</h2>
+            <p style="color:rgba(255,255,255,0.75);max-width:640px;">
+              Premium students get unlimited access to all video lessons, every study note,
+              tutorial sheet and past paper — across every course — plus full progress tracking.
+            </p>
+            <ul class="premium-perks" style="max-width:640px;" id="premiumPerksHome"></ul>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;">
+              <a class="btn btn-amber" href="/pages/pricing.html">See Premium</a>
+              <a class="btn btn-ghost" style="color:#fff;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.07);" href="/signup.html">Start Free Trial</a>
             </div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section class="section alt-section">
-          <div class="container">
-            <div class="section-heading">
-              <h2>Popular subjects</h2>
-              <p>Each subject has its own learning hub with notes, videos, assignments, revision materials, and quizzes.</p>
-            </div>
-            <div class="subject-grid">
-              <a class="subject-card" href="pages/subjects/mathematics.html">➕ Mathematics</a>
-              <a class="subject-card" href="pages/subjects/programming.html">💻 Programming</a>
-              <a class="subject-card" href="pages/subjects/communication.html">🗣 Communication Skills</a>
-              <a class="subject-card" href="pages/subjects/physics.html">⚛ Physics</a>
-              <a class="subject-card" href="pages/subjects/chemistry.html">🧪 Chemistry</a>
-              <a class="subject-card" href="pages/subjects/biology.html">🌿 Biology</a>
-            </div>
-          </div>
-        </section>
-      </main>
+      <!-- Community band -->
+      <section class="section" style="padding-top:0;">
+        <div class="container">
+          <div class="community-panel" id="communityPanel"></div>
+        </div>
+      </section>
+    </main>
 
-      <footer class="footer">
-        <div class="container footer-grid">
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        // Inject the shared icon set into static slots (progressive enhancement)
+        document.querySelectorAll('[data-icon]').forEach((el) => {
+          el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 });
+        });
+        document.querySelectorAll('[data-course-icon]').forEach((el) => {
+          const slug = el.closest('[data-course]').getAttribute('data-course');
+          el.innerHTML = SC.icon(SC.courseIcon(slug), { size: 20 });
+        });
+        document.querySelectorAll('[data-hero-icon]').forEach((el) => {
+          const slug = el.closest('[data-course]').getAttribute('data-course');
+          el.innerHTML = SC.icon(SC.courseIcon(slug), { size: 54 });
+        });
+
+        // Live course counts + logged-in progress (real data, no mock)
+        try {
+          const { courses } = await StudyCoreAPI.listCourses();
+          const bySlug = Object.fromEntries(courses.map((c) => [c.slug, c]));
+          document.querySelectorAll('[data-course]').forEach((card) => {
+            const slug = card.getAttribute('data-course');
+            const course = bySlug[slug];
+            if (!course) return;
+            const counts = card.querySelector('[data-course-counts]');
+            if (counts) {
+              counts.innerHTML = `
+                <span>${SC.icon('video', { size: 14 })} ${course.counts.videos} videos</span>
+                <span>${SC.icon('file-text', { size: 14 })} ${course.counts.documents} notes</span>
+                <span>${SC.icon('file', { size: 14 })} ${course.counts.pastPapers} past papers</span>
+              `;
+            }
+          });
+          // Logged-in students see their own progress on the cards
+          const user = await StudyCoreAuth.fetchSession();
+          if (user) {
+            for (const slug of ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'communication']) {
+              try {
+                const data = await StudyCoreAPI.courseHome(slug);
+                const slot = document.querySelector(`[data-course="${slug}"] [data-course-progress]`);
+                if (slot && data.progress.totalCount > 0) {
+                  slot.hidden = false;
+                  slot.innerHTML = `
+                    <div class="progress-labels"><span>My progress</span><strong>${data.progress.percent}%</strong></div>
+                    <div class="progress progress-thin"><span style="width:${data.progress.percent}%"></span></div>
+                  `;
+                }
+              } catch { /* course just has no content yet */ }
+            }
+          }
+        } catch { /* static cards remain */ }
+
+        // Community panel (official WhatsApp channel + group QR slot)
+        renderCommunityPanel(document.getElementById('communityPanel'));
+      });
+
+      // Shared community panel markup (home + about reuse this)
+      function renderCommunityPanel(host) {
+        if (!host) return;
+        host.innerHTML = `
           <div>
-            <h3>StudyCore</h3>
-            <p>Professional, simple, and student-focused learning portal for modern education.</p>
-          </div>
-          <div>
-            <h4>Explore</h4>
-            <ul class="footer-links">
-              <li><a href="pages/about.html">About Us</a></li>
-              <li><a href="pages/courses.html">Courses</a></li>
-              <li><a href="pages/contact.html">Contact</a></li>
+            <span class="badge badge-white" style="margin-bottom:14px;">${SC.icon('whatsapp', { size: 13 })} Official Academic Channel</span>
+            <h2>Stay Connected With StudyCore</h2>
+            <p>Follow <strong>STUDY-CORE ACADEMIC TIPS &amp; MENTORING</strong> for:</p>
+            <ul class="community-points">
+              <li>${SC.icon('check', { size: 17 })} Academic tips and study strategies</li>
+              <li>${SC.icon('check', { size: 17 })} Mentoring from the StudyCore team</li>
+              <li>${SC.icon('check', { size: 17 })} Important StudyCore updates</li>
+              <li>${SC.icon('check', { size: 17 })} Learning motivation and useful academic information</li>
             </ul>
+            <a class="btn whatsapp-btn" href="https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k" target="_blank" rel="noopener">
+              ${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp
+            </a>
           </div>
-          <div>
-            <h4>Connect</h4>
-            <div class="social-links">
-              <a href="https://wa.me/260962838581?text=Hi%2C%20I%20want%20help%20signing%20in" class="social-link" aria-label="WhatsApp">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.966-.272-.099-.47-.149-.669.149-.198.297-.767.966-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.149-.174.198-.297.297-.495.099-.198.05-.372-.025-.521-.074-.149-.669-1.611-.916-2.206-.242-.579-.487-.5-.669-.51-.173-.008-.372-.01-.571-.01-.198 0-.521.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.123-.272-.198-.569-.347z"/></svg>
-              </a>
-              <a href="https://www.facebook.com/" class="social-link" aria-label="Facebook">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.5 22v-8h2.7l.4-3h-3.1V4.6c0-.9.3-1.5 1.5-1.5H17V.1c-.3 0-1.2-.1-2.3-.1-2.3 0-3.8 1.4-3.8 4v2.2H8.2v3h2.7v8h2.6z"/></svg>
-              </a>
-              <a href="https://www.instagram.com/" class="social-link" aria-label="Instagram">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zm5 5.2A4.8 4.8 0 1 0 16.8 13 4.8 4.8 0 0 0 12 8.2zm6.2-2.3a1.1 1.1 0 1 0 1.1 1.1 1.1 1.1 0 0 0-1.1-1.1z"/></svg>
-              </a>
-              <a href="https://x.com/" class="social-link" aria-label="X">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M18.9 2H22l-6.7 7.7L23.5 22h-5.8l-4.6-6-5.2 6H1.5l7.1-8.1L.5 2h5.9l4.2 5.6L18.9 2Zm-1 18h1.1L6.2 4H5.1l12.8 16Z"/></svg>
-              </a>
+          <div class="qr-card">
+            <div class="qr-frame" id="communityQrSlot">
+              ${SC.icon('qr-code', { size: 56 })}
+              <span>Official StudyCore WhatsApp group QR code appears here</span>
             </div>
+            <h3>StudyCore Student Community</h3>
+            <p>Connect with other StudyCore students, stay updated and participate in the academic community.</p>
+            <a class="btn whatsapp-btn btn-sm" id="communityGroupBtn" style="display:none;margin-top:14px;" target="_blank" rel="noopener"></a>
           </div>
-        </div>
-        <div class="container" style="margin-top: 16px; border-top: 1px solid rgba(255,255,255,0.15); padding-top: 12px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; font-size: 0.95rem;">
-          <div>© 2026 StudyCore</div>
-          <div class="footer-links" style="display:flex; flex-wrap:wrap; gap:12px;">
-            <a href="#">About</a>
-            <a href="#">Terms & Conditions</a>
-            <a href="#">Privacy Policy</a>
-            <a href="#">Disclaimer</a>
-          </div>
-        </div>
-      </footer>
-    </div>
-
-    <script src="js/api.js"></script>
-    <script src="js/auth.js"></script>
-    <script src="js/main.js"></script>
+        `;
+        // Official group invite link (server-managed in .env)
+        const groupBtn = host.querySelector('#communityGroupBtn');
+        if (groupBtn) {
+          SCLayout.whatsappLinks().then((links) => {
+            if (links.group) {
+              groupBtn.href = links.group;
+              groupBtn.innerHTML = SC.icon('whatsapp', { size: 16 }) + ' Join the WhatsApp Group';
+              groupBtn.style.display = '';
+            }
+          });
+        }
+      }
+    </script>
   </body>
 </html>
