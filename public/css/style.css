@@ -318,7 +318,11 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .hero-stat .num span { color: var(--teal-400); }
 .hero-stat .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.55); font-weight: 600; }
 
-/* Hero: full-bleed photo background (crossfade + slow pan, one by one) */
+/* Hero: full-bleed photo background — cinematic crossfade + slow Ken Burns.
+   Each slide rests at one end of a gentle pan/zoom arc and glides to the
+   other end while visible, so every change is a smooth fade + drift rather
+   than an abrupt cut. Purely CSS transitions (no keyframes) keep the motion
+   buttery on lower-end devices. */
 .hero-bg {
   position: absolute; inset: 0; z-index: 0;
   overflow: hidden;
@@ -327,26 +331,22 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .hero-bg-slide {
   position: absolute; inset: 0; width: 100%; height: 100%;
   object-fit: cover;
+  object-position: center;
   opacity: 0;
-  /* Rest state matches the pan-right end frame so a slide never jumps
-     while it is crossfading back out. */
-  transform: scale(1.18) translateX(1.6%);
-  transition: opacity 1.4s ease;
+  /* Rest state: one end of the pan/zoom arc. A slide eases to the active
+     state (zoom-in + pan) while fading in, and glides back here while
+     fading out — the outgoing image "translates away" as the next appears. */
+  transform: scale(1.12) translateX(1.6%);
+  transition:
+    opacity var(--hero-fade, 2.2s) cubic-bezier(0.4, 0, 0.2, 1),
+    transform var(--hero-hold, 8s) linear;
 }
-.hero-bg-slide.pan-left { transform: scale(1.18) translateX(-1.6%); }
+.hero-bg-slide.pan-left { transform: scale(1.12) translateX(-1.6%); }
 .hero-bg-slide.is-active {
   opacity: 1;
-  animation: hero-pan-right var(--hero-pan, 6s) linear forwards;
+  transform: scale(1.2) translateX(-1.6%);
 }
-.hero-bg-slide.pan-left.is-active { animation-name: hero-pan-left; }
-@keyframes hero-pan-right {
-  from { transform: scale(1.08) translateX(-1.6%); }
-  to   { transform: scale(1.18) translateX(1.6%); }
-}
-@keyframes hero-pan-left {
-  from { transform: scale(1.08) translateX(1.6%); }
-  to   { transform: scale(1.18) translateX(-1.6%); }
-}
+.hero-bg-slide.pan-left.is-active { transform: scale(1.2) translateX(1.6%); }
 /* Readability scrim over the photos so the copy stays the focus */
 .hero-bg::after {
   content: ''; position: absolute; inset: 0;
@@ -366,8 +366,21 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .hero-dot:hover { background: rgba(255, 255, 255, 0.7); }
 .hero-dot.is-active { width: 24px; background: #fff; }
 @media (prefers-reduced-motion: reduce) {
-  .hero-bg-slide { transition: opacity 0.01ms ease; }
-  .hero-bg-slide.is-active { animation: none; }
+  .hero-bg-slide,
+  .hero-bg-slide.pan-left,
+  .hero-bg-slide.is-active,
+  .hero-bg-slide.pan-left.is-active {
+    transform: none;
+    transition: none;
+  }
+  .hero-bg-slide.is-active { opacity: 1; }
+}
+
+/* Portrait phones: bias the crop slightly upward so key subjects
+   (faces, whiteboard, content) stay framed when the hero is tall & narrow.
+   Tune per-slide here if a specific photo needs a different focal point. */
+@media (max-width: 640px) {
+  .hero-bg-slide { object-position: center 30%; }
 }
 
 .page-hero {
