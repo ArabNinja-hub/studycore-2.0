@@ -64,19 +64,36 @@
       <!-- Hero -->
       <section class="hero">
         <div class="container">
-          <span class="eyebrow">University Learning Platform</span>
-          <h1>Learn with purpose.<br />Succeed with <em>confidence</em>.</h1>
-          <p class="lead">
-            StudyCore brings your university courses, structured lessons, study notes,
-            video learning, past papers and revision resources together in one place —
-            so everything you need to learn and stay on track is right here.
-          </p>
-          <div class="hero-actions">
-            <a class="btn btn-primary btn-lg" href="/pages/courses.html">Explore Courses</a>
-            <a class="btn btn-ghost btn-lg" style="color:rgba(255,255,255,0.9);border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.06);" href="/signup.html">
-              Start Free Trial <span aria-hidden="true"></span>
-            </a>
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <span class="eyebrow">University Learning Platform</span>
+              <h1>Learn with purpose.<br />Succeed with <em>confidence</em>.</h1>
+              <p class="lead">
+                StudyCore brings your university courses, structured lessons, study notes,
+                video learning, past papers and revision resources together in one place —
+                so everything you need to learn and stay on track is right here.
+              </p>
+              <div class="hero-actions">
+                <a class="btn btn-primary btn-lg" href="/pages/courses.html">Explore Courses</a>
+                <a class="btn btn-ghost btn-lg" style="color:rgba(255,255,255,0.9);border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.06);" href="/signup.html">
+                  Start Free Trial <span aria-hidden="true"></span>
+                </a>
+              </div>
+            </div>
+
+            <div class="hero-slideshow" id="heroSlideshow" role="region" aria-roledescription="carousel" aria-label="StudyCore in action">
+              <div class="hero-slides">
+                <img class="hero-slide" src="/assets/hero/slide-1.jpg" alt="A StudyCore tutorial class in session" loading="eager" decoding="async" />
+                <img class="hero-slide" src="/assets/hero/slide-2.jpg" alt="Students learning together in a StudyCore tutorial" loading="lazy" decoding="async" />
+                <img class="hero-slide" src="/assets/hero/slide-3.jpg" alt="A lesson being taught on a whiteboard" loading="lazy" decoding="async" />
+                <img class="hero-slide" src="/assets/hero/slide-4.jpg" alt="Students revising with StudyCore notes" loading="lazy" decoding="async" />
+                <img class="hero-slide" src="/assets/hero/slide-5.jpg" alt="A study group working through past papers" loading="lazy" decoding="async" />
+                <img class="hero-slide" src="/assets/hero/slide-6.jpg" alt="StudyCore students after completing a course" loading="lazy" decoding="async" />
+              </div>
+              <div class="hero-dots" id="heroDots"></div>
+            </div>
           </div>
+
           <div class="hero-stats">
             <div class="hero-stat"><div class="num">6</div><div class="label">University courses</div></div>
             <div class="hero-stat"><div class="num">30<span>-day</span></div><div class="label">Free trial on signup</div></div>
@@ -273,6 +290,88 @@
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
     <script>
+      // ── Hero slideshow (rotating + translating image gallery) ─────────
+      // Rotates through the tutorial-class photos with a gentle zoom
+      // ("translate") effect, in the style of The Mighty Axon Tutorials.
+      // Respects prefers-reduced-motion and gracefully skips missing images.
+      (function initHeroSlideshow() {
+        const root = document.getElementById('heroSlideshow');
+        if (!root) return;
+        const slides = Array.from(root.querySelectorAll('.hero-slide'));
+        const dotsBox = document.getElementById('heroDots');
+        if (!slides.length) return;
+
+        const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const DURATION = 5000; // ms per slide
+        const state = slides.map(() => 'loading'); // 'loading' | 'ready' | 'broken'
+
+        // Track load state so a missing image never leaves an empty frame,
+        // and the panel hides itself if every image is missing.
+        slides.forEach((s, i) => {
+          if (s.complete) {
+            state[i] = s.naturalWidth > 0 ? 'ready' : 'broken';
+          } else {
+            s.addEventListener('load', () => { state[i] = 'ready'; rebuild(); });
+            s.addEventListener('error', () => { state[i] = 'broken'; rebuild(); });
+          }
+        });
+
+        let order = [];
+        let dots = [];
+        let idx = 0;
+        let timer = null;
+
+        function rebuild() {
+          order = state.map((v, i) => (v === 'ready' ? i : -1)).filter((i) => i >= 0);
+          dotsBox.innerHTML = '';
+          dots = order.map((origIdx) => {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'hero-dot';
+            b.setAttribute('aria-label', 'Show slide ' + (origIdx + 1));
+            b.addEventListener('click', () => go(order.indexOf(origIdx), true));
+            dotsBox.appendChild(b);
+            return b;
+          });
+
+          slides.forEach((s) => s.classList.remove('is-active'));
+
+          if (!order.length) {
+            // No usable images — collapse to the text-only hero.
+            root.classList.add('is-empty');
+            const grid = root.closest('.hero-grid');
+            if (grid) grid.classList.add('hero-grid-single');
+            return;
+          }
+          root.classList.remove('is-empty');
+          const grid = root.closest('.hero-grid');
+          if (grid) grid.classList.remove('hero-grid-single');
+
+          idx = 0;
+          go(0);
+          restart();
+        }
+
+        function go(i, manual) {
+          if (!order.length) return;
+          idx = ((i % order.length) + order.length) % order.length;
+          slides.forEach((s, k) => s.classList.toggle('is-active', k === order[idx]));
+          dots.forEach((d, k) => d.classList.toggle('is-active', k === idx));
+          if (manual) restart();
+        }
+
+        function restart() {
+          if (reduce || order.length < 2) return;
+          clearInterval(timer);
+          timer = setInterval(() => go(idx + 1), DURATION);
+        }
+
+        root.addEventListener('mouseenter', () => clearInterval(timer));
+        root.addEventListener('mouseleave', restart);
+
+        rebuild();
+      })();
+
       document.addEventListener('DOMContentLoaded', async () => {
         // Inject the shared icon set into static slots (progressive enhancement)
         document.querySelectorAll('[data-icon]').forEach((el) => {

@@ -363,9 +363,11 @@
     shell.addEventListener('mousemove', showUiTransient);
     shell.addEventListener('touchstart', showUiTransient, { passive: true });
 
-    // Periodic position saving while playing
-    setInterval(() => { if (playing()) reportPosition(); }, 5000);
-    window.addEventListener('beforeunload', () => reportPosition());
+    // Periodic position saving while playing (store the handle so destroy()
+    // can stop it instead of leaving a timer running after teardown).
+    reportTimer = setInterval(() => { if (playing()) reportPosition(); }, 5000);
+    const onBeforeUnload = () => reportPosition();
+    window.addEventListener('beforeunload', onBeforeUnload);
 
     // Start
     video.src = streamUrl;
@@ -382,6 +384,7 @@
     return {
       destroy() {
         clearInterval(reportTimer);
+        window.removeEventListener('beforeunload', onBeforeUnload);
         video.pause();
         video.removeAttribute('src');
         container.innerHTML = '';
