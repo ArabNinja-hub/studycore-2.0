@@ -60,6 +60,17 @@ app.get(['/dashboard', '/dashboard.html'], requirePageAuth('STUDENT'), (req, res
   res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
 });
 
+// Internal document viewer. Any logged-in user may open the page itself; the
+// document metadata and bytes are fetched afterwards from the existing
+// session-gated /api/resources/:id and /:id/stream endpoints, which enforce
+// the real access rules (Premium vs. trial, per-resource is_premium, etc.).
+// Registering this route BEFORE the static middleware means an unauthenticated
+// request is redirected to /login.html rather than ever receiving the viewer.
+app.get('/viewer/:documentId', requirePageAuth(), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'views', 'viewer.html'));
+});
+
 // Logged-in users shouldn't see the marketing login/signup pages again -
 // bounce them straight to their dashboard.
 app.get(['/login.html', '/signup.html'], (req, res, next) => {

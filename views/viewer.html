@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Document Viewer | StudyCore</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/viewer.css" />
+  </head>
+  <body data-page="viewer">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main class="viewer-main">
+      <!-- Viewer chrome: back, title, toolbar. The document itself renders
+           below into #viewerHost via StudyCoreReader (doc-reader.js) in
+           "bare" mode, so the reading surface fills the remaining viewport
+           without a second, conflicting toolbar. -->
+      <div class="viewer-shell" id="viewerShell">
+        <header class="viewer-bar">
+          <div class="viewer-bar-row">
+            <button type="button" class="viewer-back" id="viewerBack" aria-label="Back to previous page">
+              <span class="viewer-back-icon" data-vicon="arrow-left"></span>
+              <span class="viewer-back-label">Back</span>
+            </button>
+
+            <div class="viewer-title-block">
+              <div class="viewer-title-row">
+                <span class="viewer-title-icon" id="viewerTitleIcon"></span>
+                <h1 class="viewer-title" id="viewerTitle">Loading document…</h1>
+              </div>
+              <p class="viewer-meta" id="viewerMeta"></p>
+            </div>
+
+            <div class="viewer-tools" id="viewerTools" role="toolbar" aria-label="Document controls" hidden>
+              <button type="button" class="viewer-tool" id="viewerPrev" aria-label="Previous page">
+                <span data-vicon="arrow-left"></span>
+              </button>
+              <span class="viewer-page-label" id="viewerPageLabel" aria-live="polite">– / –</span>
+              <button type="button" class="viewer-tool" id="viewerNext" aria-label="Next page">
+                <span data-vicon="arrow-right"></span>
+              </button>
+
+              <span class="viewer-tool-sep" aria-hidden="true"></span>
+
+              <button type="button" class="viewer-tool" id="viewerZoomOut" aria-label="Zoom out">
+                <span data-vicon="zoom-out"></span>
+              </button>
+              <span class="viewer-page-label" id="viewerZoomLabel">100%</span>
+              <button type="button" class="viewer-tool" id="viewerZoomIn" aria-label="Zoom in">
+                <span data-vicon="zoom-in"></span>
+              </button>
+              <button type="button" class="viewer-tool" id="viewerFit" aria-label="Fit to width">
+                <span data-vicon="minimize"></span>
+              </button>
+
+              <span class="viewer-tool-sep" aria-hidden="true"></span>
+
+              <button type="button" class="viewer-tool" id="viewerSearchBtn" aria-label="Search inside document" aria-expanded="false">
+                <span data-vicon="search"></span>
+              </button>
+              <button type="button" class="viewer-tool" id="viewerFullscreen" aria-label="Fullscreen">
+                <span data-vicon="maximize"></span>
+              </button>
+              <a class="viewer-tool viewer-download" id="viewerDownload" aria-label="Download document" href="#" hidden>
+                <span data-vicon="download"></span>
+              </a>
+            </div>
+          </div>
+
+          <!-- Search panel (toggles under the toolbar) -->
+          <div class="viewer-search" id="viewerSearchBar" hidden>
+            <div class="viewer-search-field">
+              <span class="viewer-search-icon" data-vicon="search"></span>
+              <input type="text" id="viewerSearchInput" placeholder="Search inside this document…" autocomplete="off" aria-label="Search inside document" />
+              <button type="button" class="viewer-tool viewer-search-close" id="viewerSearchClose" aria-label="Close search">
+                <span data-vicon="x"></span>
+              </button>
+            </div>
+            <span class="viewer-search-count" id="viewerSearchCount" aria-live="polite"></span>
+            <button type="button" class="viewer-tool" id="viewerSearchPrev" aria-label="Previous match" disabled>
+              <span data-vicon="arrow-left"></span>
+            </button>
+            <button type="button" class="viewer-tool" id="viewerSearchNext" aria-label="Next match" disabled>
+              <span data-vicon="arrow-right"></span>
+            </button>
+          </div>
+        </header>
+
+        <!-- Document surface (PDF.js canvas rendering) -->
+        <div class="viewer-stage" id="viewerHost"></div>
+      </div>
+    </main>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/doc-reader.js"></script>
+    <script src="/js/viewer.js"></script>
+  </body>
+</html>

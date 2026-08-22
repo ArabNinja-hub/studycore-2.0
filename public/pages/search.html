@@ -100,7 +100,7 @@
               data.results.map((r) => {
                 const [label, ic] = CAT[r.category] || ['Resource', 'file-text'];
                 const where = [r.subject, r.topic].filter(Boolean).join(' · ');
-                return `<a class="card card-hover" style="display:flex;align-items:center;gap:14px;padding:14px 16px;text-decoration:none;color:var(--ink);margin-bottom:8px;${r.locked ? 'opacity:0.85;' : ''}" href="/pages/lesson.html?id=${r.id}&subject=${encodeURIComponent(r.subject || '')}">
+                return `<a class="card card-hover" style="display:flex;align-items:center;gap:14px;padding:14px 16px;text-decoration:none;color:var(--ink);margin-bottom:8px;${r.locked ? 'opacity:0.85;' : ''}" href="${SC.resourceHref(r)}">
                   <span class="card-icon" style="${r.locked ? 'background:var(--amber-100);color:var(--amber-600);' : ''}">${SC.icon(r.locked ? 'lock' : ic, { size: 19 })}</span>
                   <span style="flex:1;min-width:0;"><strong style="color:var(--ink);font-size:0.95rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.title)}</strong><div style="font-size:0.8rem;color:var(--muted);">${escapeHtml(where)}</div></span>
                   <span class="badge ${r.locked ? 'badge-amber' : 'badge-neutral'}">${r.locked ? 'Premium' : label}</span>

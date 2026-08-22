@@ -680,6 +680,30 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 }
 .doc-tool-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; flex: 0 0 auto; }
 
+/* ── In-document search (embedded reader) ─── */
+.doc-reader-search {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-bottom: 1px solid var(--border);
+  background: var(--bg-alt); flex-wrap: nowrap;
+}
+.doc-reader-search[hidden] { display: none; }
+.doc-reader-search-field {
+  flex: 1 1 auto; min-width: 0; height: 36px;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1.5px solid var(--border-strong);
+  border-radius: 9px; padding: 0 10px; color: var(--faint);
+}
+.doc-reader-search-field:focus-within { border-color: var(--teal-500); box-shadow: var(--ring); }
+.doc-reader-search-field input {
+  flex: 1 1 auto; min-width: 0; border: none; outline: none;
+  background: transparent; color: var(--ink); font-size: 0.88rem; height: 100%;
+}
+.doc-reader-search .doc-tool-label { min-width: 60px; }
+@media (max-width: 640px) {
+  .doc-reader-search { flex-wrap: wrap; }
+  .doc-reader-search-field { flex: 1 1 100%; }
+}
+
 .doc-reader-stage { position: relative; background: #121820; min-height: 300px; }
 .doc-reader-scroll {
   width: 100%; overflow: auto; max-height: min(78vh, 920px);
@@ -690,11 +714,22 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 }
 .doc-reader-scroll:focus-visible { outline: 2px solid var(--teal-400); outline-offset: -2px; }
 .doc-page {
+  position: relative;
   background: #fff; border-radius: 6px; overflow: hidden; flex: 0 0 auto;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); max-width: 100%;
   display: flex; align-items: center; justify-content: center;
 }
 .doc-page-canvas { display: block; max-width: 100%; height: auto; }
+/* Search match highlight — an absolutely positioned overlay on the rendered
+   page canvas (used by the embedded reader and the standalone viewer). */
+.doc-highlight {
+  position: absolute;
+  background: rgba(245, 166, 35, 0.45);
+  mix-blend-mode: multiply;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
 .doc-page-image { background: #fff; }
 .doc-page-image img { display: block; max-width: 100%; height: auto; }
 .doc-page-fallback {

@@ -50,6 +50,28 @@ function subjectSlug(subject) {
   return SUBJECT_SLUGS[String(subject || '').toLowerCase()] || '';
 }
 
+// Categories that open in the internal document viewer (/viewer/:id) rather
+// than the lesson experience page. Videos always play in the lesson player.
+const DOC_VIEWER_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'material']);
+
+function isViewerCategory(category) {
+  return DOC_VIEWER_CATEGORIES.has(category);
+}
+
+// Single source of truth for where a resource opens. Documents, tutorials,
+// past papers and materials open inside StudyCore's dedicated viewer; videos
+// (and any other content) open the lesson experience page.
+function resourceHref(resource, subjectFallback) {
+  if (!resource || !resource.id) return '#';
+  const subject = resource.subject || subjectFallback || '';
+  if (isViewerCategory(resource.category)) {
+    return `/viewer/${encodeURIComponent(resource.id)}`;
+  }
+  return `/pages/lesson.html?id=${encodeURIComponent(resource.id)}${subject ? `&subject=${encodeURIComponent(subject)}` : ''}`;
+}
+SC.resourceHref = resourceHref;
+SC.isViewerCategory = isViewerCategory;
+
 function formatFileSize(bytes) {
   if (!bytes) return '';
   const units = ['B', 'KB', 'MB', 'GB'];
@@ -113,7 +135,7 @@ function resourceCard(resource, bookmarkedIds) {
   const isBookmarked = bookmarkedIds && bookmarkedIds.has(resource.id);
   const meta = SC.icon(CATEGORY_ICONS[resource.category] || 'file-text', { size: 15 });
   const metaLine = [resource.subject, resource.topic, resource.yearLevel].filter(Boolean).map(escapeHtml).join(' · ');
-  const lessonHref = `/pages/lesson.html?id=${resource.id}${resource.subject ? `&subject=${encodeURIComponent(resource.subject)}` : ''}`;
+  const lessonHref = resourceHref(resource);
   const bookmarkBtn = `
     <button class="icon-btn" style="width:32px;height:32px;" data-bookmark="${resource.id}" aria-label="${isBookmarked ? 'Remove bookmark' : 'Bookmark'}">
       ${SC.icon(isBookmarked ? 'bookmark-check' : 'bookmark', { size: 16 })}
@@ -188,7 +210,7 @@ function lessonRowHtml(item, subject, extraAttrs) {
     : `<span class="lesson-type">${CATEGORY_LABELS[item.category] || 'Resource'}</span>`;
   return `
     <a class="lesson-row ${item.completed ? 'completed' : ''} ${item.locked ? 'locked' : ''}"${extraAttrs ? ` ${extraAttrs}` : ''}
-       href="/pages/lesson.html?id=${item.id}&subject=${encodeURIComponent(item.subject || subject)}">
+       href="${resourceHref(item, subject)}">
       <span class="lesson-status">${icon}</span>
       <span class="lesson-row-main">
         <span class="lesson-row-title">${escapeHtml(item.title)}</span>

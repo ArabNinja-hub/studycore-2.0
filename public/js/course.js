@@ -113,7 +113,7 @@
           ${cont.topic ? `<span class="lesson-type">${SC.icon('layers', { size: 12 })} ${escapeHtml(cont.topic)}</span>` : ''}
           ${cont.videoPosition ? `<div class="progress progress-thin" style="max-width:260px;margin-top:8px;"><span style="width:${Math.round((cont.videoPosition / Math.max(1, cont.videoDuration)) * 100)}%"></span></div>` : ''}
         </span>
-        <a class="btn btn-primary" href="/pages/lesson.html?id=${cont.id}&subject=${encodeURIComponent(cont.subject || subject)}">
+        <a class="btn btn-primary" href="${SC.resourceHref(cont, subject)}">
           ${cont.completed ? 'Review lesson' : 'Continue lesson'} ${SC.icon('arrow-right', { size: 16 })}
         </a>
       `;
@@ -229,7 +229,7 @@
     // Primary CTA -> continue
     if (cont) {
       const cta = $('#courseCtaPrimary');
-      cta.href = `/pages/lesson.html?id=${cont.id}&subject=${encodeURIComponent(cont.subject || subject)}`;
+      cta.href = SC.resourceHref(cont, subject);
       cta.textContent = cont.completed ? 'Review Course' : 'Continue Learning';
     }
   }
