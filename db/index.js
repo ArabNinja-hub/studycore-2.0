@@ -342,6 +342,16 @@ function seedAdmin() {
 
 seedAdmin();
 
+// The referral-code backfill above runs before seedAdmin() on the very first
+// boot, so the freshly-created admin (and any account inserted by scripts
+// that predate the column) can still have a NULL referral_code until the
+// next restart. Fill them in now so /api/auth/referral and the dashboard's
+// "share your link" always have a real code on first boot.
+const stillMissingCode = db.prepare('SELECT id FROM users WHERE referral_code IS NULL').all();
+for (const user of stillMissingCode) {
+  db.prepare('UPDATE users SET referral_code = ? WHERE id = ?').run(generateReferralCode(), user.id);
+}
+
 db.generateReferralCode = generateReferralCode;
 
 module.exports = db;
