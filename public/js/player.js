@@ -49,8 +49,15 @@
     /* ── Build the player shell ───────────── */
     container.innerHTML = `
       <div class="player-shell" id="scPlayerShell">
+        <!-- playsinline + webkit-playsinline stop iOS from hijacking playback
+             into its own native fullscreen player the moment it starts, which
+             would take the student out of StudyCore. x5-playsinline covers
+             the Chinese Android browser engines that ignore the standard
+             attribute. -->
         <video id="scPlayerVideo" preload="metadata" playsinline webkit-playsinline
-               controlslist="nodownload noremoteplayback" disablepictureinpicture></video>
+               x5-playsinline="true" x-webkit-airplay="deny"
+               controlslist="nodownload noremoteplayback noplaybackrate"
+               disablepictureinpicture disableremoteplayback></video>
         <div class="player-title">${SC.icon('video', { size: 17 })}<span>${escapeHtml(o.title || 'Video lesson')}</span></div>
         <div class="player-state" id="scPlayerLoading" hidden>
           <div class="player-spinner"></div>
@@ -237,17 +244,44 @@
       playBtn.setAttribute('aria-label', playing ? 'Pause' : 'Play');
     }
 
+    // Touch devices have no hover, so the CSS `:hover` rule that reveals the
+    // control bar never fires there — the controls existed but stayed at
+    // opacity 0, which is why the player looked dead on a phone. Adding
+    // `.show-ui` to the shell drives visibility from JS instead of hover, and
+    // the shell also carries `.is-touch` so CSS can keep the controls
+    // permanently legible on touch hardware.
+    // A device is treated as touch only when it actually reports touch
+    // hardware (coarse pointer / touch points). Testing `(hover: none)`
+    // alone misfires — some desktop browsers and headless environments
+    // report it while still driving a real mouse.
+    const isTouch = (navigator.maxTouchPoints || 0) > 0
+      || (typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+      || (('ontouchstart' in window) && typeof window.orientation !== 'undefined');
+    if (isTouch) shell.classList.add('is-touch');
+
     function showUiTransient() {
+      shell.classList.add('show-ui');
       ui.style.opacity = '1';
       center.style.opacity = playing() ? '0' : '1';
       center.style.pointerEvents = playing() ? 'none' : 'auto';
       clearTimeout(uiTimer);
-      if (playing()) uiTimer = setTimeout(hideUi, 2600);
+      // Touch users need longer than a mouse user who can just wiggle to
+      // bring the bar back.
+      if (playing()) uiTimer = setTimeout(hideUi, isTouch ? 4200 : 2600);
     }
     function hideUi() {
-      if (playing()) { ui.style.opacity = '0'; center.style.opacity = '0'; center.style.pointerEvents = 'none'; }
+      if (playing()) {
+        shell.classList.remove('show-ui');
+        ui.style.opacity = '0';
+        center.style.opacity = '0';
+        center.style.pointerEvents = 'none';
+      }
     }
     const playing = () => !video.paused && !video.ended;
+
+    // Controls are visible from the moment the player is built, on every
+    // device — never gated behind a hover that a phone cannot produce.
+    showUiTransient();
 
     /* ── Progress reporting ───────────────── */
     function reportPosition(force) {
@@ -357,7 +391,15 @@
     }
     bigPlay.addEventListener('click', togglePlay);
     playBtn.addEventListener('click', togglePlay);
-    video.addEventListener('click', togglePlay);
+    // On a mouse device, clicking the picture toggles playback (expected
+    // desktop behaviour). On touch, the first tap must REVEAL the controls
+    // instead — otherwise a student trying to reach the seek bar pauses the
+    // lesson by accident, and the hidden bar is unreachable.
+    video.addEventListener('click', () => {
+      if (!isTouch) { togglePlay(); return; }
+      if (shell.classList.contains('show-ui')) hideUi();
+      else showUiTransient();
+    });
     container.querySelector('#scSkipBack').addEventListener('click', () => { video.currentTime = Math.max(0, video.currentTime - 10); });
     container.querySelector('#scSkipFwd').addEventListener('click', () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); });
     container.querySelector('#scPlayerRetry').addEventListener('click', () => {
@@ -397,9 +439,26 @@
         if (exit) exit.call(document);
         return;
       }
+      // iOS Safari implements NONE of the Element fullscreen API — only the
+      // video element's own webkitEnterFullscreen. Try that first on iOS so
+      // the button actually does something there instead of silently failing.
+      if (typeof video.webkitEnterFullscreen === 'function'
+        && !(shell.requestFullscreen || shell.webkitRequestFullscreen)) {
+        try { video.webkitEnterFullscreen(); return; } catch { /* fall through */ }
+      }
       const req = shell.requestFullscreen || shell.webkitRequestFullscreen;
-      if (req) req.call(shell);
-      else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
+      if (req) {
+        const result = req.call(shell);
+        if (result && typeof result.catch === 'function') {
+          result.catch(() => {
+            if (typeof video.webkitEnterFullscreen === 'function') {
+              try { video.webkitEnterFullscreen(); } catch { /* nothing else to try */ }
+            }
+          });
+        }
+        return;
+      }
+      if (typeof video.webkitEnterFullscreen === 'function') video.webkitEnterFullscreen();
     }
     fsBtn.addEventListener('click', toggleFullscreen);
     function syncFsIcon() {
@@ -440,13 +499,33 @@
 
     // Start — probe first (HEAD only) so a 401/403 JSON body never gets
     // handed to the <video> element, then attach the same stream URL once.
+    //
+    // Autoplay is NOT attempted on touch devices. iOS and Android block
+    // unmuted programmatic play() outright, and the rejected promise used to
+    // leave the player sitting behind a spinner with no visible affordance.
+    // On phones we present a ready, tappable player and let the student start
+    // it — the one gesture mobile browsers always honour.
     loading.hidden = false;
     setPlayIcon(false);
     attachStream().then(() => {
+      if (isTouch) {
+        shell.classList.add('paused');
+        showUiTransient();
+        return;
+      }
       try {
         const p = video.play();
-        if (p && typeof p.catch === 'function') p.catch(() => {});
-      } catch { /* autoplay block is not a fatal error */ }
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            // Desktop autoplay policy also refuses sometimes; show controls.
+            shell.classList.add('paused');
+            showUiTransient();
+          });
+        }
+      } catch {
+        shell.classList.add('paused');
+        showUiTransient();
+      }
     });
 
     return {

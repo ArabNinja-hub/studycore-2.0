@@ -54,7 +54,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/css/style.css" />
-    <!-- Warm the first crossfade target so the opening transition has no flash -->
+    <!-- Hero photography: slide 1 is the first paint (highest priority) and
+         slide 2 is the first crossfade target, so both are preloaded. The
+         remaining slides are warmed from JS during idle time — that is what
+         keeps the transitions from flickering on a slow connection. -->
+    <link rel="preload" as="image" href="/assets/hero/slide-1.jpg" fetchpriority="high" />
     <link rel="preload" as="image" href="/assets/hero/slide-2.jpg" />
   </head>
   <body data-page="home">
