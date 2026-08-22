@@ -40,8 +40,8 @@
 //     200-page past paper never exhausts memory.
 //   · pinch-zoom friendly: the scroller owns the
 //     panning, pages reflow to container width.
-//   · range requests so page 1 paints before the
-//     whole file has arrived.
+//   · one credentialed fetch for normal-sized mobile PDFs (avoids WebView
+//     range/cookie bugs), with range loading retained for large documents.
 // =============================================
 
 (function (global) {
@@ -132,6 +132,7 @@
     let zoom = 1;
     let fitScale = 1;
     let currentPage = 1;
+    let streamSize = Number(o.fileSize) || 0;
 
     /* ── Chrome ─────────────────────────────── */
     host.innerHTML = `
@@ -281,6 +282,11 @@
       if (wantPixels > budget) outScale = Math.max(1, outScale * Math.sqrt(budget / wantPixels));
 
       const viewport = page.getViewport({ scale: cssScale * outScale });
+      const actualRatio = base.height / base.width;
+      if (entry.ratio !== actualRatio) {
+        entry.ratio = actualRatio;
+        entry.wrap.style.height = Math.round(cssWidth * actualRatio) + 'px';
+      }
       const canvas = document.createElement('canvas');
       canvas.className = 'doc-page-canvas';
       canvas.width = Math.floor(viewport.width);
@@ -312,32 +318,43 @@
       }
     }
 
-    function layoutPages(pdf) {
+    async function layoutPages(pdf) {
       scroll.innerHTML = '';
       pageEntries.length = 0;
       const width = availableWidth() * zoom;
-      const pending = [];
+
+      // Fetching metadata with getPage() for every page at once made pdf.js
+      // parse an entire long document before showing page one. That can exceed
+      // Safari's memory limit and is especially painful on mobile data. Use
+      // page one's dimensions as the initial placeholder; each page corrects
+      // its own ratio lazily when it enters the render window.
+      let defaultRatio = 1.414;
+      try {
+        const firstPage = await pdf.getPage(1);
+        const firstViewport = firstPage.getViewport({ scale: 1 });
+        defaultRatio = firstViewport.height / firstViewport.width;
+        if (typeof firstPage.cleanup === 'function') firstPage.cleanup();
+      } catch { /* A4-like fallback keeps the layout usable. */ }
+
+      const fragment = document.createDocumentFragment();
       for (let n = 1; n <= pdf.numPages; n += 1) {
         const wrap = document.createElement('div');
         wrap.className = 'doc-page';
         wrap.setAttribute('data-page', String(n));
-        scroll.appendChild(wrap);
-        const entry = { n, wrap, canvas: null, task: null, rendered: false, distance: Infinity };
-        pageEntries.push(entry);
-        pending.push(
-          pdf.getPage(n).then((page) => {
-            if (destroyed) return;
-            const vp = page.getViewport({ scale: 1 });
-            entry.ratio = vp.height / vp.width;
-            // Reserve the right height up front so the scrollbar is honest and
-            // pages never "jump" as they rasterise.
-            wrap.style.width = width + 'px';
-            wrap.style.height = Math.round(width * entry.ratio) + 'px';
-            if (typeof page.cleanup === 'function') { try { page.cleanup(); } catch { /* noop */ } }
-          }).catch(() => { /* page metadata unavailable */ })
-        );
+        wrap.style.width = width + 'px';
+        wrap.style.height = Math.round(width * defaultRatio) + 'px';
+        fragment.appendChild(wrap);
+        pageEntries.push({
+          n,
+          wrap,
+          canvas: null,
+          task: null,
+          rendered: false,
+          distance: Infinity,
+          ratio: defaultRatio
+        });
       }
-      return Promise.all(pending);
+      scroll.appendChild(fragment);
     }
 
     function applyZoomSizes() {
@@ -385,6 +402,32 @@
       });
     }
 
+    async function fetchPdfForMobile() {
+      setStatus('Loading document for mobile…');
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 90000);
+      try {
+        const res = await fetch(url, {
+          credentials: 'include',
+          cache: 'no-store',
+          signal: ctrl.signal
+        });
+        if (!res.ok) {
+          const err = new Error(`Document request failed (${res.status}).`);
+          err.status = res.status;
+          throw err;
+        }
+        const data = new Uint8Array(await res.arrayBuffer());
+        const header = new TextDecoder('ascii').decode(data.subarray(0, Math.min(1024, data.length)));
+        if (!header.includes('%PDF-')) {
+          throw new Error('The uploaded file is not a readable PDF.');
+        }
+        return data;
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
     async function openPdf() {
       let pdfjs;
       try {
@@ -395,17 +438,41 @@
       }
       if (destroyed) return;
 
+      // Mobile Safari and some Android WebViews are unreliable when pdf.js
+      // performs many authenticated range requests from its network layer.
+      // For normal-sized PDFs, make one credentialed request in the page and
+      // hand the bytes directly to pdf.js. Larger files keep progressive
+      // range loading to avoid exhausting the device's memory.
+      const mobileBufferLimit = 32 * 1024 * 1024;
+      let pdfSource = { url: url, withCredentials: true };
+      if (isMobileViewport() && streamSize > 0 && streamSize <= mobileBufferLimit) {
+        try {
+          pdfSource = { data: await fetchPdfForMobile() };
+        } catch (err) {
+          if (err && (err.status === 401 || err.status === 403 || /not a readable PDF/i.test(err.message))) {
+            showError(err.status === 401
+              ? 'Please log in again to open this document.'
+              : err.status === 403
+                ? 'You do not have access to this document with your current plan.'
+                : err.message);
+            return;
+          }
+          // A one-shot fetch can fail on a transient mobile connection. The
+          // normal range loader is still worth trying before showing an error.
+          console.warn('[StudyCore reader] mobile buffered load failed; trying ranges', err);
+          pdfSource = { url: url, withCredentials: true };
+        }
+      }
+
+      if (destroyed) return;
       setStatus('Opening document…');
       const task = pdfjs.getDocument({
-        url: url,
-        // Cookies are what authorise the stream endpoint — without this the
-        // worker fetches anonymously and gets a 401.
-        withCredentials: true,
-        // Range + streaming so the first page paints before the whole file
-        // has downloaded. The backend already advertises Accept-Ranges.
+        ...pdfSource,
         disableRange: false,
         disableStream: false,
-        disableAutoFetch: true,
+        // Auto-fetch is required by some linearized and cross-reference-heavy
+        // PDFs on Safari. The lazy canvas window still controls render memory.
+        disableAutoFetch: false,
         rangeChunkSize: 262144,
         standardFontDataUrl: PDFJS_FONTS,
         isEvalSupported: false
@@ -517,6 +584,8 @@
           return;
         }
         servedType = probe.headers.get('content-type') || servedType;
+        const servedLength = Number(probe.headers.get('content-length'));
+        if (Number.isFinite(servedLength) && servedLength > 0) streamSize = servedLength;
       } catch (err) {
         if (destroyed) return;
         showError(err.name === 'AbortError'

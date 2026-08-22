@@ -137,14 +137,15 @@
                   <label for="resYear">Year / Exam</label>
                   <input id="resYear" type="text" placeholder="e.g. 2025, Year 1" />
                 </div>
-                <div class="form-group">
-                  <label for="resSemester">Term</label>
+                <div class="form-group" id="resSemesterGroup">
+                  <label for="resSemester">Term <span id="resSemesterRequired" aria-hidden="true"></span></label>
                   <select id="resSemester">
                     <option value="">No specific term</option>
                     <option value="Term 1">Term 1</option>
                     <option value="Term 2">Term 2</option>
                     <option value="Term 3">Term 3</option>
                   </select>
+                  <small id="resSemesterHelp" style="display:block;margin-top:5px;color:var(--muted);">Required for video lessons so they appear in the correct term on the course page.</small>
                 </div>
                 <div class="form-group">
                   <label for="resTags">Tags (comma separated)</label>
@@ -194,7 +195,7 @@
                     <th>Title</th>
                     <th>Category</th>
                     <th>Subject</th>
-                    <th>Topic</th>
+                    <th>Topic / Term</th>
                     <th>Status</th>
                     <th>Access</th>
                     <th>Downloads</th>

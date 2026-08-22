@@ -4,6 +4,13 @@ const { requireAuth, attachUser } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Course homes must always reflect the latest published admin uploads rather
+// than a browser or proxy serving an older API response.
+router.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // The six StudyCore courses. Kept in one place so the public API, the course
 // pages and the sitemap always agree on slugs/names.
 const COURSES = [
@@ -322,6 +329,12 @@ router.get('/:subject', requireAuth, (req, res) => {
     }
   }
 
+  const lectures = flatLessons.filter((l) => l.category === 'video');
+  const videoTerms = ['Term 1', 'Term 2', 'Term 3'].map((term) => ({
+    term,
+    lessons: lectures.filter((lesson) => lesson.term === term)
+  }));
+
   res.json({
     subject,
     slug: COURSES.find((c) => c.subject === subject)?.slug || key,
@@ -337,7 +350,8 @@ router.get('/:subject', requireAuth, (req, res) => {
     recommended,
     topics,
     lessons: flatLessons,
-    lectures: flatLessons.filter((l) => l.category === 'video'),
+    lectures,
+    videoTerms,
     notes: flatLessons.filter((l) => l.category === 'document'),
     tutorials: flatLessons.filter((l) => l.category === 'tutorial'),
     pastPapers: flatLessons.filter((l) => l.category === 'past_paper'),

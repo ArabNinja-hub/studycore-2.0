@@ -186,7 +186,16 @@ function pipeBodyToResponse(body, res, req) {
   const abort = () => {
     if (!res.writableEnded && typeof nodeStream.destroy === 'function') nodeStream.destroy();
   };
-  if (req) req.on('close', abort);
+  // Do not listen to IncomingMessage "close" here. On current Node versions
+  // it fires when the request message is complete (which is immediately for a
+  // GET), not only when the phone disconnects. Destroying the storage stream
+  // at that point produced empty/truncated PDFs most often on slower Android
+  // and iOS connections. "aborted" is the actual request-abort signal; the
+  // response close check covers a client leaving during the download.
+  if (req) req.once('aborted', abort);
+  res.once('close', () => {
+    if (!res.writableEnded) abort();
+  });
   nodeStream.on('error', fail);
   nodeStream.pipe(res);
 }

@@ -4,9 +4,8 @@
 
 function securityHeaders(req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  // SAMEORIGIN (not DENY): the document viewer loads PDFs in a same-origin
-  // iframe from /api/resources/:id/stream. DENY made browsers refuse the
-  // reader; clickjacking protection still holds against other sites.
+  // SAMEORIGIN keeps protected media embeddable by StudyCore's own viewer
+  // while still preventing other sites from framing application responses.
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');

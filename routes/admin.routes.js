@@ -16,6 +16,20 @@ router.use(requireAuth, requireRole('ADMIN'));
 // document that never streams.
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi']);
 const DOCUMENT_LIKE_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'assignment']);
+const COURSE_CONTENT_CATEGORIES = new Set(['video', 'document', 'tutorial', 'past_paper']);
+const COURSE_SUBJECTS = new Set(['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Communication Skills', 'Programming']);
+const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
+
+function validateCoursePlacement(category, subject, semester) {
+  if (!COURSE_CONTENT_CATEGORIES.has(category)) return null;
+  if (!subject || !COURSE_SUBJECTS.has(subject)) {
+    return 'Choose a valid subject/course so this resource can appear on the correct course home page.';
+  }
+  if (category === 'video' && !VIDEO_TERMS.has(semester)) {
+    return 'Choose Term 1, Term 2, or Term 3 for every video lesson.';
+  }
+  return null;
+}
 
 function validateFileMatchesCategory(category, file) {
   if (!file) return null;
@@ -95,6 +109,8 @@ router.post('/resources', upload.single('file'), (req, res) => {
 
   if (!title || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
   if (!category) return res.status(400).json({ message: 'Category is required.' });
+  const placementError = validateCoursePlacement(category, subject, semester);
+  if (placementError) return res.status(400).json({ message: placementError });
   if (category === 'quiz' && !quizData) return res.status(400).json({ message: 'Quiz questions (JSON) are required for quizzes.' });
   if (category === 'video' && !req.file) {
     // Videos are watch-on-site only, uploaded and streamed like Netflix -
@@ -179,6 +195,17 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   const { title, description, category, subject, course, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   const effectiveCategory = category ?? existing.category;
+  const effectiveSubject = subject ?? existing.subject;
+  const effectiveSemester = semester ?? existing.semester;
+  // Enforce placement when the admin is editing placement fields or replacing
+  // the file, while still allowing a publish toggle on older legacy rows that
+  // predate required video terms.
+  const placementChanged = category !== undefined || subject !== undefined || semester !== undefined || Boolean(req.file);
+  const placementError = placementChanged
+    ? validateCoursePlacement(effectiveCategory, effectiveSubject, effectiveSemester)
+    : null;
+  if (placementError) return res.status(400).json({ message: placementError });
+
   const categoryMismatch = validateFileMatchesCategory(effectiveCategory, req.file);
   if (categoryMismatch) {
     if (req.file && req.file.key) {

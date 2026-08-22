@@ -27,6 +27,15 @@
     document.getElementById('resQuizData').required = category === 'quiz';
     document.getElementById('resPinned').parentElement.style.display = category === 'announcement' ? 'flex' : 'none';
 
+    const isCourseContent = ['video', 'document', 'tutorial', 'past_paper'].includes(category);
+    const isVideo = category === 'video';
+    const subjectSelect = document.getElementById('resSubject');
+    const termSelect = document.getElementById('resSemester');
+    subjectSelect.required = isCourseContent;
+    termSelect.required = isVideo;
+    document.getElementById('resSemesterRequired').textContent = isVideo ? '*' : '';
+    document.getElementById('resSemesterHelp').style.display = isVideo ? 'block' : 'none';
+
     const fileInput = document.getElementById('fileInput');
     if (category === 'video') fileInput.setAttribute('accept', '.mp4,.mov,.webm,.mkv,.avi,video/*');
     else fileInput.setAttribute('accept', '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.svg');
@@ -334,7 +343,7 @@
           </td>
           <td>${CATEGORY_LABELS[r.category] || r.category}</td>
           <td>${escapeHtml(r.subject || '—')}</td>
-          <td>${escapeHtml(r.topic || '—')}</td>
+          <td>${escapeHtml(r.topic || '—')}${r.semester ? `<br><span style="font-size:0.72rem;color:var(--muted);">${escapeHtml(r.semester)}</span>` : ''}</td>
           <td>
             <button class="btn btn-ghost btn-sm" data-toggle-publish="${r.id}" data-current-status="${r.publishStatus}" style="color:${r.publishStatus === 'published' ? 'var(--green-600)' : 'var(--amber-600)'};">
               ${SC.icon(r.publishStatus === 'published' ? 'check-circle' : 'clock', { size: 14 })} ${r.publishStatus === 'published' ? 'Published' : 'Draft'}
