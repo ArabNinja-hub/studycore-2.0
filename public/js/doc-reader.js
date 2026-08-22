@@ -203,33 +203,60 @@
     // file reaches the error state instead of ping-ponging.
     let dispatchDepth = 0;
 
+    /* ── Search state ───────────────────────── */
+    const textCache = new Map();   // pageNum -> [{ str, transform, width, height }]
+    let searchResults = [];        // [{ pageNum, itemIndex }]
+    let searchCursor = -1;
+    let searchActive = false;
+    let searchSeq = 0;             // invalidates superseded async search passes
+
     /* ── Chrome ─────────────────────────────── */
-    host.innerHTML = `
-      <div class="card doc-reader" id="scDocReader">
-        <div class="doc-reader-head">
-          <span class="doc-reader-icon">${icon('file-text', 17)}</span>
-          <strong class="doc-reader-title">${esc(o.title || 'Document')}</strong>
-          <span class="doc-reader-sub">${esc(fmtSize(o.fileSize))}${o.fileSize ? ' · ' : ''}StudyCore Document Viewer</span>
-          <div class="doc-reader-tools" id="scDocTools" hidden>
-            <button type="button" class="doc-tool" id="scDocPrev" aria-label="Previous page">${icon('arrow-left', 16)}</button>
-            <span class="doc-tool-label" id="scDocPageLabel" aria-live="polite">1 / 1</span>
-            <button type="button" class="doc-tool" id="scDocNext" aria-label="Next page">${icon('arrow-right', 16)}</button>
-            <span class="doc-tool-sep" aria-hidden="true"></span>
-            <button type="button" class="doc-tool" id="scDocZoomOut" aria-label="Zoom out">${icon('zoom-out', 16)}</button>
-            <span class="doc-tool-label" id="scDocZoomLabel">100%</span>
-            <button type="button" class="doc-tool" id="scDocZoomIn" aria-label="Zoom in">${icon('zoom-in', 16)}</button>
-            <button type="button" class="doc-tool" id="scDocFit" aria-label="Fit to width">${icon('minimize', 16)}</button>
-            <button type="button" class="doc-tool" id="scDocFs" aria-label="Fullscreen">${icon('maximize', 16)}</button>
-          </div>
+    // `chrome: 'bare'` renders only the reading surface (stage + scroll) with
+    // no card wrapper, header or toolbar — the standalone /viewer/:id page
+    // provides its own StudyCore chrome and drives this reader through the
+    // controller object returned below. The default 'card' chrome keeps the
+    // embedded lesson-page reader exactly as before (plus search).
+    const isBare = o.chrome === 'bare';
+    const headHtml = isBare ? '' : `
+      <div class="doc-reader-head">
+        <span class="doc-reader-icon">${icon('file-text', 17)}</span>
+        <strong class="doc-reader-title">${esc(o.title || 'Document')}</strong>
+        <span class="doc-reader-sub">${esc(fmtSize(o.fileSize))}${o.fileSize ? ' · ' : ''}StudyCore Document Viewer</span>
+        <div class="doc-reader-tools" id="scDocTools" hidden>
+          <button type="button" class="doc-tool" id="scDocPrev" aria-label="Previous page">${icon('arrow-left', 16)}</button>
+          <span class="doc-tool-label" id="scDocPageLabel" aria-live="polite">1 / 1</span>
+          <button type="button" class="doc-tool" id="scDocNext" aria-label="Next page">${icon('arrow-right', 16)}</button>
+          <span class="doc-tool-sep" aria-hidden="true"></span>
+          <button type="button" class="doc-tool" id="scDocZoomOut" aria-label="Zoom out">${icon('zoom-out', 16)}</button>
+          <span class="doc-tool-label" id="scDocZoomLabel">100%</span>
+          <button type="button" class="doc-tool" id="scDocZoomIn" aria-label="Zoom in">${icon('zoom-in', 16)}</button>
+          <button type="button" class="doc-tool" id="scDocFit" aria-label="Fit to width">${icon('minimize', 16)}</button>
+          <button type="button" class="doc-tool" id="scDocSearchBtn" aria-label="Search document" aria-expanded="false">${icon('search', 16)}</button>
+          <button type="button" class="doc-tool" id="scDocFs" aria-label="Fullscreen">${icon('maximize', 16)}</button>
         </div>
-        <div class="doc-reader-stage" id="scDocStage">
-          <div class="doc-reader-status" id="scDocStatus">
-            <div class="player-spinner"></div>
-            <p id="scDocStatusText">Opening document…</p>
-          </div>
-          <div class="doc-reader-scroll" id="scDocScroll" tabindex="0"></div>
+      </div>
+      <div class="doc-reader-search" id="scDocSearchBar" hidden>
+        <div class="doc-reader-search-field">
+          ${icon('search', 16)}
+          <input type="text" id="scDocSearchInput" placeholder="Search this document…" aria-label="Search inside document" autocomplete="off" />
         </div>
+        <span class="doc-tool-label" id="scDocSearchCount" aria-live="polite"></span>
+        <button type="button" class="doc-tool" id="scDocSearchPrev" aria-label="Previous match">${icon('arrow-left', 16)}</button>
+        <button type="button" class="doc-tool" id="scDocSearchNext" aria-label="Next match">${icon('arrow-right', 16)}</button>
+        <button type="button" class="doc-tool" id="scDocSearchClose" aria-label="Close search">${icon('x', 16)}</button>
       </div>`;
+
+    host.innerHTML = `
+      ${isBare ? '' : '<div class="card doc-reader" id="scDocReader">'}
+      ${headHtml}
+      <div class="doc-reader-stage" id="scDocStage">
+        <div class="doc-reader-status" id="scDocStatus">
+          <div class="player-spinner"></div>
+          <p id="scDocStatusText">Opening document…</p>
+        </div>
+        <div class="doc-reader-scroll" id="scDocScroll" tabindex="0"></div>
+      </div>
+      ${isBare ? '' : '</div>'}`;
 
     const reader = host.querySelector('#scDocReader');
     const stage = host.querySelector('#scDocStage');
@@ -239,10 +266,16 @@
     const statusText = host.querySelector('#scDocStatusText');
     const pageLabel = host.querySelector('#scDocPageLabel');
     const zoomLabel = host.querySelector('#scDocZoomLabel');
+    const fsTarget = reader || stage;
 
-    // Protected content: no right-click "save", no drag-out.
-    reader.addEventListener('contextmenu', (e) => e.preventDefault());
-    reader.addEventListener('dragstart', (e) => e.preventDefault());
+    // Protected content: no right-click "save", no drag-out. In bare mode the
+    // reading surface (stage) carries the same protection the card carries in
+    // embedded mode.
+    const protectEl = reader || stage;
+    if (protectEl) {
+      protectEl.addEventListener('contextmenu', (e) => e.preventDefault());
+      protectEl.addEventListener('dragstart', (e) => e.preventDefault());
+    }
 
     function setStatus(text) {
       if (!statusBox) return;
@@ -358,6 +391,169 @@
 
     function updatePageLabel() {
       if (pageLabel && pdfDoc) pageLabel.textContent = `${currentPage} / ${pdfDoc.numPages}`;
+      emitState();
+    }
+
+    /* ── State + search callbacks ───────────── */
+    function emitState() {
+      if (typeof o.onState === 'function') {
+        o.onState({ page: currentPage, numPages: pdfDoc ? pdfDoc.numPages : 0, zoom: Math.round(zoom * 100) });
+      }
+    }
+
+    function updateSearchUi(info) {
+      const countEl = host.querySelector('#scDocSearchCount');
+      if (countEl) {
+        if (info.searching) countEl.textContent = `Searching… (${info.total || 0})`;
+        else if (info.active && info.total > 0) countEl.textContent = `${info.current} / ${info.total}`;
+        else if (info.active) countEl.textContent = 'No matches';
+        else countEl.textContent = '';
+      }
+      const btn = host.querySelector('#scDocSearchBtn');
+      if (btn) btn.classList.toggle('active', Boolean(info.active));
+    }
+
+    function emitSearch(info) {
+      updateSearchUi(info);
+      if (typeof o.onSearchUpdate === 'function') o.onSearchUpdate(info);
+    }
+
+    /* ── Search engine ──────────────────────── */
+    // Extracts a page's text once and caches it. Lazy + per-page so a large
+    // past paper is never fully parsed just to search, and a query that
+    // matches early returns fast.
+    async function getPageText(pageNum) {
+      if (textCache.has(pageNum)) return textCache.get(pageNum);
+      const page = await pdfDoc.getPage(pageNum);
+      try {
+        const tc = await page.getTextContent();
+        const items = (tc && tc.items ? tc.items : [])
+          .filter((it) => it && typeof it.str === 'string' && it.str.trim().length);
+        textCache.set(pageNum, items);
+        return items;
+      } finally {
+        if (typeof page.cleanup === 'function') { try { page.cleanup(); } catch { /* noop */ } }
+      }
+    }
+
+    async function runSearch(query) {
+      const q = String(query || '').trim();
+      if (!q) { clearSearch(); return; }
+      if (!pdfDoc) return;
+      searchSeq += 1;
+      const seq = searchSeq;
+      searchActive = true;
+      searchResults = [];
+      searchCursor = -1;
+      emitSearch({ active: true, searching: true, current: 0, total: 0 });
+      const lower = q.toLowerCase();
+      const maxMatches = 2000;
+      let total = 0;
+      const totalPages = pdfDoc.numPages;
+      for (let n = 1; n <= totalPages; n += 1) {
+        if (seq !== searchSeq || destroyed) return;
+        let items;
+        try { items = await getPageText(n); } catch { continue; }
+        if (seq !== searchSeq || destroyed) return;
+        for (let i = 0; i < items.length; i += 1) {
+          const it = items[i];
+          if (it.str.toLowerCase().indexOf(lower) !== -1) {
+            searchResults.push({ pageNum: n, itemIndex: i });
+            total += 1;
+            if (total >= maxMatches) break;
+          }
+        }
+        emitSearch({ active: true, searching: true, current: 0, total });
+        if (total >= maxMatches) break;
+      }
+      if (seq !== searchSeq || destroyed) return;
+      if (!searchResults.length) {
+        clearHighlight();
+        emitSearch({ active: true, searching: false, current: 0, total: 0, done: true });
+        return;
+      }
+      searchCursor = 0;
+      goToPage(searchResults[0].pageNum);
+      emitSearch({ active: true, searching: false, current: 1, total: searchResults.length, done: true });
+    }
+
+    function searchStep(delta) {
+      if (!searchActive || !searchResults.length) return;
+      searchCursor = (searchCursor + delta + searchResults.length) % searchResults.length;
+      const m = searchResults[searchCursor];
+      goToPage(m.pageNum);
+      emitSearch({ active: true, searching: false, current: searchCursor + 1, total: searchResults.length, done: true });
+    }
+
+    function clearSearch() {
+      searchSeq += 1;
+      searchActive = false;
+      searchResults = [];
+      searchCursor = -1;
+      clearHighlight();
+      emitSearch({ active: false, searching: false, current: 0, total: 0, done: true });
+    }
+
+    function toggleSearchUi() {
+      const bar = host.querySelector('#scDocSearchBar');
+      const input = host.querySelector('#scDocSearchInput');
+      if (!bar) return;
+      const open = bar.hidden;
+      bar.hidden = !open;
+      const btn = host.querySelector('#scDocSearchBtn');
+      if (btn) btn.setAttribute('aria-expanded', String(open));
+      if (open) {
+        setTimeout(() => { if (input) input.focus(); }, 0);
+      } else {
+        clearSearch();
+        if (input) input.value = '';
+      }
+    }
+
+    /* ── Match highlight (canvas overlay) ───── */
+    function clearHighlight() {
+      pageEntries.forEach((e) => {
+        if (e.wrap) e.wrap.querySelectorAll('.doc-highlight').forEach((n) => n.remove());
+      });
+    }
+
+    // Draws a translucent rect over the active match on a rendered page. Item
+    // coordinates come from getTextContent() in PDF user space (origin
+    // bottom-left); entry.cssScale + entry.base map them to the page wrap's
+    // CSS space (origin top-left).
+    function drawHighlights(entry) {
+      if (!searchActive || searchCursor < 0) return;
+      const match = searchResults[searchCursor];
+      if (!match || match.pageNum !== entry.n) return;
+      const items = textCache.get(entry.n);
+      const base = entry.base;
+      const cssScale = entry.cssScale;
+      if (!items || !base || !cssScale) return;
+      const it = items[match.itemIndex];
+      if (!it) return;
+      const wrapW = entry.wrap.clientWidth || base.width * cssScale;
+      const x = it.transform[4] * cssScale;
+      const baseline = (base.height - it.transform[5]) * cssScale;
+      const w = Math.max(2, (it.width || 1) * cssScale);
+      const hRaw = (typeof it.height === 'number' && it.height > 0) ? it.height : (Math.abs(it.transform[0]) || 12);
+      const h = Math.max(4, hRaw * cssScale);
+      const top = baseline - h;
+      const div = document.createElement('div');
+      div.className = 'doc-highlight';
+      div.style.left = Math.max(0, x - 1) + 'px';
+      div.style.top = Math.max(0, top - 2) + 'px';
+      div.style.width = Math.min(Math.max(2, wrapW - x), w + 2) + 'px';
+      div.style.height = Math.max(4, h + 4) + 'px';
+      entry.wrap.appendChild(div);
+    }
+
+    function refreshHighlight() {
+      clearHighlight();
+      if (!searchActive || searchCursor < 0) return;
+      const match = searchResults[searchCursor];
+      if (!match) return;
+      const entry = pageEntries.find((e) => e.n === match.pageNum);
+      if (entry) drawHighlights(entry);
     }
 
     function releasePage(entry) {
@@ -386,6 +582,8 @@
       const cssWidth = availableWidth() * zoom;
       const base = page.getViewport({ scale: 1 });
       const cssScale = cssWidth / base.width;
+      entry.base = base;
+      entry.cssScale = cssScale;
 
       // Device pixels, capped both by dpr and by an absolute pixel budget.
       let outScale = maxOutputScale();
@@ -420,6 +618,7 @@
       try {
         await task.promise;
         entry.rendered = true;
+        if (searchActive && searchCursor >= 0) refreshHighlight();
       } catch (err) {
         if (!destroyed && err && err.name !== 'RenderingCancelledException') {
           entry.wrap.innerHTML = `<div class="doc-page-fallback">Page ${entry.n} could not be displayed.</div>`;
@@ -471,6 +670,7 @@
 
     function applyZoomSizes() {
       const width = availableWidth() * zoom;
+      clearHighlight();
       pageEntries.forEach((entry) => {
         entry.wrap.style.width = width + 'px';
         if (entry.ratio) entry.wrap.style.height = Math.round(width * entry.ratio) + 'px';
@@ -478,6 +678,7 @@
         releasePage(entry);
       });
       if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%';
+      emitState();
       scheduleVisible();
     }
 
@@ -488,6 +689,20 @@
       updatePageLabel();
       scroll.scrollTo({ top: entry.wrap.offsetTop - 8, behavior: 'smooth' });
       renderPage(entry);
+      if (searchActive && searchCursor >= 0) refreshHighlight();
+    }
+
+    function toggleFullscreen() {
+      const target = fsTarget;
+      if (!target) return;
+      const active = document.fullscreenElement || document.webkitFullscreenElement;
+      if (active) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) exit.call(document);
+        return;
+      }
+      const req = target.requestFullscreen || target.webkitRequestFullscreen;
+      if (req) req.call(target);
     }
 
     function bindTools() {
@@ -502,16 +717,24 @@
       on('#scDocZoomOut', () => { zoom = Math.max(0.5, Math.round((zoom - 0.25) * 100) / 100); applyZoomSizes(); });
       on('#scDocZoomIn', () => { zoom = Math.min(3, Math.round((zoom + 0.25) * 100) / 100); applyZoomSizes(); });
       on('#scDocFit', () => { zoom = 1; applyZoomSizes(); });
-      on('#scDocFs', () => {
-        const active = document.fullscreenElement || document.webkitFullscreenElement;
-        if (active) {
-          const exit = document.exitFullscreen || document.webkitExitFullscreen;
-          if (exit) exit.call(document);
-          return;
-        }
-        const req = reader.requestFullscreen || reader.webkitRequestFullscreen;
-        if (req) req.call(reader);
-      });
+      on('#scDocFs', () => toggleFullscreen());
+      on('#scDocSearchBtn', () => toggleSearchUi());
+      on('#scDocSearchClose', () => toggleSearchUi());
+      on('#scDocSearchPrev', () => searchStep(-1));
+      on('#scDocSearchNext', () => searchStep(1));
+
+      const searchInput = host.querySelector('#scDocSearchInput');
+      if (searchInput) {
+        let debounce = null;
+        searchInput.addEventListener('input', () => {
+          clearTimeout(debounce);
+          debounce = setTimeout(() => runSearch(searchInput.value), 320);
+        });
+        searchInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') { e.preventDefault(); runSearch(searchInput.value); }
+          else if (e.key === 'Escape') toggleSearchUi();
+        });
+      }
     }
 
     // One credentialed fetch of the whole file — the most reliable pattern
@@ -991,6 +1214,10 @@
 
     function destroy(full) {
       destroyed = true;
+      searchSeq += 1;
+      searchActive = false;
+      searchResults = [];
+      textCache.clear();
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       clearTimeout(resizeTimer);
@@ -1000,7 +1227,23 @@
       if (full !== false) host.innerHTML = '';
     }
 
-    return { destroy: () => destroy(true) };
+    // Controller — the standalone viewer page (and any other embedder) drives
+    // the reader through this instead of reaching into the DOM.
+    return {
+      nextPage: () => goToPage(currentPage + 1),
+      prevPage: () => goToPage(currentPage - 1),
+      goToPage: (n) => goToPage(n),
+      zoomIn: () => { zoom = Math.min(3, Math.round((zoom + 0.25) * 100) / 100); applyZoomSizes(); },
+      zoomOut: () => { zoom = Math.max(0.5, Math.round((zoom - 0.25) * 100) / 100); applyZoomSizes(); },
+      fitWidth: () => { zoom = 1; applyZoomSizes(); },
+      toggleFullscreen,
+      search: (q) => runSearch(q),
+      searchNext: () => searchStep(1),
+      searchPrev: () => searchStep(-1),
+      clearSearch,
+      getState: () => ({ page: currentPage, numPages: pdfDoc ? pdfDoc.numPages : 0, zoom: Math.round(zoom * 100) }),
+      destroy: () => destroy(true)
+    };
   }
 
   global.StudyCoreReader = { init };

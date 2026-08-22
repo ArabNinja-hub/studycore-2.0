@@ -299,7 +299,7 @@
       const where = [r.subject, r.topic].filter(Boolean).join(' · ');
       const locked = r.locked ? `<span class="sr-type" style="color:var(--amber-600);">${SC.icon('lock', { size: 11 })} Premium</span>` : '';
       return `
-      <a class="search-result" href="/pages/lesson.html?id=${r.id}&subject=${encodeURIComponent(r.subject || '')}">
+      <a class="search-result" href="${SC.resourceHref(r)}">
         <span class="sr-icon">${SC.icon(meta.icon, { size: 18 })}</span>
         <span class="sr-body"><strong>${escapeHtml(r.title)}</strong><span>${escapeHtml(where)}</span></span>
         ${locked}<span class="sr-type">${meta.label}</span>

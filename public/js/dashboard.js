@@ -103,7 +103,7 @@
           <h4>${escapeHtml(it.title)}${it.topic ? ` <span style="font-weight:500;color:var(--muted);font-size:0.88rem;">— ${escapeHtml(it.topic)}</span>` : ''}</h4>
           ${resume}
         </span>
-        <a class="btn btn-primary" href="/pages/lesson.html?id=${it.id}&subject=${encodeURIComponent(best.course.subject)}">Continue Lesson ${SC.icon('arrow-right', { size: 16 })}</a>
+        <a class="btn btn-primary" href="${SC.resourceHref({ id: it.id, category: it.category, subject: best.course.subject })}">Continue Lesson ${SC.icon('arrow-right', { size: 16 })}</a>
       </div>`;
   }
 
@@ -160,7 +160,7 @@
       return;
     }
     list.innerHTML = items.map((a) => `
-      <a class="activity-item" href="/pages/lesson.html?id=${a.id}&subject=${encodeURIComponent(a.subject || '')}" style="text-decoration:none;color:inherit;">
+      <a class="activity-item" href="${SC.resourceHref(a)}" style="text-decoration:none;color:inherit;">
         <span class="act-icon">${SC.icon(a.category === 'video' ? 'play' : 'check', { size: 16 })}</span>
         <span class="act-body">
           <strong>${a.completed ? 'Completed' : 'Studied'} — ${escapeHtml(a.title)}</strong>
@@ -178,7 +178,7 @@
       return;
     }
     list.innerHTML = items.map((r) => `
-      <a class="activity-item" href="/pages/lesson.html?id=${r.id}&subject=${encodeURIComponent(r.subject || '')}" style="text-decoration:none;color:inherit;">
+      <a class="activity-item" href="${SC.resourceHref(r)}" style="text-decoration:none;color:inherit;">
         <span class="act-icon">${SC.icon(SC.courseCategoryIcon(r.category), { size: 16 })}</span>
         <span class="act-body">
           <strong>${escapeHtml(r.title)}</strong>
@@ -334,7 +334,7 @@
       const { resources } = await StudyCoreAPI.myBookmarks();
       if (!resources.length) { list.innerHTML = '<p>No bookmarks yet — save a resource from any lesson page.</p>'; return; }
       list.innerHTML = resources.slice(0, 6).map((r) => `
-        <a class="activity-item" href="/pages/lesson.html?id=${r.id}&subject=${encodeURIComponent(r.subject || '')}" style="text-decoration:none;color:inherit;">
+        <a class="activity-item" href="${SC.resourceHref(r)}" style="text-decoration:none;color:inherit;">
           <span class="act-icon">${SC.icon(SC.courseCategoryIcon(r.category), { size: 15 })}</span>
           <span class="act-body">
             <strong>${escapeHtml(r.title)}</strong>

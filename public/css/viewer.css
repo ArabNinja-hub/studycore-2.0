@@ -1,0 +1,349 @@
+/* =============================================
+   STUDYCORE — Internal Document Viewer
+   -----------------------------------------------
+   Full-page reading surface for /viewer/:documentId.
+   Reuses the StudyCore design tokens from
+   style.css (colors, radii, fonts, buttons) and the
+   StudyCoreReader canvas engine (js/doc-reader.js)
+   rendered in "bare" mode, so the PDF surface fills
+   the viewport while the chrome (back, title,
+   toolbar, search) stays StudyCore-native.
+
+   The layout is an app-shell: body is a fixed-height
+   flex column (dynamic viewport units on mobile so
+   an iOS address bar collapsing never resizes the
+   reading surface mid-scroll), the reader stage is
+   the only thing that scrolls.
+   ============================================= */
+
+body[data-page='viewer'] {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+body[data-page='viewer'] #topBarHost { flex: 0 0 auto; }
+body[data-page='viewer'] #siteNav { flex: 0 0 auto; }
+body[data-page='viewer'] .viewer-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+.viewer-shell {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #121820;
+}
+/* Defensive fullscreen sizing — the fullscreened shell keeps its internal
+   header + stage layout on every browser. */
+.viewer-shell:fullscreen,
+.viewer-shell:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+}
+
+/* ── Header bar ─────────────────────────────── */
+.viewer-bar {
+  flex: 0 0 auto;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+  z-index: 5;
+}
+.viewer-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  min-width: 0;
+}
+
+.viewer-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 1.5px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.viewer-back:hover {
+  background: var(--bg-alt);
+  color: var(--ink);
+  border-color: var(--border);
+}
+.viewer-back-icon { display: inline-flex; }
+
+.viewer-title-block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.viewer-title-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.viewer-title-icon {
+  display: inline-flex;
+  color: var(--teal-600);
+  flex: 0 0 auto;
+}
+.viewer-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.viewer-meta {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Toolbar ────────────────────────────────── */
+.viewer-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  max-width: 100%;
+}
+.viewer-tools::-webkit-scrollbar { display: none; }
+.viewer-tools[hidden] { display: none; }
+
+.viewer-tool {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.viewer-tool:hover,
+.viewer-tool:active {
+  background: var(--bg-alt);
+  color: var(--ink);
+}
+.viewer-tool.active {
+  background: var(--teal-50);
+  color: var(--teal-600);
+}
+.viewer-tool[disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.viewer-tool-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 4px;
+  flex: 0 0 auto;
+}
+.viewer-page-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.viewer-download { color: var(--teal-600); }
+.viewer-download:hover { color: var(--teal-700); background: var(--teal-50); }
+
+/* ── Search panel ───────────────────────────── */
+.viewer-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-alt);
+  flex-wrap: nowrap;
+}
+.viewer-search[hidden] { display: none; }
+.viewer-search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 0 10px;
+  height: 38px;
+}
+.viewer-search-field:focus-within {
+  border-color: var(--teal-500);
+  box-shadow: var(--ring);
+}
+.viewer-search-icon {
+  display: inline-flex;
+  color: var(--faint);
+  flex: 0 0 auto;
+}
+.viewer-search-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.9rem;
+  height: 100%;
+}
+.viewer-search-close {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+}
+.viewer-search-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  min-width: 60px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Reading surface ────────────────────────── */
+.viewer-stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+/* The bare-mode StudyCoreReader renders .doc-reader-stage + .doc-reader-scroll
+   directly here. Override their fixed/heights so the reading surface fills
+   the remaining viewport and owns all scrolling. */
+.viewer-stage .doc-reader-stage {
+  height: 100%;
+  min-height: 0;
+}
+.viewer-stage .doc-reader-scroll {
+  height: 100%;
+  max-height: none;
+  padding: 18px 12px 26px;
+}
+
+/* ── Full-surface states (error / empty / lock) ── */
+.viewer-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+}
+.viewer-state-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 34px 28px;
+  max-width: 460px;
+  width: 100%;
+  text-align: center;
+}
+.viewer-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  background: var(--teal-50);
+  color: var(--teal-600);
+  margin-bottom: 16px;
+}
+.viewer-state-card h2 {
+  font-size: 1.2rem;
+  margin-bottom: 8px;
+}
+.viewer-state-card p {
+  font-size: 0.9rem;
+  color: var(--muted);
+  margin-bottom: 20px;
+}
+.viewer-state-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Responsive (phones / tablets) ──────────── */
+@media (max-width: 760px) {
+  .viewer-bar-row {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 10px;
+  }
+  .viewer-back {
+    padding: 8px;
+  }
+  .viewer-back-label { display: none; }
+  /* Title takes its own row, toolbar scrolls below it. */
+  .viewer-title-block {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .viewer-tools {
+    flex-basis: 100%;
+    margin-left: 0;
+    padding-top: 2px;
+  }
+  .viewer-tool { width: 40px; height: 40px; }
+  .viewer-search {
+    padding: 8px 10px;
+    flex-wrap: wrap;
+  }
+  .viewer-search-field { flex: 1 1 100%; }
+  .viewer-stage .doc-reader-scroll { padding: 12px 8px 20px; }
+}
+
+@media (max-width: 400px) {
+  .viewer-title { font-size: 0.92rem; }
+  .viewer-page-label { min-width: 44px; font-size: 0.74rem; }
+  .viewer-tool { width: 38px; height: 38px; }
+  .viewer-tool-sep { margin: 0 2px; }
+}
