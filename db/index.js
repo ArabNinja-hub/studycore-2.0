@@ -255,6 +255,50 @@ try {
   // column already exists - fine
 }
 
+function migrateBareUuidDocuments() {
+  try {
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const rows = db.prepare(`SELECT id, file_name, stored_name, mime_type, file_size FROM resources WHERE file_name IS NOT NULL`).all();
+    let fixed = 0;
+    for (const r of rows) {
+      const fn = String(r.file_name || '').trim();
+      if (!uuidRe.test(fn)) continue;
+      // Bare UUID as file_name — this is the bug reported as
+      // "open with 9735a310-...". Fix mime and ensure stored file has .pdf
+      // extension on local disk so future HEAD probes work.
+      const needsMimeFix = !r.mime_type || r.mime_type === 'application/octet-stream' || r.mime_type === 'binary/octet-stream';
+      if (needsMimeFix) {
+        try {
+          db.prepare(`UPDATE resources SET mime_type = 'application/pdf', updated_at = ? WHERE id = ?`).run(new Date().toISOString(), r.id);
+          fixed += 1;
+        } catch { /* ignore */ }
+      }
+      // If stored_name is also bare UUID without extension, try to rename
+      // the local file to have .pdf extension if it exists on disk.
+      if (r.stored_name && uuidRe.test(String(r.stored_name).trim())) {
+        try {
+          const localDir = path.join(DATA_DIR, 'uploads');
+          const oldPath = path.join(localDir, r.stored_name);
+          const newKey = r.stored_name + '.pdf';
+          const newPath = path.join(localDir, newKey);
+          if (fs.existsSync(oldPath) && !fs.existsSync(newPath)) {
+            fs.renameSync(oldPath, newPath);
+            db.prepare(`UPDATE resources SET stored_name = ?, updated_at = ? WHERE id = ?`).run(newKey, new Date().toISOString(), r.id);
+            fixed += 1;
+          }
+        } catch { /* ignore — R2 backend or missing file */ }
+      }
+    }
+    if (fixed > 0) {
+      console.log(`StudyCore: fixed ${fixed} bare-UUID document records (open with <uuid> bug).`);
+    }
+  } catch (e) {
+    console.warn('StudyCore: bare-UUID migration failed', e.message);
+  }
+}
+
+migrateBareUuidDocuments();
+
 function seedAdmin() {
   const existingAdmin = db.prepare(`SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1`).get();
   if (existingAdmin) return;

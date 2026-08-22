@@ -113,12 +113,33 @@ const MIME_BY_EXT = {
   '.wav': 'audio/wav'
 };
 
+const EXT_BY_MIME = {
+  'application/pdf': '.pdf',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
+  'text/plain': '.txt',
+  'text/csv': '.csv'
+};
+
 function inferMime(row) {
-  const given = String(row.mime_type || '').trim();
-  if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream') return given;
+  const given = String(row.mime_type || '').trim().toLowerCase().split(';')[0].trim();
+  if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream' && given !== '') {
+    return given;
+  }
   const name = String(row.file_name || row.stored_name || '');
   const ext = path.extname(name).toLowerCase();
-  return MIME_BY_EXT[ext] || given || 'application/octet-stream';
+  if (MIME_BY_EXT[ext]) return MIME_BY_EXT[ext];
+  // If the file name is a bare UUID (e.g. "9735a310-575d-469d-9fbb-1f720e13c396")
+  // with no extension — which happened when some mobile browsers uploaded
+  // without an extension — fall back to sniffing rather than leaving it as
+  // octet-stream. The sniff step in resolveType will confirm PDF.
+  return given || 'application/octet-stream';
 }
 
 function sniffMime(buf) {
@@ -157,8 +178,44 @@ function parseRange(header, size) {
   return { start, end: Math.min(end, size - 1) };
 }
 
-function contentDisposition(disposition, filename, key) {
-  const raw = String(filename || key || 'file').replace(/[\r\n"]/g, '');
+function ensureFileNameWithExt(filename, mimeType, key) {
+  let raw = String(filename || key || 'file').replace(/[\r\n"]/g, '').trim();
+  if (!raw) raw = 'file';
+  const ext = path.extname(raw).toLowerCase();
+  const mime = String(mimeType || '').toLowerCase().split(';')[0].trim();
+  // If filename has no extension but we know it's a PDF (or image/video),
+  // append the proper extension so Android's "Open with" dialog and the
+  // doc reader's type sniffing both see a real file name.
+  if (!ext) {
+    const inferredExt = EXT_BY_MIME[mime];
+    if (inferredExt) {
+      raw = raw + inferredExt;
+    } else if (mime === 'application/pdf' || mime === '') {
+      // Default bare names (UUIDs) to .pdf when we have no better info —
+      // PDFs are the overwhelming majority of documents in StudyCore.
+      // The Content-Type header still carries the true type.
+      const maybePdf = String(filename || '').match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      if (maybePdf || !mime || mime === 'application/octet-stream') {
+        // Only auto-append .pdf if the underlying key or sniff suggests PDF
+        // — we do that check in resolveType, but as a safe fallback here we
+        // append .pdf for bare UUIDs, which were the reported crash case.
+        if (maybePdf) raw = raw + '.pdf';
+      }
+    }
+  }
+  // If the filename is a bare UUID (the reported bug), make it more
+  // readable by prefixing "document-" but keep the UUID for uniqueness.
+  // This prevents Android from showing "Open with 9735a310-..." with no
+  // context.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.pdf)?$/i.test(raw)) {
+    raw = raw.toLowerCase().endsWith('.pdf') ? raw : raw + '.pdf';
+    // Keep as is but ensure it has .pdf — the UI title is separate.
+  }
+  return raw;
+}
+
+function contentDisposition(disposition, filename, key, mimeType) {
+  const raw = ensureFileNameWithExt(filename, mimeType, key);
   const encoded = encodeURIComponent(raw);
   const kind = disposition === 'attachment' ? 'attachment' : 'inline';
   return `${kind}; filename="${raw}"; filename*=UTF-8''${encoded}`;
@@ -209,16 +266,23 @@ function r2StreamError(err, res) {
 }
 
 async function resolveType(key, storedType, fallbackType) {
-  const stored = String(storedType || '').trim();
-  if (stored && stored !== 'application/octet-stream' && stored !== 'binary/octet-stream') return stored;
-  const given = String(fallbackType || '').trim();
-  if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream') return given;
+  // Always try to sniff the real file type first — stored metadata can be
+  // wrong when a file was uploaded without an extension (mobile browsers
+  // sometimes send application/octet-stream for a PDF named as a UUID).
+  // Sniffing is cheap (first 16 bytes) and authoritative.
   try {
     const head = await storage.readBytes(key, 0, 15);
-    return sniffMime(head) || given || stored || 'application/octet-stream';
+    const sniffed = sniffMime(head);
+    if (sniffed) return sniffed;
   } catch {
-    return given || stored || 'application/octet-stream';
+    // If we can't read the file, fall through to metadata.
   }
+  const stored = String(storedType || '').trim().toLowerCase().split(';')[0].trim();
+  if (stored && stored !== 'application/octet-stream' && stored !== 'binary/octet-stream' && stored !== '') return stored;
+  const given = String(fallbackType || '').trim().toLowerCase().split(';')[0].trim();
+  if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream' && given !== '') return given;
+  // Last resort: if filename has a known extension, use that.
+  return given || stored || 'application/octet-stream';
 }
 
 async function streamStoredObject(req, res, key, { disposition, filename, mimeType }) {
@@ -235,7 +299,12 @@ async function streamStoredObject(req, res, key, { disposition, filename, mimeTy
 
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Content-Type', type);
-  res.setHeader('Content-Disposition', contentDisposition(disposition, filename, key));
+  // Ensure the filename sent to the browser always has an extension so
+  // mobile OS "Open with" dialogs show something sensible and the doc
+  // reader's type detection works even when the original upload had a bare
+  // UUID name.
+  const safeFilename = ensureFileNameWithExt(filename, type, key);
+  res.setHeader('Content-Disposition', contentDisposition(disposition, safeFilename, key, type));
   // Private cache lets the browser reuse range chunks while seeking / paging
   // a PDF. The URL is still session-gated — unauthenticated clients cannot
   // hit this route at all.

@@ -25,6 +25,14 @@ const SUBJECT_TO_COURSE = Object.fromEntries(COURSES.map((c) => [c.subject.toLow
 const COURSE_TO_SUBJECT = Object.fromEntries(COURSES.map((c) => [c.slug, c.subject]));
 
 function serializeResource(row, extra = {}) {
+  let mime = row.mime_type;
+  const fName = String(row.file_name || '').trim();
+  // If mime is octet-stream and file name is a bare UUID (the bug case),
+  // treat it as PDF — the actual Content-Type header will be sniffed as PDF
+  // at stream time, and the client-side reader now also handles bare UUIDs.
+  if ((mime === 'application/octet-stream' || mime === 'binary/octet-stream' || !mime) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(fName)) {
+    mime = 'application/pdf';
+  }
   return {
     id: row.id,
     title: row.title,
@@ -40,7 +48,7 @@ function serializeResource(row, extra = {}) {
     hasFile: Boolean(row.stored_name),
     fileName: row.file_name,
     fileSize: row.file_size,
-    mimeType: row.mime_type,
+    mimeType: mime,
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
     downloadCount: row.download_count,

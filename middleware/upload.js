@@ -13,10 +13,42 @@ const ALLOWED_EXTENSIONS = new Set([
   '.mp3', '.wav'
 ]);
 
+const MIME_TO_EXT = {
+  'application/pdf': '.pdf',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/vnd.ms-powerpoint': '.ppt',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'text/plain': '.txt',
+  'text/csv': '.csv',
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/gif': '.gif',
+  'image/webp': '.webp',
+  'image/svg+xml': '.svg',
+  'video/mp4': '.mp4',
+  'video/webm': '.webm',
+  'video/quicktime': '.mov',
+  'video/x-msvideo': '.avi',
+  'video/x-matroska': '.mkv'
+};
+
 function fileFilter(req, file, cb) {
-  const ext = path.extname(file.originalname).toLowerCase();
+  let ext = path.extname(file.originalname).toLowerCase();
+  // Some mobile OS file pickers upload PDFs with a UUID name and no
+  // extension (e.g. "9735a310-575d-469d-9fbb-1f720e13c396") but with a
+  // correct mime type. Infer the extension from mime in that case so the
+  // file isn't rejected and doesn't end up stored without an extension,
+  // which later confuses Android's "Open with" dialog and the doc reader.
+  if (!ext) {
+    const mime = String(file.mimetype || '').toLowerCase().split(';')[0].trim();
+    const inferred = MIME_TO_EXT[mime];
+    if (inferred && ALLOWED_EXTENSIONS.has(inferred)) {
+      ext = inferred;
+    }
+  }
   if (!ALLOWED_EXTENSIONS.has(ext)) {
-    return cb(new Error(`File type "${ext || 'unknown'}" is not supported.`));
+    return cb(new Error(`File type "${ext || 'unknown'}\" is not supported.`));
   }
   cb(null, true);
 }
@@ -28,7 +60,12 @@ function fileFilter(req, file, cb) {
 // object is never buffered in this process.
 class ObjectStorage {
   _handleFile(req, file, cb) {
-    const ext = path.extname(file.originalname).toLowerCase();
+    let ext = path.extname(file.originalname).toLowerCase();
+    if (!ext) {
+      const mime = String(file.mimetype || '').toLowerCase().split(';')[0].trim();
+      const inferred = MIME_TO_EXT[mime];
+      if (inferred) ext = inferred;
+    }
     const key = `${uuidv4()}${ext}`;
     const hash = crypto.createHash('sha256');
     let size = 0;
