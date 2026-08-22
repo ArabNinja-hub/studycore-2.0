@@ -65,7 +65,11 @@
       s.async = true;
       s.onload = () => {
         if (!global.pdfjsLib) return reject(new Error('PDF engine failed to initialise.'));
-        global.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+        try {
+          global.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
+        } catch (e) {
+          console.warn('[StudyCore reader] could not set worker src', e);
+        }
         resolve(global.pdfjsLib);
       };
       s.onerror = () => reject(new Error('Could not load the StudyCore PDF engine.'));
@@ -75,7 +79,11 @@
   }
 
   function isMobileViewport() {
-    return Math.min(window.innerWidth, window.innerHeight) <= 820;
+    try {
+      return Math.min(window.innerWidth, window.innerHeight) <= 820;
+    } catch {
+      return false;
+    }
   }
 
   // A phone GPU/renderer will not survive a desktop-sized canvas. Cap the
@@ -92,8 +100,8 @@
   }
 
   function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => (
-      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    return String(s == null ? '' : s).replace(/[&<>\"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' }[c]
     ));
   }
 
@@ -108,6 +116,10 @@
     if (n < 1024) return n + ' B';
     if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
     return (n / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  function isBareUuid(str) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(str || '').trim());
   }
 
   /**
@@ -201,21 +213,60 @@
 
     /* ── Type detection ─────────────────────── */
     function guessType(servedType) {
-      const name = String(o.fileName || '').toLowerCase();
+      const rawName = String(o.fileName || '').trim();
+      const name = rawName.toLowerCase();
       const t = String(servedType || o.mimeType || '').split(';')[0].trim().toLowerCase();
-      if (t === 'application/pdf' || /\.pdf$/.test(name)) return 'pdf';
-      if (t.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/.test(name)) return 'image';
-      if (t.startsWith('text/') || /\.(txt|csv|md)$/.test(name)) return 'text';
-      if (t === 'application/octet-stream' || !t) {
-        if (/\.pdf$/.test(name)) return 'pdf';
+
+      // Direct mime wins
+      if (t === 'application/pdf') return 'pdf';
+      if (t.startsWith('image/')) return 'image';
+      if (t.startsWith('text/')) return 'text';
+
+      // Extension based
+      if (/\.pdf$/i.test(name)) return 'pdf';
+      if (/\.(png|jpe?g|gif|webp|svg)$/i.test(name)) return 'image';
+      if (/\.(txt|csv|md)$/i.test(name)) return 'text';
+
+      // Bare UUID case — the bug reported as "open with 9735a310-..."
+      // These are PDFs that lost their extension during upload on some
+      // mobile browsers. Treat them as PDF so the reader tries to open
+      // them instead of showing "Preview not available" and forcing the
+      // OS to show an "Open with <uuid>" dialog.
+      if (isBareUuid(rawName)) return 'pdf';
+      if (isBareUuid(name.replace(/\.pdf$/i, ''))) return 'pdf';
+
+      // If mime is octet-stream or missing, but we have a file size and
+      // the category is document-like, assume PDF — the server's sniff
+      // will have already set Content-Type to application/pdf if the
+      // file really is a PDF (see resources.routes.js resolveType).
+      if (t === 'application/octet-stream' || t === 'binary/octet-stream' || !t) {
+        // If served type is octet-stream but we know from options it's PDF
+        // (e.g. inferClientMime returned PDF), treat as PDF.
+        if (String(o.mimeType || '').toLowerCase().includes('pdf')) return 'pdf';
+        // For document lessons, default to trying PDF first.
+        // If it's not actually PDF, pdf.js will fail and we'll fall through
+        // to the "preview not available" UI, which is still better than
+        // showing nothing and triggering OS "Open with".
+        return 'pdf';
       }
+
       return 'other';
     }
 
     /* ── PDF path ───────────────────────────── */
     function availableWidth() {
       const pad = isMobileViewport() ? 16 : 40;
-      const w = (scroll.clientWidth || stage.clientWidth || host.clientWidth || 640) - pad;
+      // scroll.clientWidth can be 0 if the element hasn't been laid out yet
+      // (e.g. during initial boot or in a hidden tab). Fall back to stage,
+      // host, or a sensible default so we never create a 0-width canvas,
+      // which would crash the render and leave a blank "open with" state.
+      const candidates = [
+        scroll ? scroll.clientWidth : 0,
+        stage ? stage.clientWidth : 0,
+        host ? host.clientWidth : 0,
+        640
+      ];
+      const w = (candidates.find((v) => v && v > 0) || 640) - pad;
       return Math.max(220, w);
     }
 
@@ -418,8 +469,24 @@
           throw err;
         }
         const data = new Uint8Array(await res.arrayBuffer());
+        if (data.length < 4) {
+          throw new Error('The uploaded file is empty or corrupted.');
+        }
+        // Quick magic check — PDF files start with %PDF-
         const header = new TextDecoder('ascii').decode(data.subarray(0, Math.min(1024, data.length)));
         if (!header.includes('%PDF-')) {
+          // If it's not PDF, it might be a JSON error that slipped through
+          // (e.g. auth failure returning JSON instead of PDF). Try to parse
+          // it for a better message, but still throw as unreadable PDF.
+          try {
+            const txt = new TextDecoder('utf-8').decode(data.subarray(0, 512));
+            if (txt.trim().startsWith('{')) {
+              const j = JSON.parse(txt);
+              if (j && j.message) throw new Error(j.message);
+            }
+          } catch (_) {
+            // Not JSON, keep original error
+          }
           throw new Error('The uploaded file is not a readable PDF.');
         }
         return data;
@@ -443,29 +510,53 @@
       // For normal-sized PDFs, make one credentialed request in the page and
       // hand the bytes directly to pdf.js. Larger files keep progressive
       // range loading to avoid exhausting the device's memory.
+      //
+      // FIX: Previously this buffered path was only used when streamSize > 0
+      // and <= 32MB. If streamSize was 0 (HEAD didn't return content-length,
+      // or file_size was missing in DB), mobile fell back to range loading
+      // which is known to crash on iOS/Android WebViews, leaving a blank
+      // white box that the OS then tried to handle as a download, showing
+      // "Open with <uuid>" (the bare filename). Now we ALWAYS try buffered
+      // on mobile first, regardless of size knowledge, and only use ranges
+      // as a fallback for large files or if buffered fails.
       const mobileBufferLimit = 32 * 1024 * 1024;
       let pdfSource = { url: url, withCredentials: true };
-      if (isMobileViewport() && streamSize > 0 && streamSize <= mobileBufferLimit) {
-        try {
-          pdfSource = { data: await fetchPdfForMobile() };
-        } catch (err) {
-          if (err && (err.status === 401 || err.status === 403 || /not a readable PDF/i.test(err.message))) {
-            showError(err.status === 401
-              ? 'Please log in again to open this document.'
-              : err.status === 403
-                ? 'You do not have access to this document with your current plan.'
-                : err.message);
-            return;
+      let usedBuffered = false;
+
+      if (isMobileViewport()) {
+        const tryBuffered = streamSize === 0 || streamSize <= mobileBufferLimit;
+        if (tryBuffered) {
+          try {
+            const data = await fetchPdfForMobile();
+            // If data is larger than our mobile limit, still try it — a
+            // single fetch is more reliable than many range requests on
+            // mobile, even if it's large. Only reject if it's absurdly big.
+            if (data.length > 80 * 1024 * 1024) {
+              console.warn('[StudyCore reader] mobile file too large for buffered, trying ranges', data.length);
+            } else {
+              pdfSource = { data: data };
+              usedBuffered = true;
+            }
+          } catch (err) {
+            if (err && (err.status === 401 || err.status === 403 || /not a readable PDF/i.test(err.message) || /log in again/i.test(err.message) || /access/i.test(err.message))) {
+              showError(err.status === 401
+                ? 'Please log in again to open this document.'
+                : err.status === 403
+                  ? 'You do not have access to this document with your current plan.'
+                  : err.message);
+              return;
+            }
+            // A one-shot fetch can fail on a transient mobile connection. The
+            // normal range loader is still worth trying before showing an error.
+            console.warn('[StudyCore reader] mobile buffered load failed; trying ranges', err);
+            pdfSource = { url: url, withCredentials: true };
           }
-          // A one-shot fetch can fail on a transient mobile connection. The
-          // normal range loader is still worth trying before showing an error.
-          console.warn('[StudyCore reader] mobile buffered load failed; trying ranges', err);
-          pdfSource = { url: url, withCredentials: true };
         }
       }
 
       if (destroyed) return;
-      setStatus('Opening document…');
+      setStatus(usedBuffered ? 'Opening document…' : 'Opening document…');
+
       const task = pdfjs.getDocument({
         ...pdfSource,
         disableRange: false,
@@ -506,7 +597,13 @@
       if (destroyed) { try { pdf.destroy(); } catch { /* noop */ } return; }
 
       pdfDoc = pdf;
-      await layoutPages(pdf);
+      try {
+        await layoutPages(pdf);
+      } catch (e) {
+        console.error('[StudyCore reader] layout failed', e);
+        showError('This document could not be displayed. Try again or ask admin for a PDF version.');
+        return;
+      }
       if (destroyed) return;
 
       clearStatus();
@@ -571,6 +668,9 @@
         if (probe.status === 405 || probe.status === 501) {
           probe = await fetch(url, { method: 'GET', credentials: 'include', headers: { Range: 'bytes=0-0' }, signal: ctrl.signal });
           if (probe.body && probe.body.cancel) { try { await probe.body.cancel(); } catch { /* closed */ } }
+          else if (probe.body && typeof probe.body.getReader === 'function') {
+            try { const r = probe.body.getReader(); await r.cancel(); } catch { /* ignore */ }
+          }
         }
         clearTimeout(t);
         if (!probe.ok && probe.status !== 206) {
@@ -579,7 +679,11 @@
           else if (probe.status === 403) message = 'You do not have access to this document with your current plan.';
           else if (probe.status === 404) message = 'This document is missing from storage.';
           else if (probe.status === 503) message = 'File storage is not configured yet, so this file cannot be opened.';
-          try { const d = await probe.json(); if (d && d.message) message = d.message; } catch { /* not JSON */ }
+          try {
+            const clone = probe.clone ? probe.clone() : probe;
+            const d = await clone.json();
+            if (d && d.message) message = d.message;
+          } catch { /* not JSON */ }
           showError(message);
           return;
         }
@@ -588,10 +692,11 @@
         if (Number.isFinite(servedLength) && servedLength > 0) streamSize = servedLength;
       } catch (err) {
         if (destroyed) return;
-        showError(err.name === 'AbortError'
-          ? 'The document server did not respond in time.'
-          : 'Could not reach the document. Check your connection and try again.');
-        return;
+        // If HEAD fails (e.g. network hiccup), don't abort — try to open as PDF
+        // anyway. The PDF open will do its own fetch with better error handling.
+        console.warn('[StudyCore reader] HEAD probe failed, trying PDF anyway', err);
+        // Keep servedType from options, which lesson.js now ensures is PDF for
+        // bare-UUID names.
       }
       if (destroyed) return;
 
@@ -600,12 +705,23 @@
       if (kind === 'image') return openImage();
       if (kind === 'text') return openText();
 
+      // If guessType returned 'other' but the file is actually a PDF (e.g.
+      // octet-stream mime with UUID name), try PDF anyway before giving up.
+      // This prevents the "Preview not available" dead-end that forced mobile
+      // browsers to show "Open with <uuid>".
+      const rawName = String(o.fileName || '').trim();
+      const looksLikePdf = isBareUuid(rawName) || /\.pdf$/i.test(rawName) || String(o.mimeType || '').toLowerCase().includes('pdf') || String(servedType || '').toLowerCase().includes('pdf');
+      if (looksLikePdf) {
+        console.warn('[StudyCore reader] type was other but looks like PDF, trying PDF path', { fileName: rawName, servedType, mimeType: o.mimeType });
+        return openPdf();
+      }
+
       clearStatus();
       scroll.innerHTML = `
         <div class="doc-page-fallback doc-page-fallback-lg">
           ${icon('file', 26)}
           <h3>Preview not available in-browser</h3>
-          <p>This file type (${esc((servedType || 'unknown').split(';')[0])}) can't be rendered in the StudyCore viewer.
+          <p>This file type (${esc((servedType || o.mimeType || 'unknown').split(';')[0])}) can't be rendered in the StudyCore viewer.
           Ask your admin whether a PDF version is available.</p>
         </div>`;
     })();
@@ -615,7 +731,10 @@
     let lastWidth = window.innerWidth;
     function onResize() {
       if (destroyed || !pdfDoc) return;
-      if (window.innerWidth === lastWidth) return; // ignore mobile URL-bar height changes
+      // On mobile, window.innerWidth can stay same while height changes due
+      // to URL bar collapsing — ignore those, only reflow on real width change
+      // or orientation change.
+      if (window.innerWidth === lastWidth && !isMobileViewport()) return;
       lastWidth = window.innerWidth;
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => { if (!destroyed) applyZoomSizes(); }, 220);

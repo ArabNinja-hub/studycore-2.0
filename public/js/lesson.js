@@ -84,8 +84,12 @@
   }
 
   function inferClientMime(lesson) {
-    const given = String(lesson.mimeType || '').trim();
-    if (given && given !== 'application/octet-stream') return given;
+    const rawGiven = String(lesson.mimeType || '').trim();
+    const given = rawGiven.toLowerCase().split(';')[0].trim();
+    // If the server gave us a real mime (not octet-stream), trust it.
+    if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream' && given !== '') {
+      return given;
+    }
     const name = String(lesson.fileName || '').toLowerCase();
     if (name.endsWith('.pdf')) return 'application/pdf';
     if (name.endsWith('.png')) return 'image/png';
@@ -94,7 +98,22 @@
     if (name.endsWith('.gif')) return 'image/gif';
     if (name.endsWith('.txt')) return 'text/plain';
     if (name.endsWith('.csv')) return 'text/csv';
-    return given;
+    // Bare UUID filenames (e.g. "9735a310-575d-469d-9fbb-1f720e13c396")
+    // happen when a mobile browser uploaded without an extension.
+    // Those files are overwhelmingly PDFs in StudyCore — treat them as PDF
+    // rather than leaving them as octet-stream, which made the reader show
+    // "Preview not available" and forced Android to show an "Open with
+    // <uuid>" system dialog.
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(lesson.fileName || '').trim())) {
+      return 'application/pdf';
+    }
+    // For document-category lessons, default to PDF when mime is unknown —
+    // the server's sniff will still set the correct Content-Type header, and
+    // the reader will try PDF first.
+    if (lesson.category === 'document' || lesson.category === 'tutorial' || lesson.category === 'past_paper') {
+      return 'application/pdf';
+    }
+    return rawGiven || 'application/pdf';
   }
 
   /* ── Document viewer ────────────────────── */
