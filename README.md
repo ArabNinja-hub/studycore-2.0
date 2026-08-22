@@ -38,8 +38,8 @@ StudyCore
   previous/next navigation. The document viewer renders **PDFs** (pdf.js → canvas) and
   **Word `.docx`** (mammoth → HTML) in-browser; it sniffs the file's real bytes so a file
   uploaded without an extension (or with a mismatched mime) still opens with the right
-  renderer, and any other type gets an honest "can't preview + download" fallback instead
-  of a dead end.
+  renderer. Unsupported types show an honest preview-unavailable message and remain
+  view-only—there is no source-file download fallback.
 - **Quizzes & assignments**: removed from the student experience. The backend keeps their
   tables and admin upload options for compatibility, but they never appear in the student
   UI, course listings, or search.
@@ -96,7 +96,7 @@ lib/r2.js               Cloudflare R2 client (S3-compatible)
 lib/storage.js          R2 + local-disk fallback, range-aware reads (never buffers whole files)
 routes/auth.routes.js   register/login/me, profile, password, avatar, subscribe, payment-info
 routes/courses.routes.js  public course directory, course home (topics/progress/continue), lesson flow
-routes/resources.routes.js  resource list/detail/stream/download, search, bookmarks,
+routes/resources.routes.js  resource list/detail/view-only stream, search, bookmarks,
                             completion, video progress, quiz compatibility endpoints
 routes/admin.routes.js  resource CRUD (incl. topic + pinned), users, payments, analytics
 views/dashboard.html    student dashboard (Premium section #premium, profile #profile, community #community)
@@ -162,7 +162,8 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
   completion) and document viewer; videos and documents are watched/read inside
   StudyCore with no external links, no download/share controls.
 - **Videos are strictly Premium** - trial students can no longer stream them; the gate is
-  server-side and covers streams, downloads, detail fetches and progress endpoints.
+  server-side and covers streams, detail fetches and progress endpoints. All student media
+  is view-only, and the former direct-download URL is explicitly denied.
 - Quizzes & assignments removed from the student UI (backend kept for compatibility).
 - Standalone **Documents** and **Videos** pages removed - documents/videos live inside
   courses, lessons and the unified **Resources** page (filterable by course and type).

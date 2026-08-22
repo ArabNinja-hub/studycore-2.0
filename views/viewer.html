@@ -9,6 +9,10 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/css/style.css" />
     <link rel="stylesheet" href="/css/viewer.css" />
+    <!-- Start fetching the PDF engine while the page and resource metadata
+         load. The reader still initialises it only for PDFs. -->
+    <link rel="preload" href="/vendor/pdfjs/pdf.min.js" as="script" />
+    <link rel="preload" href="/vendor/pdfjs/pdf.worker.min.js" as="script" />
   </head>
   <body data-page="viewer">
     <div id="topBarHost"></div>
@@ -66,9 +70,6 @@
               <button type="button" class="viewer-tool" id="viewerFullscreen" aria-label="Fullscreen">
                 <span data-vicon="maximize"></span>
               </button>
-              <a class="viewer-tool viewer-download" id="viewerDownload" aria-label="Download document" href="#" hidden>
-                <span data-vicon="download"></span>
-              </a>
             </div>
           </div>
 

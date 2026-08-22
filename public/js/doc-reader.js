@@ -40,8 +40,8 @@
 //     200-page past paper never exhausts memory.
 //   · pinch-zoom friendly: the scroller owns the
 //     panning, pages reflow to container width.
-//   · one credentialed fetch for normal-sized mobile PDFs (avoids WebView
-//     range/cookie bugs), with range loading retained for large documents.
+//   · PDFs load in small, on-demand byte ranges on every device; the reader
+//     never waits for or retains a complete PDF before showing page one.
 // =============================================
 
 (function (global) {
@@ -191,13 +191,10 @@
 
     let destroyed = false;
     let pdfDoc = null;
-    let observer = null;
     let resizeRaf = null;
     const pageEntries = [];      // { n, wrap, canvas, task, rendered, width, height, scale }
     let zoom = 1;
-    let fitScale = 1;
     let currentPage = 1;
-    let streamSize = Number(o.fileSize) || 0;
     // Loop guard: how many times the file has bounced between "thought to be
     // PDF" and "sniffed the bytes". Bounds the retry chains so a corrupt
     // file reaches the error state instead of ping-ponging.
@@ -263,7 +260,6 @@
     const scroll = host.querySelector('#scDocScroll');
     const tools = host.querySelector('#scDocTools');
     const statusBox = host.querySelector('#scDocStatus');
-    const statusText = host.querySelector('#scDocStatusText');
     const pageLabel = host.querySelector('#scDocPageLabel');
     const zoomLabel = host.querySelector('#scDocZoomLabel');
     const fsTarget = reader || stage;
@@ -333,9 +329,9 @@
       // Bare UUID case — the bug reported as "open with 9735a310-...".
       // These are files that lost their extension during upload on some
       // mobile browsers. We no longer assume PDF blindly: the server's
-      // sniff usually fixed the Content-Type by now, and if it could not,
-      // 'unknown' lets boot() inspect the bytes and route to the right
-      // renderer (PDF, Word or the download fallback).
+      // metadata usually fixes the Content-Type, and if it could not,
+      // 'unknown' lets boot() inspect only the first bytes and select the
+      // matching in-browser renderer.
       if (isBareUuid(rawName)) return 'unknown';
       if (isBareUuid(name.replace(/\.[a-z0-9]+$/i, ''))) return 'unknown';
 
@@ -737,64 +733,6 @@
       }
     }
 
-    // One credentialed fetch of the whole file — the most reliable pattern
-    // on mobile (WebViews mishandle many small authenticated range
-    // requests). Returns the bytes, or throws with .status for auth errors.
-    // JSON error bodies that slipped through (e.g. a 401 with a message)
-    // are surfaced as their real message instead of a PDF error.
-    async function fetchDocumentBytes() {
-      setStatus('Loading document…');
-      const ctrl = new AbortController();
-      const timeout = setTimeout(() => ctrl.abort(), 90000);
-      try {
-        const res = await fetch(url, {
-          credentials: 'include',
-          cache: 'no-store',
-          signal: ctrl.signal
-        });
-        if (!res.ok) {
-          const err = new Error(`Document request failed (${res.status}).`);
-          err.status = res.status;
-          throw err;
-        }
-        const data = new Uint8Array(await res.arrayBuffer());
-        if (data.length < 4) {
-          throw new Error('The uploaded file is empty or corrupted.');
-        }
-        // A JSON body here means an error response slipped through —
-        // surface its real message rather than treating bytes as a file.
-        if (data[0] === 0x7b /* '{' */) {
-          try {
-            const j = JSON.parse(new TextDecoder('utf-8').decode(data.subarray(0, Math.min(data.length, 2048))));
-            if (j && j.message) {
-              const err = new Error(j.message);
-              err.status = res.status;
-              throw err;
-            }
-          } catch (parseErr) {
-            if (parseErr instanceof SyntaxError) {
-              throw new Error('The uploaded file is corrupted.');
-            }
-            throw parseErr;
-          }
-        }
-        return data;
-      } finally {
-        clearTimeout(timeout);
-      }
-    }
-
-    // Dispatch on the bytes we actually have, now that the file's real type
-    // is known. Re-uses already-fetched data so nothing is downloaded twice.
-    function dispatchOnBytes(data) {
-      const kind = sniffBytes(data);
-      if (kind === 'pdf') return openPdf({ bytes: data });
-      if (kind === 'docx') return openDocx(data);
-      if (kind === 'image') return openImage();
-      if (kind === 'text') return openTextWithBytes(data);
-      return showUnrenderable(kind, { kind });
-    }
-
     async function openPdf(opts) {
       const prefetchedBytes = (opts && opts.bytes) || null;
       let pdfjs;
@@ -806,59 +744,14 @@
       }
       if (destroyed) return;
 
-      // Mobile Safari and some Android WebViews are unreliable when pdf.js
-      // performs many authenticated range requests from its network layer.
-      // For normal-sized PDFs, make one credentialed request in the page and
-      // hand the bytes directly to pdf.js. Larger files keep progressive
-      // range loading to avoid exhausting the device's memory.
-      //
-      // The buffered path is ALWAYS tried on mobile first, regardless of
-      // whether we know the size: when the size is unknown, range loading
-      // on a phone crashed and left a blank white box that the OS then tried
-      // to "Open with" — the original mobile reader bug.
-      const mobileBufferLimit = 32 * 1024 * 1024;
-      let pdfSource = { url: url, withCredentials: true };
-      let usedBuffered = false;
-
-      if (prefetchedBytes) {
-        pdfSource = { data: prefetchedBytes };
-        usedBuffered = true;
-      } else if (isMobileViewport()) {
-        const tryBuffered = streamSize === 0 || streamSize <= mobileBufferLimit;
-        if (tryBuffered) {
-          try {
-            const data = await fetchDocumentBytes();
-            if (data.length > 80 * 1024 * 1024) {
-              console.warn('[StudyCore reader] mobile file too large for buffered, trying ranges', data.length);
-            } else {
-              // The file may not actually be a PDF (metadata lies — that is
-              // how bare-UUID Word uploads used to land here). If the magic
-              // bytes say otherwise, route it to the renderer that fits
-              // instead of erroring with "not a readable PDF".
-              const isPdf = data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46;
-              if (!isPdf) {
-                console.warn('[StudyCore reader] expected PDF, bytes say otherwise — dispatching on real type');
-                return dispatchOnBytes(data);
-              }
-              pdfSource = { data: data };
-              usedBuffered = true;
-            }
-          } catch (err) {
-            if (err && (err.status === 401 || err.status === 403 || /log in again/i.test(err.message) || /access/i.test(err.message))) {
-              showError(err.status === 401
-                ? 'Please log in again to open this document.'
-                : err.status === 403
-                  ? 'You do not have access to this document with your current plan.'
-                  : err.message);
-              return;
-            }
-            // A one-shot fetch can fail on a transient mobile connection. The
-            // normal range loader is still worth trying before showing an error.
-            console.warn('[StudyCore reader] mobile buffered load failed; trying ranges', err);
-            pdfSource = { url: url, withCredentials: true };
-          }
-        }
-      }
+      // Give pdf.js the protected URL directly on every device. Streaming is
+      // deliberately disabled in favour of byte ranges: page one can open
+      // from the first/last chunks without buffering the complete PDF, and
+      // later pages are fetched only as the student reaches them.
+      const pdfSource = prefetchedBytes
+        ? { data: prefetchedBytes }
+        : { url: url, withCredentials: true };
+      const usedPrefetchedBytes = Boolean(prefetchedBytes);
 
       if (destroyed) return;
       setStatus('Opening document…');
@@ -866,11 +759,12 @@
       const task = pdfjs.getDocument({
         ...pdfSource,
         disableRange: false,
-        disableStream: false,
-        // Auto-fetch is required by some linearized and cross-reference-heavy
-        // PDFs on Safari. The lazy canvas window still controls render memory.
-        disableAutoFetch: false,
-        rangeChunkSize: 262144,
+        // Range-only loading prevents the browser from pulling the complete
+        // file in the background. 128 KB balances first-page latency against
+        // request count on slower mobile connections.
+        disableStream: true,
+        disableAutoFetch: true,
+        rangeChunkSize: 131072,
         standardFontDataUrl: PDFJS_FONTS,
         isEvalSupported: false
       });
@@ -878,7 +772,7 @@
       task.onProgress = (p) => {
         if (!p || !p.total || destroyed) return;
         const pct = Math.min(99, Math.round((p.loaded / p.total) * 100));
-        if (statusText && !statusBox.hidden) setStatus(`Opening document… ${pct}%`);
+        if (statusBox && !statusBox.hidden) setStatus(`Opening document… ${pct}%`);
       };
 
       let pdf;
@@ -891,7 +785,7 @@
         // (URL/range path), the type metadata was probably wrong — sniff the
         // real type and route to the renderer that fits, with a depth guard
         // so a genuinely corrupt file can't bounce between the two forever.
-        if (name === 'InvalidPDFException' && !usedBuffered && dispatchDepth < 2) {
+        if (name === 'InvalidPDFException' && !usedPrefetchedBytes && dispatchDepth < 2) {
           console.warn('[StudyCore reader] pdf.js rejected the file — sniffing real type');
           return sniffAndDispatch();
         }
@@ -918,6 +812,12 @@
         showError('This document could not be displayed. Try again or ask admin for a PDF version.');
         return;
       }
+      if (destroyed) return;
+
+      // Paint page one before scheduling nearby pages. Previously pages two
+      // and three began decoding at the same time and competed with the page
+      // the student was waiting to see, especially on slower phones.
+      if (pageEntries[0]) await renderPage(pageEntries[0]);
       if (destroyed) return;
 
       clearStatus();
@@ -1006,7 +906,7 @@
           const kind = sniffBytes(data);
           if (kind === 'pdf') return openPdf({ bytes: data });
           if (kind === 'text') return openTextWithBytes(data);
-          return showUnrenderable('mismatch', { kind });
+          return showUnrenderable('mismatch');
         }
         const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
         const out = await mammoth.convertToHtml({ arrayBuffer: ab });
@@ -1093,7 +993,7 @@
         if (kind === 'docx') return openDocx();
         if (kind === 'image') return openImage();
         if (kind === 'text') return openText();
-        return showUnrenderable(kind, { kind });
+        return showUnrenderable(kind);
       } catch (err) {
         if (destroyed) return;
         if (err && err.name === 'AbortError') return showError('The document server did not respond in time.');
@@ -1105,13 +1005,11 @@
       }
     }
 
-    /* ── Unrenderable fallback (never a dead end) ── */
+    /* ── Unrenderable fallback ────────────────── */
     // File types the in-browser reader cannot paint (legacy .doc,
-    // PowerPoint, Excel, plain zips, corrupt files). The session-gated
-    // download endpoint applies the exact same server-side access rules as
-    // the stream, so the button is safe to offer: a student who can open
-    // this resource may download it to their device's own app.
-    function showUnrenderable(kind, ctx) {
+    // PowerPoint, Excel, plain zips, corrupt files) stay view-only. There is
+    // intentionally no fallback link that exports the protected source file.
+    function showUnrenderable(kind) {
       if (destroyed) return;
       clearStatus();
       const name = String(o.fileName || '').trim();
@@ -1122,75 +1020,32 @@
       };
       let body;
       if (kind === 'empty') body = 'The uploaded file appears to be empty or corrupted. Ask your admin to re-upload it.';
-      else if (OFFICE_LABELS[ext]) body = `${OFFICE_LABELS[ext]} files need an app on your device to open. Download it below, or ask your admin to upload a PDF version for in-browser reading.`;
+      else if (OFFICE_LABELS[ext]) body = `${OFFICE_LABELS[ext]} files cannot be displayed by the protected reader. Ask your admin to upload a PDF version for in-browser reading.`;
       else if (kind === 'engine') body = 'The document engine could not be loaded. Check your connection and try again.';
-      else if (kind === 'mismatch') body = 'This file could not be identified as a supported format. Download it to open it on this device.';
+      else if (kind === 'mismatch') body = 'This file could not be identified as a supported in-browser format. Ask your admin to upload a PDF version.';
       else body = `This file type${ext ? ` (${ext.toUpperCase()})` : ''} can't be previewed in the StudyCore viewer. Ask your admin whether a PDF version is available.`;
       scroll.innerHTML = `
         <div class="doc-page-fallback doc-page-fallback-lg">
           ${icon('file', 26)}
           <h3>Preview not available in-browser</h3>
           <p>${esc(body)}</p>
-          ${o.downloadUrl ? `<a class="btn btn-teal btn-sm" href="${esc(o.downloadUrl)}" target="_blank" rel="noopener">${icon('download', 15)} Download to open on this device</a>` : ''}
         </div>`;
-      const link = scroll.querySelector('a[href]');
-      if (link) {
-        // Keep the reader's context-menu/drag blockers honest: the download
-        // is a deliberate action, not an accidental drag-out.
-        link.addEventListener('contextmenu', (e) => e.preventDefault());
-      }
     }
 
-    /* ── Boot: confirm access, learn the real type, then render ── */
-    (async function boot() {
+    /* ── Boot: use metadata, then let the renderer validate access ── */
+    (function boot() {
       setStatus('Opening document…');
-      let servedType = o.mimeType || '';
-      try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 15000);
-        let probe = await fetch(url, { method: 'HEAD', credentials: 'include', signal: ctrl.signal });
-        if (probe.status === 405 || probe.status === 501) {
-          probe = await fetch(url, { method: 'GET', credentials: 'include', headers: { Range: 'bytes=0-0' }, signal: ctrl.signal });
-          if (probe.body && probe.body.cancel) { try { await probe.body.cancel(); } catch { /* closed */ } }
-          else if (probe.body && typeof probe.body.getReader === 'function') {
-            try { const r = probe.body.getReader(); await r.cancel(); } catch { /* ignore */ }
-          }
-        }
-        clearTimeout(t);
-        if (!probe.ok && probe.status !== 206) {
-          let message = 'This document could not be opened.';
-          if (probe.status === 401) message = 'Please log in again to open this document.';
-          else if (probe.status === 403) message = 'You do not have access to this document with your current plan.';
-          else if (probe.status === 404) message = 'This document is missing from storage.';
-          else if (probe.status === 503) message = 'File storage is not configured yet, so this file cannot be opened.';
-          try {
-            const clone = probe.clone ? probe.clone() : probe;
-            const d = await clone.json();
-            if (d && d.message) message = d.message;
-          } catch { /* not JSON */ }
-          showError(message);
-          return;
-        }
-        servedType = probe.headers.get('content-type') || servedType;
-        const servedLength = Number(probe.headers.get('content-length'));
-        if (Number.isFinite(servedLength) && servedLength > 0) streamSize = servedLength;
-      } catch (err) {
-        if (destroyed) return;
-        // If HEAD fails (e.g. network hiccup), don't abort — try to open as PDF
-        // anyway. The PDF open will do its own fetch with better error handling.
-        console.warn('[StudyCore reader] HEAD probe failed, trying PDF anyway', err);
-        // Keep servedType from options, which lesson.js now ensures is PDF for
-        // bare-UUID names.
-      }
-      if (destroyed) return;
-
-      const kind = guessType(servedType);
+      // Resource metadata came from an authenticated endpoint immediately
+      // before this reader was created. Starting the matching renderer now
+      // avoids a separate HEAD request (and its storage round trip). Unknown
+      // legacy uploads use one tiny range probe instead.
+      const kind = guessType(o.mimeType || '');
       if (kind === 'pdf') return openPdf();
       if (kind === 'docx') return openDocx();
       if (kind === 'image') return openImage();
       if (kind === 'text') return openText();
       if (kind === 'unknown') return sniffAndDispatch();
-      return showUnrenderable(kind, { kind });
+      return showUnrenderable(kind);
     })();
 
     /* ── Reflow on rotate / resize ──────────── */
@@ -1221,7 +1076,6 @@
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       clearTimeout(resizeTimer);
-      if (observer) observer.disconnect();
       pageEntries.forEach(releasePage);
       if (pdfDoc) { try { pdfDoc.destroy(); } catch { /* noop */ } pdfDoc = null; }
       if (full !== false) host.innerHTML = '';
