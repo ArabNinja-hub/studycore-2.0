@@ -110,7 +110,13 @@ const MIME_BY_EXT = {
   '.txt': 'text/plain; charset=utf-8',
   '.csv': 'text/csv; charset=utf-8',
   '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav'
+  '.wav': 'audio/wav',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.doc': 'application/msword',
+  '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.ppt': 'application/vnd.ms-powerpoint',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel'
 };
 
 const EXT_BY_MIME = {
@@ -124,7 +130,13 @@ const EXT_BY_MIME = {
   'video/webm': '.webm',
   'video/quicktime': '.mov',
   'text/plain': '.txt',
-  'text/csv': '.csv'
+  'text/csv': '.csv',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.ms-powerpoint': '.ppt',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+  'application/vnd.ms-excel': '.xls'
 };
 
 function inferMime(row) {
@@ -151,6 +163,25 @@ function sniffMime(buf) {
   if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
   if (buf.length >= 12 && buf.toString('ascii', 4, 8) === 'ftyp') return 'video/mp4';
   if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return 'video/webm';
+  // Office Open XML (Word / PowerPoint / Excel) files are ZIP containers.
+  // Mobile browsers frequently upload them as bare UUIDs or octet-stream, so
+  // sniffing the container is the only reliable way to learn the real type.
+  // The first local file header carries the entry name at offset 30 — for
+  // .docx/.pptx/.xlsx archives that name always starts with "word/", "ppt/"
+  // or "xl/" (or "[Content_Types].xml" when the archive is alphabetised), so
+  // scanning the early bytes for those markers is cheap and authoritative.
+  if (buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) {
+    const head = buf.toString('latin1', 0, Math.min(buf.length, 8192));
+    // The full part names are always referenced by [Content_Types].xml, which
+    // word processors place among the first entries of the archive, so a
+    // short read is enough to tell a .docx from a .pptx from a plain .zip.
+    if (head.includes('word/document.xml')) {
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+    if (head.includes('ppt/presentation.xml')) return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if (head.includes('xl/workbook.xml')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    return 'application/zip';
+  }
   return null;
 }
 
@@ -269,9 +300,12 @@ async function resolveType(key, storedType, fallbackType) {
   // Always try to sniff the real file type first — stored metadata can be
   // wrong when a file was uploaded without an extension (mobile browsers
   // sometimes send application/octet-stream for a PDF named as a UUID).
-  // Sniffing is cheap (first 16 bytes) and authoritative.
+  // Sniffing is cheap (first 16 bytes, 8KB for ZIP containers so Office
+  // part names are visible) and authoritative.
   try {
-    const head = await storage.readBytes(key, 0, 15);
+    const first = await storage.readBytes(key, 0, 15);
+    const isZip = first.length >= 4 && first[0] === 0x50 && first[1] === 0x4b && first[2] === 0x03 && first[3] === 0x04;
+    const head = isZip ? await storage.readBytes(key, 0, 8191) : first;
     const sniffed = sniffMime(head);
     if (sniffed) return sniffed;
   } catch {

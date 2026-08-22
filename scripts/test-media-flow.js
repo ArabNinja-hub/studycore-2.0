@@ -185,23 +185,28 @@ c.commit()
     subject: 'Mathematics',
     topic: 'Calculus'
   });
+  // Videos must carry a term (Term 1/2/3) — enforced by the admin API so
+  // the course home's "Learn term by term" sections always have a bucket.
   const smallVid = await upload(admin.jar, path.join(FIX, 'small.mp4'), {
     title: 'Small Video Lesson',
     category: 'video',
     subject: 'Mathematics',
-    topic: 'Calculus'
+    topic: 'Calculus',
+    semester: 'Term 1'
   });
   const largeVid = await upload(admin.jar, path.join(FIX, 'large.mp4'), {
     title: 'Large Video Lesson',
     category: 'video',
     subject: 'Mathematics',
-    topic: 'Calculus'
+    topic: 'Calculus',
+    semester: 'Term 1'
   });
   const webmVid = await upload(admin.jar, path.join(FIX, 'sample.webm'), {
     title: 'WebM Video Lesson',
     category: 'video',
     subject: 'Mathematics',
-    topic: 'Calculus'
+    topic: 'Calculus',
+    semester: 'Term 2'
   });
   pass('uploads', `${smallPdf.id} ${multiPdf.id} ${largePdf.id} ${smallVid.id} ${largeVid.id} ${webmVid.id}`);
 

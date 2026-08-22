@@ -25,6 +25,7 @@
   const NAV_LINKS = [
     { id: 'home', label: 'Home', href: '/', icon: 'home' },
     { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
+    { id: 'videos', label: 'Video Lessons', href: '/pages/videos.html', icon: 'video' },
     { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text' },
     { id: 'announcements', label: 'Announcements', href: '/pages/announcements.html', icon: 'bell' },
     { id: 'about', label: 'About', href: '/pages/about.html', icon: 'info' }
@@ -37,6 +38,7 @@
   function isActive(id) {
     const page = currentPage();
     if (id === 'courses') return page === 'courses' || page === 'course' || page === 'lesson';
+    if (id === 'videos') return page === 'videos';
     return page === id;
   }
 
@@ -160,8 +162,10 @@
       <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation">
         <a href="/">${SC.icon('home', { size: 20 })} Home</a>
         <a href="/pages/courses.html">${SC.icon('library', { size: 20 })} Courses</a>
+        <a href="/pages/videos.html">${SC.icon('video', { size: 20 })} Video Lessons</a>
         <button type="button" id="mobileSearchBtn" data-close-mobile>${SC.icon('search', { size: 20 })} Search</button>
         <a href="/dashboard.html" id="mobileDashLink" style="display:none;">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
+        <a href="/admin.html" id="mobileAdminLink" style="display:none;">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>
         <div class="mobile-nav-divider"></div>
         <div class="mobile-nav-label">More</div>
         <a href="/pages/resources.html">${SC.icon('file-text', { size: 20 })} Resources</a>
@@ -182,7 +186,10 @@
     if (!slot) return;
     const user = await StudyCoreAuth.fetchSession();
     if (user) {
-      document.getElementById('mobileDashLink').style.display = 'flex';
+      const dashLink = document.getElementById('mobileDashLink');
+      if (dashLink) dashLink.style.display = 'flex';
+      const adminLink = document.getElementById('mobileAdminLink');
+      if (adminLink) adminLink.style.display = StudyCoreAuth.isAdmin(user) ? 'flex' : 'none';
       const communityLink = document.getElementById('mobileCommunityLink');
       if (communityLink) communityLink.style.display = 'flex';
       slot.innerHTML = `

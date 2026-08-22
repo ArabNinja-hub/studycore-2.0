@@ -26,10 +26,19 @@ StudyCore
   (lightweight canvas, respects `prefers-reduced-motion`, loaded only on course pages),
   continue-learning card, topics with per-topic progress, all lessons, notes, past papers
   (grouped by year) and overall progress.
+- **Video Lessons page** (`/pages/videos.html?course=<slug>&term=<Term N>`): the
+  administrator's video lessons per course, one full page section per academic term
+  (Term 1/2/3, set at upload time). `?term=` focuses a single term so each term is
+  effectively its own page. Reachable from the main nav on desktop **and** in the
+  mobile menu; course pages link to it from their video section.
 - **Lesson experience** (`/pages/lesson.html?id=…&subject=…`): breadcrumbs, the StudyCore
   video player (resume position, speed, fullscreen, progress + completion tracking) or the
   StudyCore document viewer, key concepts, related resources, mark-complete, and
-  previous/next navigation.
+  previous/next navigation. The document viewer renders **PDFs** (pdf.js → canvas) and
+  **Word `.docx`** (mammoth → HTML) in-browser; it sniffs the file's real bytes so a file
+  uploaded without an extension (or with a mismatched mime) still opens with the right
+  renderer, and any other type gets an honest "can't preview + download" fallback instead
+  of a dead end.
 - **Quizzes & assignments**: removed from the student experience. The backend keeps their
   tables and admin upload options for compatibility, but they never appear in the student
   UI, course listings, or search.
@@ -95,6 +104,7 @@ public/js/icons.js      single SVG icon system (Lucide-style) - no emoji in the 
 public/js/layout.js     shared navbar / mobile nav / account menu / footer / global search overlay
 public/js/player.js     StudyCore video player (custom controls, resume, progress, premium wall)
 public/js/hero.js       per-course canvas hero animations (math/physics/chem/bio/code/comm)
+public/js/video.js      Video Lessons page (/pages/videos.html) — per-course, per-term
 public/sitemap.xml      public pages only - no dashboards, auth or admin URLs
 public/robots.txt       allows public pages + brand assets; disallows private surfaces
 ```

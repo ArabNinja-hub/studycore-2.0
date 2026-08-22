@@ -123,6 +123,13 @@ a:hover { color: var(--teal-700); }
 .section-heading { text-align: center; max-width: 680px; margin: 0 auto 44px; }
 .section-heading h2 { margin: 10px 0 12px; }
 .section-heading p { font-size: 1.02rem; }
+.section-link {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
+  font-family: var(--font-display); font-weight: 700; font-size: 0.9rem;
+  color: var(--teal-600); transition: gap 0.18s ease, color 0.15s ease;
+}
+.section-link:hover { color: var(--teal-700); gap: 10px; }
+.section-link svg { transition: transform 0.18s ease; }
 
 /* ── Buttons ─────────────────────────────── */
 .btn {
@@ -697,6 +704,35 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .doc-reader-text {
   background: #fff; color: var(--ink); margin: 0; padding: 20px; border-radius: 6px;
   font-size: 0.88rem; white-space: pre-wrap; word-break: break-word; max-width: 100%;
+}
+/* Word (.docx) documents, converted to HTML in-browser (mammoth). A normal
+   readable column on every screen — same dark stage as the PDF pages. */
+.doc-page-docx {
+  background: #fff; border-radius: 6px; overflow: hidden; max-width: 100%;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.docx-content {
+  padding: 30px 38px 34px; max-width: 780px; margin: 0 auto;
+  font-size: 0.96rem; line-height: 1.75; color: #17293d; overflow-wrap: break-word;
+}
+.docx-content h1, .docx-content h2, .docx-content h3,
+.docx-content h4, .docx-content h5, .docx-content h6 {
+  color: #17293d; margin: 20px 0 8px; line-height: 1.3;
+}
+.docx-content h1 { font-size: 1.55rem; } .docx-content h2 { font-size: 1.3rem; }
+.docx-content h3 { font-size: 1.12rem; }
+.docx-content p { margin: 0 0 10px; color: #17293d; }
+.docx-content ul, .docx-content ol { margin: 0 0 12px 24px; }
+.docx-content li { margin-bottom: 5px; color: #17293d; }
+.docx-content a { color: var(--teal-600); text-decoration: underline; }
+.docx-content img { max-width: 100%; height: auto; border-radius: 4px; margin: 8px 0; }
+.docx-content table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 0.88rem; }
+.docx-content table td, .docx-content table th { border: 1px solid #d5dee7; padding: 6px 10px; text-align: left; vertical-align: top; }
+.docx-content blockquote { border-left: 3px solid var(--teal-400); margin: 12px 0; padding: 6px 16px; color: #41546b; }
+.docx-content strong { font-weight: 700; }
+.docx-note { color: var(--faint); font-size: 0.78rem; padding: 0 10px 14px; text-align: center; }
+@media (max-width: 640px) {
+  .docx-content { padding: 20px 16px 24px; font-size: 0.94rem; }
 }
 .doc-reader-status {
   position: absolute; inset: 0; z-index: 2;
