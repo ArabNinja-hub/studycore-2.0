@@ -23,6 +23,9 @@
   // Hero visual + icon
   SC.Hero.init($('#courseHero'), slug);
   $('#courseHeroIcon').innerHTML = SC.icon(SC.courseIcon(slug), { size: 30 });
+  document.querySelectorAll('[data-course-quick-icon]').forEach((slot) => {
+    slot.innerHTML = SC.icon(slot.getAttribute('data-course-quick-icon'), { size: 18 });
+  });
 
   const topicAnchor = (name) => `lesson-topic-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
@@ -256,25 +259,58 @@
       } catch { /* hero + overview remain */ }
     }
 
-    // Subnav scroll-spy
-    const sections = ['overview', 'topics', 'video-lessons', 'lessons', 'resources', 'past-papers', 'progress'].map((id) => document.getElementById(id)).filter(Boolean);
-    const links = document.querySelectorAll('#courseSubnav a');
-    if ('IntersectionObserver' in window && sections.length) {
-      const io = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            links.forEach((l) => l.classList.toggle('active', l.getAttribute('href') === `#${entry.target.id}`));
-          }
-        }
-      }, { rootMargin: '-30% 0px -60% 0px' });
-      sections.forEach((s) => io.observe(s));
+    // Course navigation: five clear desktop links and one native mobile
+    // section picker. The picker avoids a long, horizontally scrolling row
+    // of tiny links on phones and remains fully keyboard/screen-reader usable.
+    const sectionIds = ['overview', 'topics', 'video-lessons', 'lessons', 'resources', 'past-papers', 'progress'];
+    const sections = sectionIds.map((id) => document.getElementById(id)).filter(Boolean);
+    const links = [...document.querySelectorAll('#courseSubnav a')];
+    const jump = $('#courseJump');
+    const desktopTarget = (id) => id === 'past-papers' ? '#resources' : `#${id}`;
+
+    function setCurrentSection(id) {
+      const activeHref = desktopTarget(id);
+      links.forEach((link) => {
+        const active = link.getAttribute('href') === activeHref;
+        link.classList.toggle('active', active);
+        if (active) link.setAttribute('aria-current', 'location');
+        else link.removeAttribute('aria-current');
+      });
+      if (jump) {
+        const value = `#${id}`;
+        jump.value = [...jump.options].some((option) => option.value === value) ? value : '';
+      }
     }
 
-    // Topic deep link (#circular-motion)
+    if (jump) {
+      jump.addEventListener('change', () => {
+        const id = jump.value.slice(1);
+        const target = document.getElementById(id);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+
+    if ('IntersectionObserver' in window && sections.length) {
+      const io = new IntersectionObserver((entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible) setCurrentSection(visible.target.id);
+      }, { rootMargin: '-28% 0px -62% 0px', threshold: [0, 0.01, 0.25] });
+      sections.forEach((section) => io.observe(section));
+    }
+
+    // Topic/section deep links. getElementById handles punctuation safely;
+    // querySelector(location.hash) throws on malformed or encoded hashes.
     if (location.hash) {
       setTimeout(() => {
-        const target = document.querySelector(location.hash);
-        if (target) target.scrollIntoView({ behavior: 'smooth' });
+        let id = location.hash.slice(1);
+        try { id = decodeURIComponent(id); } catch { return; }
+        const target = document.getElementById(id);
+        if (target) {
+          setCurrentSection(sectionIds.includes(id) ? id : 'lessons');
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
       }, 250);
     }
   }

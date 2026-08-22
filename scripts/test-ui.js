@@ -1,0 +1,79 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const vm = require('node:vm');
+
+const ROOT = path.join(__dirname, '..');
+const SUBJECT_DIR = path.join(ROOT, 'public', 'pages', 'subjects');
+const subjectPages = fs.readdirSync(SUBJECT_DIR)
+  .filter((name) => name.endsWith('.html'))
+  .sort();
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+}
+
+function occurrences(source, pattern) {
+  return [...source.matchAll(pattern)].length;
+}
+
+test('all six course homes expose the same compact navigation', () => {
+  assert.equal(subjectPages.length, 6);
+  const targets = ['topics', 'video-lessons', 'lessons', 'resources', 'past-papers', 'progress'];
+
+  for (const file of subjectPages) {
+    const html = fs.readFileSync(path.join(SUBJECT_DIR, file), 'utf8');
+    assert.match(html, /<nav class="course-subnav" aria-label="Course sections">/);
+    assert.equal(occurrences(html, /id="courseSubnav"/g), 1, `${file}: desktop course navigation`);
+    assert.equal(occurrences(html, /id="courseJump"/g), 1, `${file}: mobile section picker`);
+    assert.equal(occurrences(html, /class="course-quick-nav"/g), 1, `${file}: course shortcuts`);
+    assert.equal(occurrences(html, /data-course-quick-icon=/g), 4, `${file}: shortcut icons`);
+
+    for (const target of targets) {
+      assert.match(html, new RegExp(`(?:id="${target}"|value="#${target}")`), `${file}: ${target} is reachable`);
+      assert.equal(occurrences(html, new RegExp(`id="${target}"`, 'g')), 1, `${file}: unique #${target}`);
+    }
+
+    const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+    assert.equal(new Set(ids).size, ids.length, `${file}: duplicate HTML id`);
+  }
+});
+
+test('global navigation keeps videos within the course hierarchy', () => {
+  const layout = read('public/js/layout.js');
+  const navBlock = layout.match(/const NAV_LINKS = \[(.*?)\n  \];/s)?.[1] || '';
+  assert.match(navBlock, /label: 'Courses'/);
+  assert.match(navBlock, /label: 'Resources'/);
+  assert.doesNotMatch(navBlock, /label: 'Home'/);
+  assert.doesNotMatch(navBlock, /label: 'Video Lessons'/);
+  assert.doesNotMatch(layout.match(/function renderMobileNav\(\).*?\n  }/s)?.[0] || '', /> Video Lessons</);
+});
+
+test('mobile course controls and drawer styles are present', () => {
+  const css = read('public/css/style.css');
+  assert.match(css, /\.mobile-nav\.open \{ transform: translateX\(0\)/);
+  assert.match(css, /body\[data-page='course'\] \.course-subnav \.subnav-links \{ display: none; \}/);
+  assert.match(css, /\.course-jump \{ display: flex;/);
+  assert.match(css, /body\[data-page='courses'\] \.course-card/);
+});
+
+test('application JavaScript parses successfully', () => {
+  const roots = [
+    'server.js',
+    ...['lib', 'middleware', 'routes', 'public/js'].flatMap((dir) =>
+      fs.readdirSync(path.join(ROOT, dir))
+        .filter((name) => name.endsWith('.js'))
+        .map((name) => path.join(dir, name))
+    )
+  ];
+
+  for (const relativePath of roots) {
+    assert.doesNotThrow(
+      () => new vm.Script(read(relativePath), { filename: relativePath }),
+      `${relativePath} should parse`
+    );
+  }
+});

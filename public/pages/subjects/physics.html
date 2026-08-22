@@ -70,20 +70,33 @@
       </section>
 
       <!-- Course-specific navigation -->
-      <div class="course-subnav">
-        <div class="container nav-inner">
+      <nav class="course-subnav" aria-label="Course sections">
+        <div class="container course-subnav-inner">
+          <a class="course-subnav-back" href="/pages/courses.html" aria-label="Back to all courses">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            <span>All courses</span>
+          </a>
           <ul class="subnav-links" id="courseSubnav">
-            <li><a href="#overview">Overview</a></li>
             <li><a href="#topics">Topics</a></li>
-            <li><a href="#video-lessons">Video Lessons</a></li>
-            <li><a href="#lessons">All Lessons</a></li>
-            <li><a href="#resources">Resources</a></li>
-            <li><a href="#past-papers">Past Papers</a></li>
+            <li><a href="#video-lessons">Videos</a></li>
+            <li><a href="#lessons">All lessons</a></li>
+            <li><a href="#resources">Study materials</a></li>
             <li><a href="#progress">Progress</a></li>
           </ul>
+          <label class="course-jump" for="courseJump">
+            <span>In this course</span>
+            <select id="courseJump" aria-label="Jump to a course section">
+              <option value="" selected>Choose a section</option>
+              <option value="#topics">Topics</option>
+              <option value="#video-lessons">Video lessons</option>
+              <option value="#lessons">All lessons</option>
+              <option value="#resources">Notes &amp; tutorials</option>
+              <option value="#past-papers">Past papers</option>
+              <option value="#progress">My progress</option>
+            </select>
+          </label>
         </div>
-      </div>
-
+      </nav>
       <!-- Completion banner (hidden until 100%) -->
       <section class="section-tight" id="completionSection" style="display:none;">
         <div class="container"><div class="complete-banner" id="completionBanner"></div></div>
@@ -98,10 +111,10 @@
 
       <!-- Overview -->
       <section class="section" id="overview">
-        <div class="container" style="max-width:860px;">
+        <div class="container course-overview">
           <span class="eyebrow">Course overview</span>
           <h2>What you will study in Physics</h2>
-          <p style="margin-top:14px;">
+          <p class="course-overview-copy">
             The Physics course on StudyCore takes you through core university-level concepts in a
             logical order — from the foundations of mechanics to waves, electricity and modern
             physics. Each topic pairs a clear explanation with worked examples, study notes and
@@ -112,6 +125,24 @@
             papers, then mark the lesson complete. Your progress is saved automatically and
             carries across every device.
           </p>
+          <div class="course-quick-nav" aria-label="Course shortcuts">
+            <a href="#topics">
+              <span class="course-quick-icon" data-course-quick-icon="layers"></span>
+              <span><strong>Topics</strong><small>Follow the course order</small></span>
+            </a>
+            <a href="#video-lessons">
+              <span class="course-quick-icon" data-course-quick-icon="play"></span>
+              <span><strong>Video lessons</strong><small>Watch by academic term</small></span>
+            </a>
+            <a href="#resources">
+              <span class="course-quick-icon" data-course-quick-icon="file-text"></span>
+              <span><strong>Notes &amp; tutorials</strong><small>Read study materials</small></span>
+            </a>
+            <a href="#past-papers">
+              <span class="course-quick-icon" data-course-quick-icon="file"></span>
+              <span><strong>Past papers</strong><small>Practise for exams</small></span>
+            </a>
+          </div>
         </div>
       </section>
 
