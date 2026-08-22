@@ -40,31 +40,12 @@
     }
   }
 
-  const fmtTime = (s) => (typeof StudyCorePlayer !== 'undefined' ? StudyCorePlayer.fmtTime(s) : `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`);
-
-  function lessonRowHtml(item) {
-    const icon = item.completed
-      ? SC.icon('check', { size: 16 })
-      : (item.locked ? SC.icon('lock', { size: 15 }) : SC.icon(SC.courseCategoryIcon(item.category), { size: 15 }));
-    const meta = [item.subject && '', item.term, item.topic, item.yearLevel].filter(Boolean).map(escapeHtml).join(' · ');
-    const resume = item.videoPosition ? `<span class="lesson-type" style="color:var(--teal-600);">${SC.icon('play', { size: 12 })} Resume at ${fmtTime(item.videoPosition)}</span>` : '';
-    const cta = item.locked
-      ? `<a class="btn btn-amber btn-sm" href="/pages/pricing.html">${SC.icon('crown', { size: 14 })} Premium</a>`
-      : `<span class="lesson-type">${CATEGORY_LABELS[item.category] || 'Resource'}</span>`;
-    return `
-      <a class="lesson-row ${item.completed ? 'completed' : ''} ${item.locked ? 'locked' : ''}"
-         href="/pages/lesson.html?id=${item.id}&subject=${encodeURIComponent(item.subject || subject)}"
-         data-topic-anchor="${escapeHtml(topicAnchor(item.topic || 'General'))}">
-        <span class="lesson-status">${icon}</span>
-        <span class="lesson-row-main">
-          <span class="lesson-row-title">${escapeHtml(item.title)}</span>
-          <span class="lesson-row-meta">
-            <span>${meta || CATEGORY_LABELS[item.category] || ''}</span>${resume}
-          </span>
-        </span>
-        <span class="lesson-row-action">${cta}${item.locked ? '' : SC.icon('chevron-right', { size: 17 })}</span>
-      </a>
-    `;
+  // lessonRowHtml now lives in main.js (shared with the Video Lessons
+  // pages). The course page wraps it so rows carry a topic anchor for
+  // in-page deep linking to each topic header.
+  function courseLessonRow(item) {
+    const anchor = `data-topic-anchor="${escapeHtml(topicAnchor(item.topic || 'General'))}"`;
+    return lessonRowHtml(item, subject, anchor);
   }
 
   /* ── Anonymous / public view ────────────── */
@@ -153,7 +134,7 @@
         </div>
         <div class="video-term-lessons">
           ${group.lessons.length
-            ? group.lessons.map(lessonRowHtml).join('')
+            ? group.lessons.map(courseLessonRow).join('')
             : `<p class="video-term-empty">No video lessons have been published for ${escapeHtml(group.term)} yet.</p>`}
         </div>
       </section>`).join('');
@@ -177,7 +158,7 @@
       ? groups.map((g) => `
           <div class="term-group" id="${topicAnchor(g.name)}" style="scroll-margin-top:130px;">
             <h3 class="term-group-heading">${escapeHtml(g.name)} <span class="resource-meta">${g.completed} / ${g.total} complete</span></h3>
-            ${g.lessons.map(lessonRowHtml).join('')}
+            ${g.lessons.map(courseLessonRow).join('')}
           </div>`).join('')
       : emptyState({ icon: 'play', title: 'No lessons yet', body: 'Lessons for this course will appear here as soon as they are published.' });
 

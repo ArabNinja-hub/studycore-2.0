@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Video Lessons | StudyCore</title>
+    <meta name="robots" content="noindex, follow" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body data-page="videos">
+    <div id="topBarHost"></div>
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero" style="padding:40px 0 32px;">
+        <div class="container">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="/">StudyCore</a>
+            <span class="sep" aria-hidden="true"></span>
+            <a href="/pages/courses.html">Courses</a>
+            <span class="sep" aria-hidden="true"></span>
+            <span class="current">Video Lessons</span>
+          </nav>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <span class="card-icon" style="width:52px;height:52px;">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2"/></svg>
+            </span>
+            <div style="min-width:0;">
+              <h1 id="videosTitle" style="font-size:clamp(1.5rem,3.4vw,2.2rem);">Video Lessons</h1>
+              <p id="videosSub" style="margin-top:4px;">Every video lesson the administrator has published, grouped by academic term and course.</p>
+            </div>
+          </div>
+
+          <!-- Course picker -->
+          <div class="chips-row" id="courseChips" style="margin-top:22px;" aria-label="Choose a course"></div>
+        </div>
+      </section>
+
+      <!-- Term quick-nav (each term is a full page section below) -->
+      <div class="course-subnav" id="termSubnav">
+        <div class="container nav-inner">
+          <ul class="subnav-links" id="termSubnavLinks">
+            <li><a href="#term-1">Term 1</a></li>
+            <li><a href="#term-2">Term 2</a></li>
+            <li><a href="#term-3">Term 3</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Continue where you left off (video only, logged-in) -->
+      <section class="section-tight" id="continueSection" style="display:none;padding-top:26px;">
+        <div class="container">
+          <div class="continue-card" id="continueCard"></div>
+        </div>
+      </section>
+
+      <!-- Term 1 -->
+      <section class="section" id="term-1" style="scroll-margin-top:130px;">
+        <div class="container">
+          <div class="section-heading" style="text-align:left;margin-left:0;">
+            <span class="eyebrow">Term 1</span>
+            <h2 id="term-1-title" style="font-size:clamp(1.25rem,2.6vw,1.7rem);">Term 1 video lessons</h2>
+            <p id="term-1-count"></p>
+          </div>
+          <div class="lesson-list" id="term-1-list" style="max-width:860px;">
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Term 2 -->
+      <section class="section" id="term-2" style="scroll-margin-top:130px;background:var(--bg-alt);">
+        <div class="container">
+          <div class="section-heading" style="text-align:left;margin-left:0;">
+            <span class="eyebrow">Term 2</span>
+            <h2 id="term-2-title" style="font-size:clamp(1.25rem,2.6vw,1.7rem);">Term 2 video lessons</h2>
+            <p id="term-2-count"></p>
+          </div>
+          <div class="lesson-list" id="term-2-list" style="max-width:860px;">
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Term 3 -->
+      <section class="section" id="term-3" style="scroll-margin-top:130px;">
+        <div class="container">
+          <div class="section-heading" style="text-align:left;margin-left:0;">
+            <span class="eyebrow">Term 3</span>
+            <h2 id="term-3-title" style="font-size:clamp(1.25rem,2.6vw,1.7rem);">Term 3 video lessons</h2>
+            <p id="term-3-count"></p>
+          </div>
+          <div class="lesson-list" id="term-3-list" style="max-width:860px;">
+            <div class="skeleton skeleton-row"></div>
+            <div class="skeleton skeleton-row"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Course home link -->
+      <section class="section-tight" style="padding-bottom:56px;">
+        <div class="container">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+            <a class="btn btn-primary" id="courseHomeLink" href="/pages/courses.html">Browse the full course</a>
+            <a class="btn btn-outline" id="courseVideosSectionLink" href="/pages/courses.html">Back to course page</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/video.js"></script>
+  </body>
+</html>

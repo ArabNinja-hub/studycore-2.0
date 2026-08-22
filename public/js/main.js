@@ -168,6 +168,39 @@ function bindCardInteractions(grid) {
   });
 }
 
+// ── Lesson row (course pages + Video Lessons pages) ──
+// One lesson entry: status icon (done / locked / category), title, meta
+// line, resume position for half-watched videos, and a Premium CTA for
+// locked items. Links into the lesson experience page.
+// extraAttrs (optional) is appended to the <a> — the course page uses it
+// for topic deep-link anchors.
+function lessonRowHtml(item, subject, extraAttrs) {
+  const icon = item.completed
+    ? SC.icon('check', { size: 16 })
+    : (item.locked ? SC.icon('lock', { size: 15 }) : SC.icon(SC.courseCategoryIcon(item.category), { size: 15 }));
+  const meta = [item.subject && '', item.term, item.topic, item.yearLevel].filter(Boolean).map(escapeHtml).join(' · ');
+  const timeLabel = (typeof StudyCorePlayer !== 'undefined' && StudyCorePlayer.fmtTime)
+    ? StudyCorePlayer.fmtTime(item.videoPosition)
+    : `${Math.floor(item.videoPosition / 60)}:${String(Math.floor(item.videoPosition % 60)).padStart(2, '0')}`;
+  const resume = item.videoPosition ? `<span class="lesson-type" style="color:var(--teal-600);">${SC.icon('play', { size: 12 })} Resume at ${timeLabel}</span>` : '';
+  const cta = item.locked
+    ? `<a class="btn btn-amber btn-sm" href="/pages/pricing.html">${SC.icon('crown', { size: 14 })} Premium</a>`
+    : `<span class="lesson-type">${CATEGORY_LABELS[item.category] || 'Resource'}</span>`;
+  return `
+    <a class="lesson-row ${item.completed ? 'completed' : ''} ${item.locked ? 'locked' : ''}"${extraAttrs ? ` ${extraAttrs}` : ''}
+       href="/pages/lesson.html?id=${item.id}&subject=${encodeURIComponent(item.subject || subject)}">
+      <span class="lesson-status">${icon}</span>
+      <span class="lesson-row-main">
+        <span class="lesson-row-title">${escapeHtml(item.title)}</span>
+        <span class="lesson-row-meta">
+          <span>${meta || CATEGORY_LABELS[item.category] || ''}</span>${resume}
+        </span>
+      </span>
+      <span class="lesson-row-action">${cta}${item.locked ? '' : SC.icon('chevron-right', { size: 17 })}</span>
+    </a>
+  `;
+}
+
 // Filter chips (used by Resources page + search page)
 function renderChips(container, { items, active = '', onChange }) {
   if (!container) return;
