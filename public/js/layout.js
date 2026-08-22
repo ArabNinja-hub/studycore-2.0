@@ -9,10 +9,10 @@
 // and a placeholder element for the footer.
 //
 // Navigation model (learning-first, LMS-style):
-//   Home · Courses · Resources · Announcements · About · [Search] · [Dashboard] · [Profile/Login]
-// There is no standalone Documents or Videos
-// destination - documents and videos live inside
-// Courses, Lessons and Resources.
+//   Logo/Home · Courses · Resources · Announcements · About · [Search] · [Dashboard] · [Profile/Login]
+// The global navigation stays intentionally small. Video lessons are opened
+// from a course home rather than competing with Courses as a second route to
+// the same content.
 // =============================================
 
 (function (global) {
@@ -23,9 +23,7 @@
   const SITE = 'https://studycore.academy/';
 
   const NAV_LINKS = [
-    { id: 'home', label: 'Home', href: '/', icon: 'home' },
     { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
-    { id: 'videos', label: 'Video Lessons', href: '/pages/videos.html', icon: 'video' },
     { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text' },
     { id: 'announcements', label: 'Announcements', href: '/pages/announcements.html', icon: 'bell' },
     { id: 'about', label: 'About', href: '/pages/about.html', icon: 'info' }
@@ -37,8 +35,7 @@
 
   function isActive(id) {
     const page = currentPage();
-    if (id === 'courses') return page === 'courses' || page === 'course' || page === 'lesson';
-    if (id === 'videos') return page === 'videos';
+    if (id === 'courses') return ['courses', 'course', 'lesson', 'videos'].includes(page);
     return page === id;
   }
 
@@ -96,9 +93,10 @@
   function renderNav() {
     const host = document.getElementById('siteNav');
     if (!host) return;
-    const linksHtml = NAV_LINKS.map((l) => `
-      <li><a href="${l.href}" ${isActive(l.id) ? 'class="active"' : ''}>${l.label}</a></li>
-    `).join('');
+    const linksHtml = NAV_LINKS.map((l) => {
+      const active = isActive(l.id);
+      return `<li><a href="${l.href}"${active ? ' class="active" aria-current="page"' : ''}>${l.label}</a></li>`;
+    }).join('');
 
     host.className = 'navbar';
     host.innerHTML = `
@@ -157,23 +155,23 @@
   function renderMobileNav() {
     const host = document.getElementById('mobileNavHost');
     if (!host) return;
+    const activeAttrs = (id) => isActive(id) ? ' class="active" aria-current="page"' : '';
     host.innerHTML = `
       <div class="nav-backdrop" id="navBackdrop"></div>
-      <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation">
-        <a href="/">${SC.icon('home', { size: 20 })} Home</a>
-        <a href="/pages/courses.html">${SC.icon('library', { size: 20 })} Courses</a>
-        <a href="/pages/videos.html">${SC.icon('video', { size: 20 })} Video Lessons</a>
+      <nav class="mobile-nav" id="mobileNav" aria-label="Main navigation" aria-hidden="true">
+        <div class="mobile-nav-label">Study</div>
+        <a href="/pages/courses.html"${activeAttrs('courses')}>${SC.icon('library', { size: 20 })} Courses</a>
+        <a href="/pages/resources.html"${activeAttrs('resources')}>${SC.icon('file-text', { size: 20 })} Resources</a>
         <button type="button" id="mobileSearchBtn" data-close-mobile>${SC.icon('search', { size: 20 })} Search</button>
         <a href="/dashboard.html" id="mobileDashLink" style="display:none;">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
         <a href="/admin.html" id="mobileAdminLink" style="display:none;">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>
         <div class="mobile-nav-divider"></div>
         <div class="mobile-nav-label">More</div>
-        <a href="/pages/resources.html">${SC.icon('file-text', { size: 20 })} Resources</a>
-        <a href="/pages/announcements.html">${SC.icon('bell', { size: 20 })} Announcements</a>
-        <a href="/pages/about.html">${SC.icon('info', { size: 20 })} About StudyCore</a>
+        <a href="/pages/announcements.html"${activeAttrs('announcements')}>${SC.icon('bell', { size: 20 })} Announcements</a>
         <a href="/pages/pricing.html">${SC.icon('crown', { size: 20 })} Premium</a>
-        <a href="/dashboard.html#community" id="mobileCommunityLink" style="display:none;">${SC.icon('message-circle', { size: 20 })} Community</a>
+        <a href="/pages/about.html"${activeAttrs('about')}>${SC.icon('info', { size: 20 })} About StudyCore</a>
         <div class="mobile-nav-divider"></div>
+        <div class="mobile-nav-label">Account</div>
         <div id="mobileAuthSlot"></div>
       </nav>
     `;
@@ -190,8 +188,6 @@
       if (dashLink) dashLink.style.display = 'flex';
       const adminLink = document.getElementById('mobileAdminLink');
       if (adminLink) adminLink.style.display = StudyCoreAuth.isAdmin(user) ? 'flex' : 'none';
-      const communityLink = document.getElementById('mobileCommunityLink');
-      if (communityLink) communityLink.style.display = 'flex';
       slot.innerHTML = `
         <a href="/dashboard.html#profile">${SC.icon('user', { size: 20 })} Profile</a>
         <button type="button" id="mobileLogoutBtn" style="color:var(--red-600);">${SC.icon('log-out', { size: 20 })} Log Out</button>

@@ -121,20 +121,58 @@
     const backdrop = document.getElementById('navBackdrop');
     if (!hamburger || !menu) return;
 
-    const setOpen = (open) => {
+    let lastFocused = null;
+    const setOpen = (open, { restoreFocus = true } = {}) => {
+      if (open) lastFocused = document.activeElement;
       menu.classList.toggle('open', open);
+      menu.setAttribute('aria-hidden', String(!open));
+      if ('inert' in menu) menu.inert = !open;
       if (backdrop) backdrop.classList.toggle('open', open);
-      document.body.style.overflow = open ? 'hidden' : '';
+      const searchOpen = document.getElementById('searchOverlay')?.classList.contains('open');
+      document.body.style.overflow = (open || searchOpen) ? 'hidden' : '';
       hamburger.setAttribute('aria-expanded', String(open));
       hamburger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
       if (typeof SC !== 'undefined') hamburger.innerHTML = SC.icon(open ? 'x' : 'menu', { size: 22 });
+
+      if (open) {
+        setTimeout(() => menu.querySelector('a, button')?.focus(), 40);
+      } else if (restoreFocus && lastFocused && document.contains(lastFocused)) {
+        lastFocused.focus();
+      }
     };
+
+    setOpen(false, { restoreFocus: false });
     hamburger.addEventListener('click', () => setOpen(!menu.classList.contains('open')));
     if (backdrop) backdrop.addEventListener('click', () => setOpen(false));
-    menu.querySelectorAll('a, button[data-close-mobile]').forEach((el) =>
-      el.addEventListener('click', () => setOpen(false))
-    );
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+    menu.addEventListener('click', (event) => {
+      if (event.target.closest('a, button[data-close-mobile]')) setOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && menu.classList.contains('open')) setOpen(false);
+      if (event.key !== 'Tab' || !menu.classList.contains('open')) return;
+      const focusable = [...menu.querySelectorAll('a, button:not([disabled])')]
+        .filter((el) => !el.hidden && el.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        hamburger.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        hamburger.focus();
+      } else if (document.activeElement === hamburger) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    });
+    const desktopMedia = window.matchMedia('(min-width: 901px)');
+    const closeAtDesktop = (event) => {
+      if (event.matches) setOpen(false, { restoreFocus: false });
+    };
+    if (desktopMedia.addEventListener) desktopMedia.addEventListener('change', closeAtDesktop);
+    else desktopMedia.addListener(closeAtDesktop); // Older iOS Safari.
+
   }
 
   /* ── Post-login welcome transition ──────── */

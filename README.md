@@ -29,8 +29,9 @@ StudyCore
 - **Video Lessons page** (`/pages/videos.html?course=<slug>&term=<Term N>`): the
   administrator's video lessons per course, one full page section per academic term
   (Term 1/2/3, set at upload time). `?term=` focuses a single term so each term is
-  effectively its own page. Reachable from the main nav on desktop **and** in the
-  mobile menu; course pages link to it from their video section.
+  effectively its own page. Reachable from each course home and its video section,
+  keeping the global desktop and mobile navigation focused on Courses rather than
+  presenting two competing routes to the same lessons.
 - **Lesson experience** (`/pages/lesson.html?id=…&subject=…`): breadcrumbs, the StudyCore
   video player (resume position, speed, fullscreen, progress + completion tracking) or the
   StudyCore document viewer, key concepts, related resources, mark-complete, and
@@ -166,9 +167,9 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
 - Standalone **Documents** and **Videos** pages removed - documents/videos live inside
   courses, lessons and the unified **Resources** page (filterable by course and type).
 - Global navigation redesigned to a learning-first model
-  (Home · Courses · Resources · Announcements · About · Search · Dashboard · Profile)
-  with a deliberate mobile menu; course pages get their own sub-nav
-  (Overview · Topics · Lessons · Resources · Past Papers · Progress).
+  (logo/Home · Courses · Resources · Announcements · About · Search · Dashboard · Profile)
+  with a compact mobile drawer. Course pages use five clear desktop shortcuts and a
+  native mobile section picker instead of a long horizontally scrolling sub-navigation.
 - **Premium dashboard section** (`/dashboard.html#premium`) with real subscription
   states, trial countdown, payment flow and renewal; Pricing page connects into it.
 - **Profile pictures** with server-side validation, plus achievements, study streak,
