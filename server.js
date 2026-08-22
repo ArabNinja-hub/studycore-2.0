@@ -75,7 +75,19 @@ app.get(['/login.html', '/signup.html'], (req, res, next) => {
 // Cloudflare R2 (see lib/r2.js), not on this server's disk at all. --------
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0,
-  etag: true
+  etag: true,
+  setHeaders(res, filePath) {
+    // HTML, JS and CSS are the live surface of the site and change on most
+    // deploys. Caching them for a full day means a browser or CDN can keep
+    // serving a stale copy after a deploy — which is exactly how a page ended
+    // up calling a shared renderer (lessonRowHtml) that had been moved into
+    // main.js, while the visitor's cached main.js no longer defined it.
+    // Force these to revalidate (via ETag) on every request; images and
+    // vendored libraries keep the longer maxAge below.
+    if (/\.(html|js|css)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+    }
+  }
 }));
 
 // Anything that did not match a real page, asset, or API route gets a real
