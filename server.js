@@ -31,6 +31,10 @@ const authRateLimit = rateLimit({ windowMs: 60 * 1000, max: 20 });
 // ---- API routes -----------------------------------------------------------
 app.use('/api/auth/login', authRateLimit);
 app.use('/api/auth/register', authRateLimit);
+// Password change is equally worth brute-force protection (the current
+// password is still verified server-side; this just stops credential
+// guessing by IP).
+app.use('/api/auth/password', authRateLimit);
 app.use('/api/auth', authRoutes);
 
 // Public site config. Official WhatsApp links live in .env so the owner can

@@ -21,9 +21,9 @@ if (existing) {
   const hashed = bcrypt.hashSync(password, 10);
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO users (id, name, email, password, role, subscription, subscription_start, subscription_end, created_at)
-    VALUES (?, ?, ?, ?, 'ADMIN', 'premium', ?, ?, ?)
-  `).run(`admin-${Date.now()}`, name, email, hashed, now, new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(), now);
+    INSERT INTO users (id, name, email, password, role, subscription, subscription_start, subscription_end, referral_code, created_at)
+    VALUES (?, ?, ?, ?, 'ADMIN', 'premium', ?, ?, ?, ?)
+  `).run(`admin-${Date.now()}`, name, email, hashed, now, new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(), now, db.generateReferralCode());
   console.log(`Created new admin account: ${email}`);
   console.log(`Temporary password: ${password}`);
   console.log('Log in and change this password immediately.');
