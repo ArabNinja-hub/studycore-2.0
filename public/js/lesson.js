@@ -145,11 +145,7 @@
       title: lesson.title,
       fileSize: lesson.fileSize,
       fileName: lesson.fileName,
-      mimeType: inferClientMime(lesson),
-      // Only offered by the reader when a file can't be previewed
-      // in-browser (e.g. PowerPoint). The endpoint applies the same
-      // server-side access checks as the stream, so nothing new is exposed.
-      downloadUrl: StudyCoreAPI.downloadUrl(lesson.id)
+      mimeType: inferClientMime(lesson)
     });
   }
 

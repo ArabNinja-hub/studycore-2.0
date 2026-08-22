@@ -75,9 +75,7 @@
     },
     getResource: (id) => request(`/api/resources/${id}`),
     streamUrl: (id) => `/api/resources/${id}/stream`,
-    downloadUrl: (id) => `/api/resources/${id}/download`,
     myBookmarks: () => request('/api/resources/bookmarks/mine'),
-    myDownloads: () => request('/api/resources/downloads/mine'),
     bookmark: (id) => request(`/api/resources/${id}/bookmark`, { method: 'POST' }),
     unbookmark: (id) => request(`/api/resources/${id}/bookmark`, { method: 'DELETE' }),
 

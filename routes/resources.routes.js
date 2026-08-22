@@ -25,7 +25,7 @@ function serializeResource(row) {
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     fileName: row.file_name,
     fileSize: row.file_size,
-    mimeType: row.mime_type,
+    mimeType: row.stored_name ? inferMime(row) : row.mime_type,
     hasFile: Boolean(row.stored_name),
     externalUrl: row.external_url,
     quizData: row.quiz_data ? JSON.parse(row.quiz_data) : null,
@@ -141,16 +141,18 @@ const EXT_BY_MIME = {
 
 function inferMime(row) {
   const given = String(row.mime_type || '').trim().toLowerCase().split(';')[0].trim();
-  if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream' && given !== '') {
+  // Prefer an original-name extension, then the storage-key extension. The
+  // latter repairs legacy mobile uploads whose original name was a bare UUID
+  // but whose stored key received the extension inferred during upload.
+  const originalExt = path.extname(String(row.file_name || '')).toLowerCase();
+  const storedExt = path.extname(String(row.stored_name || '')).toLowerCase();
+  if (MIME_BY_EXT[originalExt]) return MIME_BY_EXT[originalExt];
+  if (MIME_BY_EXT[storedExt]) return MIME_BY_EXT[storedExt];
+  if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream') {
     return given;
   }
-  const name = String(row.file_name || row.stored_name || '');
-  const ext = path.extname(name).toLowerCase();
-  if (MIME_BY_EXT[ext]) return MIME_BY_EXT[ext];
-  // If the file name is a bare UUID (e.g. "9735a310-575d-469d-9fbb-1f720e13c396")
-  // with no extension — which happened when some mobile browsers uploaded
-  // without an extension — fall back to sniffing rather than leaving it as
-  // octet-stream. The sniff step in resolveType will confirm PDF.
+  // Truly ambiguous legacy files are identified from a tiny range read in
+  // resolveType rather than forcing the reader down the wrong code path.
   return given || 'application/octet-stream';
 }
 
@@ -245,11 +247,10 @@ function ensureFileNameWithExt(filename, mimeType, key) {
   return raw;
 }
 
-function contentDisposition(disposition, filename, key, mimeType) {
+function inlineContentDisposition(filename, key, mimeType) {
   const raw = ensureFileNameWithExt(filename, mimeType, key);
   const encoded = encodeURIComponent(raw);
-  const kind = disposition === 'attachment' ? 'attachment' : 'inline';
-  return `${kind}; filename="${raw}"; filename*=UTF-8''${encoded}`;
+  return `inline; filename="${raw}"; filename*=UTF-8''${encoded}`;
 }
 
 function pipeBodyToResponse(body, res, req) {
@@ -279,7 +280,7 @@ function pipeBodyToResponse(body, res, req) {
   // GET), not only when the phone disconnects. Destroying the storage stream
   // at that point produced empty/truncated PDFs most often on slower Android
   // and iOS connections. "aborted" is the actual request-abort signal; the
-  // response close check covers a client leaving during the download.
+  // response close check covers a client leaving during the stream.
   if (req) req.once('aborted', abort);
   res.once('close', () => {
     if (!res.writableEnded) abort();
@@ -319,16 +320,35 @@ async function resolveType(key, storedType, fallbackType) {
   return given || stored || 'application/octet-stream';
 }
 
-async function streamStoredObject(req, res, key, { disposition, filename, mimeType }) {
-  let meta;
-  try {
-    meta = await storage.headObject(key);
-  } catch (err) {
-    return r2StreamError(err, res);
+function isSpecificMime(value) {
+  const type = String(value || '').trim().toLowerCase().split(';')[0].trim();
+  return Boolean(type && type !== 'application/octet-stream' && type !== 'binary/octet-stream');
+}
+
+async function streamStoredObject(req, res, key, { filename, mimeType, fileSize }) {
+  // The database already stores the exact upload size and normalized type.
+  // Use those values for GET/range requests so every 128 KB PDF chunk maps to
+  // one storage request rather than HEAD + signature probe + GET. Keep the
+  // slower storage lookup for HEAD requests and ambiguous legacy records.
+  const hasKnownSize = fileSize !== null && fileSize !== undefined &&
+    Number.isFinite(Number(fileSize)) && Number(fileSize) >= 0;
+  let size = hasKnownSize ? Number(fileSize) : 0;
+  let storedType = null;
+
+  if (req.method === 'HEAD' || !hasKnownSize) {
+    let meta;
+    try {
+      meta = await storage.headObject(key);
+    } catch (err) {
+      return r2StreamError(err, res);
+    }
+    size = Number(meta.contentLength) || 0;
+    storedType = meta.contentType;
   }
 
-  const size = Number(meta.contentLength) || 0;
-  const type = await resolveType(key, meta.contentType, mimeType);
+  const type = isSpecificMime(mimeType)
+    ? String(mimeType).trim().toLowerCase().split(';')[0].trim()
+    : await resolveType(key, storedType, mimeType);
   const range = parseRange(req.headers.range, size);
 
   res.setHeader('Accept-Ranges', 'bytes');
@@ -338,7 +358,7 @@ async function streamStoredObject(req, res, key, { disposition, filename, mimeTy
   // reader's type detection works even when the original upload had a bare
   // UUID name.
   const safeFilename = ensureFileNameWithExt(filename, type, key);
-  res.setHeader('Content-Disposition', contentDisposition(disposition, safeFilename, key, type));
+  res.setHeader('Content-Disposition', inlineContentDisposition(safeFilename, key, type));
   // Private cache lets the browser reuse range chunks while seeking / paging
   // a PDF. The URL is still session-gated — unauthenticated clients cannot
   // hit this route at all.
@@ -425,7 +445,7 @@ router.get('/', requireAuth, gate, (req, res) => {
   const sortMap = {
     newest: 'created_at DESC',
     oldest: 'created_at ASC',
-    popular: 'download_count DESC',
+    popular: 'view_count DESC',
     title: 'title ASC'
   };
   const orderBy = sortMap[sort] || sortMap.newest;
@@ -457,9 +477,9 @@ async function handleStream(req, res) {
   if (!row.stored_name && !row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
   if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
   await streamStoredObject(req, res, row.stored_name, {
-    disposition: 'inline',
     filename: row.file_name || row.stored_name,
-    mimeType: inferMime(row)
+    mimeType: inferMime(row),
+    fileSize: row.file_size
   });
 }
 
@@ -526,25 +546,6 @@ router.get('/bookmarks/mine', requireAuth, gate, (req, res) => {
     ORDER BY b.created_at DESC
   `).all(req.user.id);
   res.json({ resources: rows.map((r) => ({ ...serializeResource(r), locked: canAccess(r, req.access) ? null : lockReason(r, req.access) })) });
-});
-
-router.get('/downloads/mine', requireAuth, gate, (req, res) => {
-  // Downloads have always been logged (see the /:id/download route below) -
-  // this just surfaces that existing history so a student can find
-  // something they downloaded before without re-searching for it, since
-  // the file itself only goes to their device, not anywhere in their
-  // account.
-  const rows = db.prepare(`
-    SELECT r.*, MAX(d.created_at) as last_downloaded_at
-    FROM downloads d
-    JOIN resources r ON r.id = d.resource_id
-    WHERE d.user_id = ? AND r.publish_status = 'published'
-    GROUP BY r.id
-    ORDER BY last_downloaded_at DESC
-  `).all(req.user.id);
-  res.json({
-    resources: rows.map((r) => ({ ...serializeResource(r), lastDownloadedAt: r.last_downloaded_at, locked: canAccess(r, req.access) ? null : lockReason(r, req.access) }))
-  });
 });
 
 router.get('/search', (req, res) => {
@@ -626,31 +627,11 @@ router.get('/:id', requireAuth, gate, (req, res) => {
   res.json({ resource: serializeResource(row) });
 });
 
-router.get('/:id/download', requireAuth, gate, async (req, res) => {
-  const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
-  if (!row) return res.status(404).json({ message: 'Resource not found.' });
-  if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
-  if (row.category === 'video') {
-    // Videos are stream-only, matching the "watch in the app, don't keep a
-    // copy" model - enforced here so this can't be bypassed just by hitting
-    // this URL directly instead of clicking a (deliberately absent) button.
-    return res.status(403).json({ message: 'Videos are available to stream online only and cannot be downloaded.', locked: true });
-  }
-
-  if (row.external_url) {
-    db.prepare('UPDATE resources SET download_count = download_count + 1 WHERE id = ?').run(row.id);
-    return res.redirect(row.external_url);
-  }
-  if (!row.stored_name) return res.status(404).json({ message: 'This resource has no downloadable file.' });
-
-  db.prepare('UPDATE resources SET download_count = download_count + 1 WHERE id = ?').run(row.id);
-  db.prepare('INSERT INTO downloads (id, resource_id, user_id, created_at) VALUES (?, ?, ?, ?)')
-    .run(`dl-${uuidv4()}`, row.id, req.user.id, new Date().toISOString());
-
-  await streamStoredObject(req, res, row.stored_name, {
-    disposition: 'attachment',
-    filename: row.file_name || row.stored_name,
-    mimeType: inferMime(row)
+// Documents and videos are view-only. Keep an explicit denial at the former
+// URL so saved links cannot bypass the reader after the UI control is gone.
+router.get('/:id/download', requireAuth, (req, res) => {
+  res.status(403).json({
+    message: 'Downloads are disabled. Open this resource in the StudyCore reader instead.'
   });
 });
 

@@ -231,6 +231,17 @@ c.commit()
     pass('trial opens free PDF progressively', `ctype=${s.ctype} firstBytes=${s.preview.slice(0,4)} ${s.ms}ms`);
   } catch (err) { fail('trial opens free PDF progressively', err); }
 
+  // Direct source downloads are disabled even for a resource the user may
+  // read. The response must not redirect or return any document bytes.
+  try {
+    const blocked = await req(trial.jar, `${BASE}/api/resources/${smallPdf.id}/download`);
+    assert(blocked.status === 403, 'document download should be denied', { status: blocked.status });
+    assert(!blocked.headers.get('location'), 'download denial must not redirect');
+    const body = await blocked.json();
+    assert(/disabled/i.test(body.message || ''), 'download denial should explain the view-only policy', body);
+    pass('document download disabled', `status=${blocked.status}`);
+  } catch (err) { fail('document download disabled', err); }
+
   // Trial cannot watch video
   try {
     const s = await inspectStream(trial.jar, smallVid.id, { expectStatus: 403 });

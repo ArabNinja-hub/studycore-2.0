@@ -184,8 +184,6 @@ body[data-page='viewer'] .viewer-main {
   flex: 0 0 auto;
   white-space: nowrap;
 }
-.viewer-download { color: var(--teal-600); }
-.viewer-download:hover { color: var(--teal-700); background: var(--teal-50); }
 
 /* ── Search panel ───────────────────────────── */
 .viewer-search {

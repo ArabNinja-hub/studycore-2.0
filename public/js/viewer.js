@@ -9,10 +9,9 @@
 // canvases — identical on desktop and mobile.
 //
 // Access is enforced entirely by the server:
-//   · GET /api/resources/:id          -> metadata + access check
-//   · GET /api/resources/:id/stream   -> the actual bytes (Range-capable)
-//   · GET /api/resources/:id/download -> optional, same access rules
-// The client only reflects what those endpoints say.
+//   · GET /api/resources/:id        -> metadata + access check
+//   · GET /api/resources/:id/stream -> protected, Range-capable reading
+// Documents are view-only: the reader exposes no download path or control.
 // =============================================
 
 (function () {
@@ -117,9 +116,8 @@
   function externalOnly() {
     renderState({
       icon: 'file',
-      title: 'External resource',
-      body: 'This resource links to an external file rather than a document stored in StudyCore, so it cannot be previewed here.',
-      primary: `<a class="btn btn-primary" href="${StudyCoreAPI.downloadUrl(resource.id)}" target="_blank" rel="noopener">${SC.icon('download', { size: 16 })} Open resource</a>`,
+      title: 'Preview unavailable',
+      body: 'This resource is not stored in StudyCore, so it cannot be opened in the protected document reader. Ask your administrator to upload a PDF version.',
       secondary: `<button class="btn btn-outline" type="button" data-viewer-back>${SC.icon('arrow-left', { size: 16 })} Go back</button>`
     });
     bindBackButtons();
@@ -296,9 +294,9 @@
 
     if (!id) { notFound(); return; }
 
-    const user = await StudyCoreAuth.fetchSession();
-    if (!user) { location.href = '/login.html'; return; }
-
+    // The page route is already session-gated, and the resource endpoint
+    // repeats that check. Do not wait for the navigation's /auth/me request:
+    // fetching metadata in parallel removes a full round trip from startup.
     let data;
     try {
       data = await StudyCoreAPI.getResource(id);
@@ -335,15 +333,6 @@
       return;
     }
 
-    // Download button only when the existing access rules permit it (the
-    // download endpoint enforces them server-side). Videos never reach here.
-    const canDownload = resource.category !== 'announcement' && resource.category !== 'quiz' && resource.category !== 'assignment';
-    if (canDownload) {
-      const dl = $('#viewerDownload');
-      dl.href = StudyCoreAPI.downloadUrl(resource.id);
-      dl.hidden = false;
-    }
-
     $('#viewerTools').hidden = false;
 
     reader = StudyCoreReader.init($('#viewerHost'), {
@@ -353,7 +342,6 @@
       fileName: resource.fileName,
       mimeType: inferMime(resource),
       chrome: 'bare',
-      downloadUrl: StudyCoreAPI.downloadUrl(resource.id),
       onState: updateState,
       onSearchUpdate: updateSearch
     });

@@ -60,6 +60,28 @@ test('mobile course controls and drawer styles are present', () => {
   assert.match(css, /body\[data-page='courses'\] \.course-card/);
 });
 
+test('document reader is view-only and uses on-demand PDF ranges', () => {
+  const viewerHtml = read('views/viewer.html');
+  const viewerJs = read('public/js/viewer.js');
+  const lessonJs = read('public/js/lesson.js');
+  const readerJs = read('public/js/doc-reader.js');
+  const apiJs = read('public/js/api.js');
+  const resourceRoutes = read('routes/resources.routes.js');
+
+  assert.doesNotMatch(viewerHtml, /viewerDownload|aria-label="Download document"/);
+  assert.doesNotMatch(viewerJs, /downloadUrl|viewerDownload/);
+  assert.doesNotMatch(lessonJs, /downloadUrl/);
+  assert.doesNotMatch(readerJs, /downloadUrl|fetchDocumentBytes|method:\s*['"]HEAD['"]/);
+  assert.doesNotMatch(apiJs, /downloadUrl|myDownloads/);
+
+  assert.match(readerJs, /disableStream:\s*true/);
+  assert.match(readerJs, /disableAutoFetch:\s*true/);
+  assert.match(readerJs, /rangeChunkSize:\s*131072/);
+  assert.match(resourceRoutes, /fileSize:\s*row\.file_size/);
+  assert.match(resourceRoutes, /router\.get\('\/:id\/download'[\s\S]*?res\.status\(403\)/);
+  assert.doesNotMatch(resourceRoutes, /disposition:\s*['"]attachment['"]|INSERT INTO downloads/);
+});
+
 test('application JavaScript parses successfully', () => {
   const roots = [
     'server.js',
