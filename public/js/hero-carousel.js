@@ -18,7 +18,7 @@
     const progressFill = document.getElementById('heroProgressFill');
     if (!slides.length) return;
 
-    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let reduce = Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     const DURATION = 7500;
     const FADE = 1800;
 
@@ -156,15 +156,23 @@
         restart();
       });
 
+      // Horizontal swipe changes photo. Vertical movement must be left alone
+      // — tracking Y as well means a student scrolling the page past the
+      // hero never accidentally flips the carousel.
       let touchX = null;
+      let touchY = null;
       hero.addEventListener('touchstart', (e) => {
         touchX = e.changedTouches[0].clientX;
+        touchY = e.changedTouches[0].clientY;
       }, { passive: true });
       hero.addEventListener('touchend', (e) => {
         if (touchX == null || order.length < 2) return;
         const dx = e.changedTouches[0].clientX - touchX;
+        const dy = e.changedTouches[0].clientY - touchY;
         touchX = null;
-        if (Math.abs(dx) < 48) return;
+        touchY = null;
+        // Only act on a clearly horizontal gesture.
+        if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
         select(idx + (dx < 0 ? 1 : -1));
         restart();
       }, { passive: true });
@@ -184,7 +192,34 @@
       io.observe(hero);
     }
 
+    // Warm every slide up front (idle time, low priority) so a crossfade
+    // never lands on an image that has not decoded yet — that half-drawn
+    // first paint was the flicker students saw on slower connections.
+    function warmAll() {
+      slides.forEach((slide, i) => {
+        if (i < 2) return; // already eager in the markup
+        const src = slide.getAttribute('src');
+        if (src) preload(src);
+      });
+    }
+    if ('requestIdleCallback' in window) window.requestIdleCallback(warmAll, { timeout: 3000 });
+    else setTimeout(warmAll, 1200);
+
     if (slides[1]) preload(slides[1].getAttribute('src'));
+
+    // Respect a mid-session change to the OS "reduce motion" setting: stop
+    // auto-advancing immediately rather than only honouring it at page load.
+    if (window.matchMedia) {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (typeof mq.addEventListener === 'function') {
+        mq.addEventListener('change', (e) => {
+          reduce = e.matches;
+          if (progress) progress.hidden = reduce || order.length < 2;
+          restart();
+        });
+      }
+    }
+
     sync();
   }
 
