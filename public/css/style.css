@@ -297,24 +297,13 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
   .nav-inner { gap: 10px; }
 }
 
-/* ── Hero (home) ────────────────────────
-   One bounded stage. The photo carousel is the background layer, the copy
-   sits on top of it, and NOTHING is allowed outside the box:
-     · the section is a fixed, viewport-relative height (not "however tall
-       the text happens to be"), so the copy can never push the layout into
-       the scattered column it used to become on a phone
-     · `overflow: hidden` + `contain: paint` clip the Ken Burns transform,
-       which overshoots the section edges by design
-     · the whole hero is width-bounded so a zooming image can never create
-       horizontal page scroll                                            */
+/* ── Hero (home) ──────────────────────── */
 .hero {
   position: relative;
   overflow: hidden;
-  contain: paint;
   isolation: isolate;
   width: 100%;
   max-width: 100%;
-  /* A real, intentional stage rather than a text-height accident. */
   min-height: clamp(560px, 82vh, 840px);
   display: flex;
   align-items: center;
@@ -326,12 +315,11 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
   padding: 72px 0 88px;
 }
 .hero .container {
-  position: relative; z-index: 2;
-  width: 100%; max-width: min(var(--container), 100%);
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: min(var(--container), 100%);
 }
-/* The copy column is deliberately narrow on wide screens so the photography
-   has room to breathe on the right — a unified split, not a full-bleed
-   wall of text. */
 .hero-copy { max-width: 660px; }
 .hero h1 {
   color: #fff;
@@ -354,126 +342,6 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .hero-stat .num { font-family: var(--font-display); font-size: 1.9rem; font-weight: 800; color: #fff; }
 .hero-stat .num span { color: var(--teal-400); }
 .hero-stat .label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255, 255, 255, 0.55); font-weight: 600; }
-
-/* Hero photo carousel — crossfade + slow Ken Burns drift.
-   The slide layer is inset by a negative margin and the .hero clips it, so
-   the pan/zoom has somewhere to travel WITHOUT any image edge ever reaching
-   the section boundary (which is what produced the visible "scatter" and the
-   horizontal-overflow risk). Transitions only — no keyframes — so the work
-   stays on the compositor and low-end phones do not drop frames. */
-.hero-bg {
-  position: absolute; inset: 0; z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-  /* Own stacking + paint context: the zoomed images can never bleed into
-     the sections above or below the hero. */
-  contain: strict;
-}
-.hero-bg.is-empty { display: none; }
-.hero-bg-slide {
-  position: absolute;
-  /* Oversize the frame slightly so the drift always has cover to spare and
-     never exposes a hard edge or the background gradient. */
-  inset: -2%;
-  width: 104%; height: 104%;
-  object-fit: cover;
-  object-position: center 42%;
-  opacity: 0;
-  will-change: opacity, transform;
-  backface-visibility: hidden;
-  transform: scale(1.06) translate3d(0.8%, 0, 0);
-  transition:
-    opacity var(--hero-fade, 1.8s) cubic-bezier(0.4, 0, 0.2, 1),
-    transform var(--hero-hold, 7.5s) linear;
-}
-.hero-bg-slide.pan-left { transform: scale(1.06) translate3d(-0.8%, 0, 0); }
-.hero-bg-slide.is-active {
-  opacity: 1;
-  transform: scale(1.13) translate3d(-0.8%, 0, 0);
-}
-.hero-bg-slide.pan-left.is-active { transform: scale(1.13) translate3d(0.8%, 0, 0); }
-
-/* Readability scrim. Stronger from the left on wide screens (where the copy
-   lives) and stronger bottom-up on phones (where the copy stacks). */
-.hero-bg::after {
-  content: ''; position: absolute; inset: 0;
-  background:
-    linear-gradient(180deg, rgba(5, 9, 13, 0.62) 0%, rgba(5, 9, 13, 0.40) 42%, rgba(5, 9, 13, 0.80) 100%),
-    linear-gradient(90deg, rgba(5, 9, 13, 0.88) 0%, rgba(5, 9, 13, 0.52) 55%, rgba(5, 9, 13, 0.32) 100%);
-}
-
-.hero-dots {
-  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
-  display: flex; gap: 8px; z-index: 3; padding: 7px 13px; border-radius: 999px;
-  background: rgba(5, 9, 13, 0.38); backdrop-filter: blur(6px);
-  max-width: calc(100% - 32px);
-}
-.hero-dot {
-  width: 8px; height: 8px; padding: 0; border-radius: 999px; flex: 0 0 auto;
-  background: rgba(255, 255, 255, 0.4); transition: width 0.25s ease, background 0.25s ease;
-  -webkit-tap-highlight-color: transparent;
-}
-.hero-dot:hover { background: rgba(255, 255, 255, 0.7); }
-.hero-dot.is-active { width: 24px; background: #fff; }
-/* Touch: keep the visual dot small but give it a finger-sized hit area. */
-@media (hover: none) and (pointer: coarse) {
-  .hero-dots { gap: 6px; padding: 10px 14px; }
-  .hero-dot { position: relative; }
-  .hero-dot::after { content: ''; position: absolute; inset: -12px -6px; }
-}
-
-/* Thin timing bar along the bottom of the hero showing how long the current
-   photo has left. The JS toggles .is-running; this is the styling it needs
-   (previously the markup and the class existed with no CSS at all, so the
-   element rendered as an invisible no-op). */
-.hero-progress {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 3px; z-index: 3;
-  background: rgba(255, 255, 255, 0.14); overflow: hidden;
-}
-.hero-progress[hidden] { display: none; }
-.hero-progress i {
-  display: block; height: 100%; width: 0;
-  background: linear-gradient(90deg, var(--teal-400), var(--teal-500));
-  transform-origin: left center;
-}
-.hero-progress i.is-running {
-  animation: heroProgress var(--hero-hold, 7.5s) linear forwards;
-}
-@keyframes heroProgress { from { width: 0; } to { width: 100%; } }
-
-/* Accessibility: honour a reduced-motion preference completely — the
-   carousel still changes photo, but with no pan, no zoom and no fade. */
-@media (prefers-reduced-motion: reduce) {
-  .hero-bg-slide,
-  .hero-bg-slide.pan-left,
-  .hero-bg-slide.is-active,
-  .hero-bg-slide.pan-left.is-active {
-    transform: none;
-    transition: none;
-    will-change: auto;
-  }
-  .hero-bg-slide.is-active { opacity: 1; }
-  .hero-progress i.is-running { animation: none; width: 100%; }
-}
-
-/* Portrait phones: a tall, narrow frame crops a landscape photo hard, so
-   bias the focal point upward to keep faces/whiteboards in shot, and ease
-   the zoom so the crop stays stable while reading. */
-@media (max-width: 640px) {
-  .hero-bg-slide {
-    object-position: center 32%;
-    inset: -1.5%; width: 103%; height: 103%;
-  }
-  /* Motion only when the student has not asked for less of it. These are
-     scoped inside the no-preference query so they cannot override the
-     reduced-motion rules above by virtue of coming later in the file. */
-  @media (prefers-reduced-motion: no-preference) {
-    .hero-bg-slide { transform: scale(1.04) translate3d(0.5%, 0, 0); }
-    .hero-bg-slide.pan-left { transform: scale(1.04) translate3d(-0.5%, 0, 0); }
-    .hero-bg-slide.is-active { transform: scale(1.10) translate3d(-0.5%, 0, 0); }
-    .hero-bg-slide.pan-left.is-active { transform: scale(1.10) translate3d(0.5%, 0, 0); }
-  }
-}
 
 .page-hero {
   background:
@@ -562,6 +430,38 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .topic-card-body p { font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topic-card-progress { width: 110px; flex-shrink: 0; }
 .topic-card-progress .progress-labels { font-size: 0.72rem; }
+
+/* ── Video lessons by term ───────────────── */
+.video-term-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+.video-term-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+.video-term-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.video-term-card-heading .card-icon { width: 42px; height: 42px; flex: 0 0 auto; }
+.video-term-card-heading h3 { font-size: 1.05rem; margin-bottom: 2px; }
+.video-term-card-heading p { font-size: 0.8rem; }
+.video-term-lessons { display: flex; flex-direction: column; gap: 10px; }
+.video-term-card .lesson-row { padding: 12px; }
+.video-term-card .lesson-row-action > svg { display: none; }
+.video-term-card .lesson-type { display: none; }
+.video-term-empty { font-size: 0.86rem; padding: 8px 0; }
 
 /* ── Lesson rows ─────────────────────────── */
 .lesson-list { display: flex; flex-direction: column; gap: 10px; }
@@ -771,8 +671,9 @@ body[data-theme='dark'] .nav-brand-text { color: #fff; }
 
 .doc-reader-stage { position: relative; background: #121820; min-height: 300px; }
 .doc-reader-scroll {
-  overflow: auto; max-height: min(78vh, 920px);
+  width: 100%; overflow: auto; max-height: min(78vh, 920px);
   -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+  touch-action: pan-x pan-y pinch-zoom;
   display: flex; flex-direction: column; align-items: center; gap: 14px;
   padding: 14px 8px; scroll-behavior: smooth;
 }
@@ -1288,6 +1189,7 @@ table.table tbody tr:last-child td { border-bottom: none; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
   .community-panel { grid-template-columns: 1fr; padding: 32px; gap: 28px; }
   .topic-grid { grid-template-columns: 1fr; }
+  .video-term-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-four-col { grid-template-columns: 1fr 1fr; }
   .plans-grid { grid-template-columns: 1fr; }
 }
@@ -1311,7 +1213,6 @@ table.table tbody tr:last-child td { border-bottom: none; }
   }
   .hero-copy { max-width: 100%; }
   .hero .lead { margin: 14px 0 26px; font-size: 1rem; }
-  .hero-dots { bottom: 16px; }
   .hero-stats {
     gap: 14px; margin-top: 30px;
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1327,6 +1228,7 @@ table.table tbody tr:last-child td { border-bottom: none; }
   .resource-grid-2,
   .form-row,
   .pay-methods,
+  .video-term-grid { grid-template-columns: 1fr; }
   .admin-four-col,
   .admin-two-col { grid-template-columns: 1fr; }
   .dash-grid > * { grid-column: span 12 !important; }

@@ -54,12 +54,6 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/css/style.css" />
-    <!-- Hero photography: slide 1 is the first paint (highest priority) and
-         slide 2 is the first crossfade target, so both are preloaded. The
-         remaining slides are warmed from JS during idle time — that is what
-         keeps the transitions from flickering on a slow connection. -->
-    <link rel="preload" as="image" href="/assets/hero/slide-1.jpg" fetchpriority="high" />
-    <link rel="preload" as="image" href="/assets/hero/slide-2.jpg" />
   </head>
   <body data-page="home">
     <div id="topBarHost"></div>
@@ -69,16 +63,6 @@
     <main>
       <!-- Hero -->
       <section class="hero">
-        <!-- Full-bleed photo background: crossfades through the StudyCore
-             photos one by one, each slowly panning + zooming while visible. -->
-        <div class="hero-bg" id="heroBackground" aria-hidden="true">
-          <img class="hero-bg-slide focus-1" src="/assets/hero/slide-1.jpg" alt="" loading="eager" fetchpriority="high" decoding="async" />
-          <img class="hero-bg-slide focus-2" src="/assets/hero/slide-2.jpg" alt="" loading="eager" decoding="async" />
-          <img class="hero-bg-slide focus-3" src="/assets/hero/slide-3.jpg" alt="" loading="lazy" decoding="async" />
-          <img class="hero-bg-slide focus-4" src="/assets/hero/slide-4.jpg" alt="" loading="lazy" decoding="async" />
-          <img class="hero-bg-slide focus-5" src="/assets/hero/slide-5.jpg" alt="" loading="lazy" decoding="async" />
-          <img class="hero-bg-slide focus-6" src="/assets/hero/slide-6.jpg" alt="" loading="lazy" decoding="async" />
-        </div>
         <div class="container">
           <div class="hero-copy">
             <span class="eyebrow">University Learning Platform</span>
@@ -101,10 +85,6 @@
             <div class="hero-stat"><div class="num">30<span>-day</span></div><div class="label">Free trial on signup</div></div>
             <div class="hero-stat"><div class="num">24/7</div><div class="label">Study on any device</div></div>
           </div>
-        </div>
-        <div class="hero-dots" id="heroDots" role="tablist" aria-label="Hero photos"></div>
-        <div class="hero-progress" id="heroProgress" hidden>
-          <i id="heroProgressFill"></i>
         </div>
       </section>
 
@@ -295,7 +275,6 @@
     <script src="/js/auth.js"></script>
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
-    <script src="/js/hero-carousel.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
         // Inject the shared icon set into static slots (progressive enhancement)

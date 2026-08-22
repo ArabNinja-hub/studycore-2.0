@@ -46,7 +46,7 @@
     const icon = item.completed
       ? SC.icon('check', { size: 16 })
       : (item.locked ? SC.icon('lock', { size: 15 }) : SC.icon(SC.courseCategoryIcon(item.category), { size: 15 }));
-    const meta = [item.subject && '', item.topic, item.yearLevel].filter(Boolean).map(escapeHtml).join(' · ');
+    const meta = [item.subject && '', item.term, item.topic, item.yearLevel].filter(Boolean).map(escapeHtml).join(' · ');
     const resume = item.videoPosition ? `<span class="lesson-type" style="color:var(--teal-600);">${SC.icon('play', { size: 12 })} Resume at ${fmtTime(item.videoPosition)}</span>` : '';
     const cta = item.locked
       ? `<a class="btn btn-amber btn-sm" href="/pages/pricing.html">${SC.icon('crown', { size: 14 })} Premium</a>`
@@ -82,6 +82,14 @@
             <span class="topic-card-body"><h4>${escapeHtml(t)}</h4><p>Open ${escapeHtml(subject)} to start this topic</p></span>
           </a>`).join('')
       : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
+    $('#videoTermGrid').innerHTML = ['Term 1', 'Term 2', 'Term 3'].map((term) => `
+      <div class="video-term-card">
+        <div class="video-term-card-heading">
+          <span class="card-icon">${SC.icon('play', { size: 20 })}</span>
+          <div><h3>${term}</h3><p>Log in to view this term's video lessons.</p></div>
+        </div>
+        <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
+      </div>`).join('');
     $('#lessonList').innerHTML = emptyState({
       icon: 'play', title: 'Lessons appear when you log in',
       body: `Create a free account to open ${escapeHtml(subject)} lessons, notes and past papers — your 30-day trial starts immediately.`,
@@ -126,6 +134,29 @@
         </a>
       `;
     }
+
+    // Dedicated video landings. The API always returns all three terms, so a
+    // newly published admin upload appears here on the next course load in
+    // exactly the term selected during upload.
+    const videoTerms = data.videoTerms || ['Term 1', 'Term 2', 'Term 3'].map((term) => ({
+      term,
+      lessons: data.lectures.filter((lesson) => lesson.term === term)
+    }));
+    $('#videoTermGrid').innerHTML = videoTerms.map((group) => `
+      <section class="video-term-card" id="video-${group.term.toLowerCase().replace(' ', '-')}">
+        <div class="video-term-card-heading">
+          <span class="card-icon">${SC.icon('play', { size: 20 })}</span>
+          <div>
+            <h3>${escapeHtml(group.term)}</h3>
+            <p>${group.lessons.length} video ${group.lessons.length === 1 ? 'lesson' : 'lessons'}</p>
+          </div>
+        </div>
+        <div class="video-term-lessons">
+          ${group.lessons.length
+            ? group.lessons.map(lessonRowHtml).join('')
+            : `<p class="video-term-empty">No video lessons have been published for ${escapeHtml(group.term)} yet.</p>`}
+        </div>
+      </section>`).join('');
 
     // Topics
     $('#topicGrid').innerHTML = data.topics.length
@@ -245,7 +276,7 @@
     }
 
     // Subnav scroll-spy
-    const sections = ['overview', 'topics', 'lessons', 'resources', 'past-papers', 'progress'].map((id) => document.getElementById(id)).filter(Boolean);
+    const sections = ['overview', 'topics', 'video-lessons', 'lessons', 'resources', 'past-papers', 'progress'].map((id) => document.getElementById(id)).filter(Boolean);
     const links = document.querySelectorAll('#courseSubnav a');
     if ('IntersectionObserver' in window && sections.length) {
       const io = new IntersectionObserver((entries) => {
