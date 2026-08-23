@@ -26,12 +26,9 @@ StudyCore
   (lightweight canvas, respects `prefers-reduced-motion`, loaded only on course pages),
   continue-learning card, topics with per-topic progress, all lessons, notes, past papers
   (grouped by year) and overall progress.
-- **Video Lessons page** (`/pages/videos.html?course=<slug>&term=<Term N>`): the
-  administrator's video lessons per course, one full page section per academic term
-  (Term 1/2/3, set at upload time). `?term=` focuses a single term so each term is
-  effectively its own page. Reachable from each course home and its video section,
-  keeping the global desktop and mobile navigation focused on Courses rather than
-  presenting two competing routes to the same lessons.
+- **Video Lessons page** (`/pages/videos.html?course=<slug>&term=<Term N>`): videos
+  for **one course and one term only**. Each course home shows Term 1 / Term 2 /
+  Term 3 as cards; clicking a term opens that course's videos for that term.
 - **Lesson experience** (`/pages/lesson.html?id=…&subject=…`): breadcrumbs, the StudyCore
   video player (resume position, speed, fullscreen, progress + completion tracking) or the
   StudyCore document viewer, key concepts, related resources, mark-complete, and
@@ -181,8 +178,7 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
   brand icon, favicon set and Open Graph image.
 - **Legal**: public Terms & Conditions and Privacy Policy pages (legal-entity details are
   marked placeholders for the owner), linked from the footer and referenced at signup.
-- **Community**: official WhatsApp academic channel section
-  (`https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k`) and the STUDYCORE PREFRESHERS
-  WhatsApp group QR (`public/assets/whatsapp-group-qr.jpg`) on Home, About and the dashboard.
+- **Community**: official WhatsApp academic channel and group invite buttons
+  on Home, About and the dashboard (no QR code).
 - SEO: sitemap, robots.txt, canonicals, JSON-LD, per-course meta.
 - Real 404 page (unknown URLs no longer silently serve the homepage).

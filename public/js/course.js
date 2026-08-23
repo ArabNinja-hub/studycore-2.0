@@ -51,6 +51,24 @@
     return lessonRowHtml(item, subject, anchor);
   }
 
+  function termVideosHref(term) {
+    return `/pages/videos.html?course=${encodeURIComponent(slug)}&term=${encodeURIComponent(term)}`;
+  }
+
+  function termCardHtml(term, copy) {
+    return `
+      <a class="video-term-card" href="${termVideosHref(term)}" id="video-${String(term).toLowerCase().replace(' ', '-')}">
+        <div class="video-term-card-heading">
+          <span class="card-icon">${SC.icon('play', { size: 20 })}</span>
+          <div>
+            <h3>${escapeHtml(term)}</h3>
+            <p>${escapeHtml(copy)}</p>
+          </div>
+        </div>
+        <span class="video-term-cta">Open ${escapeHtml(term)} videos ${SC.icon('arrow-right', { size: 16 })}</span>
+      </a>`;
+  }
+
   /* ── Anonymous / public view ────────────── */
   function renderPublic(course) {
     setStats({
@@ -66,14 +84,9 @@
             <span class="topic-card-body"><h4>${escapeHtml(t)}</h4><p>Open ${escapeHtml(subject)} to start this topic</p></span>
           </a>`).join('')
       : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
-    $('#videoTermGrid').innerHTML = ['Term 1', 'Term 2', 'Term 3'].map((term) => `
-      <div class="video-term-card">
-        <div class="video-term-card-heading">
-          <span class="card-icon">${SC.icon('play', { size: 20 })}</span>
-          <div><h3>${term}</h3><p>Log in to view this term's video lessons.</p></div>
-        </div>
-        <a class="btn btn-outline btn-sm" href="/login.html">Log In</a>
-      </div>`).join('');
+    $('#videoTermGrid').innerHTML = ['Term 1', 'Term 2', 'Term 3'].map((term) =>
+      termCardHtml(term, 'Open this term to watch video lessons for this course.')
+    ).join('');
     $('#lessonList').innerHTML = emptyState({
       icon: 'play', title: 'Lessons appear when you log in',
       body: `Create a free account to open ${escapeHtml(subject)} lessons, notes and past papers — your 30-day trial starts immediately.`,
@@ -119,28 +132,18 @@
       `;
     }
 
-    // Dedicated video landings. The API always returns all three terms, so a
-    // newly published admin upload appears here on the next course load in
-    // exactly the term selected during upload.
+    // Term cards open a dedicated video page for this course + term only.
     const videoTerms = data.videoTerms || ['Term 1', 'Term 2', 'Term 3'].map((term) => ({
       term,
       lessons: data.lectures.filter((lesson) => lesson.term === term)
     }));
-    $('#videoTermGrid').innerHTML = videoTerms.map((group) => `
-      <section class="video-term-card" id="video-${group.term.toLowerCase().replace(' ', '-')}">
-        <div class="video-term-card-heading">
-          <span class="card-icon">${SC.icon('play', { size: 20 })}</span>
-          <div>
-            <h3>${escapeHtml(group.term)}</h3>
-            <p>${group.lessons.length} video ${group.lessons.length === 1 ? 'lesson' : 'lessons'}</p>
-          </div>
-        </div>
-        <div class="video-term-lessons">
-          ${group.lessons.length
-            ? group.lessons.map(courseLessonRow).join('')
-            : `<p class="video-term-empty">No video lessons have been published for ${escapeHtml(group.term)} yet.</p>`}
-        </div>
-      </section>`).join('');
+    $('#videoTermGrid').innerHTML = videoTerms.map((group) => {
+      const n = group.lessons.length;
+      const copy = n === 0
+        ? `No videos published for ${group.term} yet.`
+        : `${n} video ${n === 1 ? 'lesson' : 'lessons'} in this course`;
+      return termCardHtml(group.term, copy);
+    }).join('');
 
     // Topics
     $('#topicGrid').innerHTML = data.topics.length
