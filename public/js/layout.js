@@ -19,7 +19,6 @@
   'use strict';
 
   const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k';
-  const WHATSAPP_GROUP_QR = '/assets/whatsapp-group-qr.jpg';
   const SITE = 'https://studycore.academy/';
 
   const NAV_LINKS = [
@@ -390,19 +389,7 @@
     return whatsappPromise;
   }
 
-  /* ── Community panel (channel + group QR) ─ */
-  function communityQrHtml() {
-    return `
-      <div class="qr-frame">
-        <img src="${WHATSAPP_GROUP_QR}" alt="STUDYCORE PREFRESHERS WhatsApp group QR code" width="220" height="220" />
-      </div>
-      <h3>STUDYCORE PREFRESHERS</h3>
-      <p>Official StudyCore WhatsApp group. Open WhatsApp and scan this code to join.</p>
-      <p class="qr-hint">This group QR is private — only share it with StudyCore students.</p>
-      <a class="btn whatsapp-btn btn-sm" id="communityGroupBtn" style="display:none;margin-top:14px;" target="_blank" rel="noopener"></a>
-    `;
-  }
-
+  /* ── Community panel (channel + group links) ─ */
   function bindCommunityGroupBtn(host) {
     const groupBtn = host && host.querySelector('#communityGroupBtn');
     if (!groupBtn) return;
@@ -421,20 +408,14 @@
     host.innerHTML = `
       <div>
         <span class="badge badge-white" style="margin-bottom:14px;">${SC.icon('whatsapp', { size: 13 })} Official Academic Channel</span>
-        <h2>Stay Connected With StudyCore</h2>
-        <p>Follow <strong>STUDY-CORE ACADEMIC TIPS &amp; MENTORING</strong> for:</p>
-        <ul class="community-points">
-          <li>${SC.icon('check', { size: 17 })} Academic tips and study strategies</li>
-          <li>${SC.icon('check', { size: 17 })} Mentoring from the StudyCore team</li>
-          <li>${SC.icon('check', { size: 17 })} Important StudyCore updates</li>
-          <li>${SC.icon('check', { size: 17 })} Learning motivation and useful academic information</li>
-        </ul>
-        <a class="btn whatsapp-btn" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">
-          ${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp
-        </a>
-      </div>
-      <div class="qr-card">
-        ${communityQrHtml()}
+        <h2>Stay connected with StudyCore</h2>
+        <p>Follow the official channel for academic tips, mentoring and updates — or join the student WhatsApp group.</p>
+        <div class="community-actions">
+          <a class="btn whatsapp-btn" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">
+            ${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp
+          </a>
+          <a class="btn btn-ghost" id="communityGroupBtn" style="display:none;color:#fff;border:1.5px solid rgba(255,255,255,0.28);" target="_blank" rel="noopener"></a>
+        </div>
       </div>
     `;
     bindCommunityGroupBtn(host);
@@ -477,10 +458,8 @@
     openSearchOverlay,
     whatsappLinks,
     renderCommunityPanel,
-    communityQrHtml,
     bindCommunityGroupBtn,
-    WHATSAPP_CHANNEL_URL,
-    WHATSAPP_GROUP_QR
+    WHATSAPP_CHANNEL_URL
   };
 
   document.addEventListener('DOMContentLoaded', init);

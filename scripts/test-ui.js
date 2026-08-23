@@ -42,6 +42,20 @@ test('all six course homes expose the same compact navigation', () => {
   }
 });
 
+test('course terms open a single-course video page', () => {
+  const courseJs = read('public/js/course.js');
+  const videoJs = read('public/js/video.js');
+  const videosHtml = read('public/pages/videos.html');
+  const layout = read('public/js/layout.js');
+
+  assert.match(courseJs, /\/pages\/videos\.html\?course=/);
+  assert.match(courseJs, /term=\$\{encodeURIComponent\(term\)\}/);
+  assert.match(videoJs, /one course/);
+  assert.doesNotMatch(videoJs, /courseChips/);
+  assert.doesNotMatch(videosHtml, /id="courseChips"/);
+  assert.doesNotMatch(layout, /whatsapp-group-qr|communityQrHtml|qr-frame/);
+});
+
 test('global navigation keeps videos within the course hierarchy', () => {
   const layout = read('public/js/layout.js');
   const navBlock = layout.match(/const NAV_LINKS = \[(.*?)\n  \];/s)?.[1] || '';
