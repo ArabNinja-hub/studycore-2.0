@@ -274,6 +274,21 @@
   /* ── Flyout Dropdown Hover & Focus Logic ─── */
   function bindNavDropdowns() {
     const items = document.querySelectorAll('.nav-item-has-dropdown');
+
+    // The nav is a centred floating island, so a flyout anchored under a link
+    // near either edge can spill outside the viewport. The panel is laid out
+    // (but hidden) at all times, so we can measure it before it opens and
+    // nudge it back inside the screen via --dd-shift (see style.css).
+    function clampDropdownToViewport(dropdown) {
+      const margin = 10;
+      const rect = dropdown.getBoundingClientRect();
+      if (rect.width === 0) return;
+      let shift = 0;
+      if (rect.left < margin) shift += margin - rect.left;
+      else if (rect.right > window.innerWidth - margin) shift -= rect.right - (window.innerWidth - margin);
+      dropdown.style.setProperty('--dd-shift', `${Math.round(shift)}px`);
+    }
+
     items.forEach((item) => {
       const link = item.querySelector('.nav-link');
       const dropdown = item.querySelector('.nav-dropdown');
@@ -289,6 +304,7 @@
             other.querySelector('.nav-link')?.setAttribute('aria-expanded', 'false');
           }
         });
+        clampDropdownToViewport(dropdown);
         item.classList.add('is-active-dropdown');
         link.setAttribute('aria-expanded', 'true');
       };
@@ -316,6 +332,15 @@
         });
       }
     });
+
+    // Re-clamp any open flyout when the viewport width changes.
+    window.addEventListener('resize', () => {
+      items.forEach((it) => {
+        if (!it.classList.contains('is-active-dropdown')) return;
+        const dd = it.querySelector('.nav-dropdown');
+        if (dd) clampDropdownToViewport(dd);
+      });
+    }, { passive: true });
   }
 
   /* ── Header Scroll Morphing & Progress Bar ─ */
@@ -870,7 +895,13 @@
     renderMobileNav();
     renderFloatingDock();
     renderFooter();
-    StudyCoreAuth.initMobileNav();
+    // One failing sub-initialiser must not silently kill the rest of the
+    // chrome (e.g. the Log In / Get Started buttons in the nav).
+    try {
+      StudyCoreAuth.initMobileNav();
+    } catch (err) {
+      console.error('StudyCore: mobile nav init failed', err);
+    }
     renderNavAuth();
     renderMobileNavAuth();
 

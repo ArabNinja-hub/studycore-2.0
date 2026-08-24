@@ -162,7 +162,7 @@
     const groups = data.topics.length ? data.topics : [{ name: 'All lessons', lessons: data.lessons }];
     $('#lessonList').innerHTML = groups.length
       ? groups.map((g) => `
-          <div class="term-group" id="${topicAnchor(g.name)}" style="scroll-margin-top:130px;">
+          <div class="term-group" id="${topicAnchor(g.name)}" style="scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 80px);">
             <h3 class="term-group-heading">${escapeHtml(g.name)} <span class="resource-meta">${g.completed} / ${g.total} complete</span></h3>
             ${g.lessons.map(courseLessonRow).join('')}
           </div>`).join('')

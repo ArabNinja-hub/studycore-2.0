@@ -1,0 +1,234 @@
+'use strict';
+/* =============================================================
+   HEADLESS NAV SMOKE TEST (dev-only, not part of `npm test`)
+   ------------------------------------------------------------
+   Loads the real pages from the running dev server into jsdom,
+   executes the real <script> tags, and verifies the floating
+   WhatsApp-style navbar:
+     1. renders on every page (brand, links, dropdowns, footer)
+     2. announcement top bar renders and is dismissible
+     3. pins on scroll (is-scrolled) and reveals the quick dock
+     4. flyout panels are clamped into the viewport (—dd-shift)
+     5. mobile drawer opens/closes via the hamburger
+   Run with:  node server.js  (in one terminal)
+              node scripts/debug-nav-smoke.js  (in another)
+   ============================================================= */
+
+let JSDOM;
+try {
+  ({ JSDOM } = require('jsdom'));
+} catch {
+  console.error('This smoke test needs the jsdom dev package (not committed):');
+  console.error('  npm install --no-save jsdom');
+  process.exit(2);
+}
+
+const BASE = process.env.BASE_URL || 'http://localhost:3000';
+const PAGES = [
+  '/',
+  '/pages/courses.html',
+  '/pages/subjects/mathematics.html',
+  '/pages/resources.html',
+  '/login.html'
+];
+
+let failures = 0;
+let passes = 0;
+
+function check(label, cond, detail) {
+  if (cond) {
+    passes++;
+    console.log(`  ok    ${label}`);
+  } else {
+    failures++;
+    console.log(`  FAIL  ${label}${detail ? ` — ${detail}` : ''}`);
+  }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function bootPage(path, { width = 1440, height = 900 } = {}) {
+  const pageErrors = [];
+
+  const dom = await JSDOM.fromURL(BASE + path, {
+    resources: 'usable',
+    runScripts: 'dangerously',
+    pretendToBeVisual: true,
+    width,
+    height,
+    beforeParse(window) {
+      // The site uses relative fetches; map them onto the dev server.
+      window.fetch = (input, init) => {
+        const url = typeof input === 'string' ? new URL(input, BASE).href : input;
+        return fetch(url, init);
+      };
+      // jsdom does not implement matchMedia; real browsers always do.
+      window.matchMedia = window.matchMedia || (function (query) {
+        return {
+          matches: false,
+          media: query,
+          onchange: null,
+          addListener() {},
+          removeListener() {},
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent() { return false; }
+        };
+      });
+      // jsdom ignores the constructor width option for innerWidth; pin it so
+      // geometry assertions (flyout clamping) run against the intended width.
+      try {
+        Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+        Object.defineProperty(window, 'innerHeight', { value: height, configurable: true });
+      } catch { /* jsdom may expose these read-only; assertions adapt */ }
+      window.addEventListener('error', (e) => pageErrors.push(e.message || 'unknown error'));
+    }
+  });
+
+  await new Promise((resolve) => {
+    if (dom.window.document.readyState === 'complete') resolve();
+    else dom.window.addEventListener('load', () => resolve());
+  });
+  // Let async renders (session fetch, course counts, whatsapp links) settle.
+  await sleep(500);
+  return { dom, pageErrors };
+}
+
+function scrollWindow(window, y) {
+  Object.defineProperty(window, 'scrollY', { value: y, configurable: true, writable: true });
+  Object.defineProperty(window.document.documentElement, 'scrollTop', { value: y, configurable: true, writable: true });
+  window.dispatchEvent(new window.Event('scroll'));
+  // bindScrollMorph throttles through requestAnimationFrame
+  return new Promise((r) => window.requestAnimationFrame(() => window.requestAnimationFrame(r)));
+}
+
+async function testDesktop(path) {
+  console.log(`\n— ${path} (desktop 1440px) —`);
+  const { dom, pageErrors } = await bootPage(path);
+  const { window } = dom;
+  const { document } = window;
+
+  check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
+
+  const nav = document.getElementById('siteNav');
+  check('navbar host rendered with .navbar class', nav && nav.classList.contains('navbar'));
+  check('brand present', !!nav?.querySelector('.nav-brand'));
+  const items = [...nav?.querySelectorAll('.nav-item') || []];
+  check('4 nav links rendered', items.length === 4, `got ${items.length}`);
+  check('2 flyout dropdowns rendered', nav?.querySelectorAll('.nav-dropdown').length === 2, `got ${nav?.querySelectorAll('.nav-dropdown').length}`);
+  check('glider indicator present', !!nav?.querySelector('#navGlider'));
+  check('scroll progress track present', !!nav?.querySelector('.nav-scroll-progress'));
+  check('search button present', !!nav?.querySelector('#navSearchBtn'));
+  if (document.getElementById('siteFooter')) {
+    check('footer rendered', !!document.querySelector('.footer'));
+  }
+  check('mobile drawer host rendered', !!document.getElementById('mobileNav'));
+  check('quick-action dock rendered', !!document.getElementById('floatingNavDock'));
+
+  if (document.getElementById('topBarHost')) {
+    check('announcement top bar visible', !!document.querySelector('.top-bar'));
+  }
+
+  // Scroll: island should pin (is-scrolled) and the dock should appear.
+  await scrollWindow(window, 420);
+  check('nav pins with .is-scrolled after scroll', nav?.classList.contains('is-scrolled'));
+  check('quick dock visible after scroll', document.getElementById('floatingNavDock')?.classList.contains('visible'));
+
+  await scrollWindow(window, 0);
+  check('nav unpins at top of page', !nav?.classList.contains('is-scrolled'));
+
+  // Flyout clamp: stub the hidden panel's rect (jsdom performs no layout),
+  // fire the real mouseenter handler, and verify the computed shift.
+  const vw = window.innerWidth;
+  const item = nav?.querySelector('[data-nav-id="resources"]');
+  const dd = item?.querySelector('.nav-dropdown');
+  if (item && dd) {
+    // Fits inside the viewport: no shift expected.
+    dd.getBoundingClientRect = () => ({ left: 300, right: 880, width: 580, top: 0, bottom: 0 });
+    item.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    check('flyout in viewport → no shift', dd.style.getPropertyValue('--dd-shift') === '0px', dd.style.getPropertyValue('--dd-shift'));
+    // Right edge sits 40px past the viewport; clamp margin is 10px, so the
+    // panel must shift left by 40 + 10 = 50px.
+    const overRight = 40;
+    dd.getBoundingClientRect = () => ({ left: vw - 280, right: vw + overRight, width: 580, top: 0, bottom: 0 });
+    item.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+    item.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    check(`flyout clamped to right edge (-${overRight + 10}px)`, dd.style.getPropertyValue('--dd-shift') === `-${overRight + 10}px`, dd.style.getPropertyValue('--dd-shift'));
+    // Left edge at -15px, clamp margin is 10px → panel shifts right by 25px.
+    dd.getBoundingClientRect = () => ({ left: -15, right: 565, width: 580, top: 0, bottom: 0 });
+    item.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+    item.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+    check('flyout clamped to left edge (+25px)', dd.style.getPropertyValue('--dd-shift') === '25px', dd.style.getPropertyValue('--dd-shift'));
+  } else {
+    check('resources flyout available for clamp test', false);
+  }
+
+  window.close();
+}
+
+async function testMobile() {
+  console.log(`\n— / (mobile 375px) —`);
+  const { dom, pageErrors } = await bootPage('/', { width: 375, height: 812 });
+  const { window } = dom;
+  const { document } = window;
+
+  check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
+  const nav = document.getElementById('siteNav');
+  const burger = document.getElementById('hamburgerBtn');
+  const drawer = document.getElementById('mobileNav');
+  check('hamburger rendered on mobile', !!burger);
+  check('drawer starts closed', !!drawer && !drawer.classList.contains('open'));
+
+  burger?.click();
+  check('drawer opens on hamburger click', drawer?.classList.contains('open'));
+  check('hamburger reports expanded', burger?.getAttribute('aria-expanded') === 'true');
+  check('backdrop active', document.getElementById('navBackdrop')?.classList.contains('open'));
+
+  // Close it again through the drawer's own close button.
+  document.getElementById('mobileNavClose')?.click();
+  check('drawer closes via close button', !drawer?.classList.contains('open'));
+
+  window.close();
+}
+
+async function testTopBarDismiss() {
+  console.log(`\n— / (top bar dismissal) —`);
+  const { dom } = await bootPage('/');
+  const { window } = dom;
+  const { document } = window;
+
+  check('top bar present initially', !!document.querySelector('.top-bar'));
+  document.querySelector('.top-bar-close')?.click();
+  check('top bar removed after dismiss', !document.querySelector('.top-bar'));
+  check('dismissal persisted to sessionStorage', window.sessionStorage.getItem('sc_topbar_dismissed') === '1');
+  window.close();
+}
+
+(async () => {
+  for (const p of PAGES) {
+    try {
+      await testDesktop(p);
+    } catch (err) {
+      failures++;
+      console.log(`  FAIL  ${p} crashed: ${err.message}`);
+    }
+  }
+  try {
+    await testMobile();
+  } catch (err) {
+    failures++;
+    console.log(`  FAIL  mobile crashed: ${err.message}`);
+  }
+  try {
+    await testTopBarDismiss();
+  } catch (err) {
+    failures++;
+    console.log(`  FAIL  top-bar dismissal crashed: ${err.message}`);
+  }
+
+  console.log(`\n${passes} passed, ${failures} failed`);
+  process.exit(failures ? 1 : 0);
+})().catch((err) => {
+  console.error('Smoke test crashed:', err);
+  process.exit(1);
+});
