@@ -1817,3 +1817,47 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .nav-brand-text { font-size: 1.08rem; }
   .course-card-visual { height: 110px; }
 }
+
+/* ── Scroll reveal (progressive enhancement) ────
+   The shared scroll-reveal.js opts the page into this hidden state only
+   after it has successfully prepared the targets. Without JavaScript,
+   without IntersectionObserver, or with reduced motion enabled, these
+   rules never hide content. Only opacity and transform are animated, so
+   cards keep their layout space and never create horizontal overflow. */
+[data-scroll-reveal] {
+  --sc-reveal-duration: 680ms;
+  transition:
+    opacity var(--sc-reveal-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    transform var(--sc-reveal-duration) cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+}
+body.scroll-reveal-enabled [data-scroll-reveal]:not(.sc-reveal-visible) {
+  --sc-reveal-x: 0px;
+  --sc-reveal-y: 24px;
+  opacity: 0;
+  transform: translate3d(var(--sc-reveal-x), var(--sc-reveal-y), 0);
+  transition-delay: var(--sc-reveal-delay, 0ms);
+}
+body.scroll-reveal-enabled [data-scroll-reveal='fade-left']:not(.sc-reveal-visible) { --sc-reveal-x: -26px; --sc-reveal-y: 0px; }
+body.scroll-reveal-enabled [data-scroll-reveal='fade-right']:not(.sc-reveal-visible) { --sc-reveal-x: 26px; --sc-reveal-y: 0px; }
+/* A keyboard user can reach a target before scrolling it into view. Reveal it
+   immediately rather than leaving focus on a transparent control. */
+body.scroll-reveal-enabled [data-scroll-reveal]:not(.sc-reveal-visible):focus-within {
+  opacity: 1;
+  transform: none;
+}
+body.scroll-reveal-enabled [data-scroll-reveal].sc-reveal-visible {
+  opacity: 1;
+  transition-delay: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-scroll-reveal],
+  body.scroll-reveal-enabled [data-scroll-reveal]:not(.sc-reveal-visible),
+  body.scroll-reveal-enabled [data-scroll-reveal].sc-reveal-visible {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
