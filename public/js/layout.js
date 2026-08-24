@@ -1,12 +1,11 @@
 // =============================================
 // STUDYCORE — Shared Layout (js/layout.js)
 // -----------------------------------------------
-// Renders the top bar, navbar, mobile navigation,
-// account menu, global search overlay and footer
-// for every public + student page, so the
-// navigation philosophy is consistent in exactly
-// one place. Pages opt in with <body data-page="…">
-// and a placeholder element for the footer.
+// Renders the top bar, morphing navbar, interactive
+// sliding pill indicator, rich flyout submenus, mobile
+// navigation, account menu, global search overlay,
+// page progress transitions and footer for every public
+// + student page.
 //
 // Navigation model (learning-first, LMS-style):
 //   Logo/Home · Courses · Resources · Announcements · About · [Search] · [Dashboard] · [Profile/Login]
@@ -55,6 +54,89 @@
     });
   }
 
+  /* ── Rich Flyout Submenus (WhatsApp Style) ── */
+  function coursesDropdownHtml() {
+    const subjects = [
+      { slug: 'mathematics', name: 'Mathematics', icon: 'calculator', desc: 'Calculus, algebra & problem-solving' },
+      { slug: 'physics', name: 'Physics', icon: 'atom', desc: 'Mechanics, waves & electricity' },
+      { slug: 'chemistry', name: 'Chemistry', icon: 'flask', desc: 'Atoms, bonding & reactions' },
+      { slug: 'biology', name: 'Biology', icon: 'dna', desc: 'Genetics, cells & physiology' },
+      { slug: 'programming', name: 'Programming', icon: 'code', desc: 'Algorithms, data structures & logic' },
+      { slug: 'communication', name: 'Communication Skills', icon: 'message', desc: 'Academic writing, speaking & clarity' }
+    ];
+
+    const cards = subjects.map((s) => `
+      <a class="nav-dropdown-card" href="/pages/subjects/${s.slug}.html">
+        <span class="nd-icon nd-icon-${s.slug}">${SC.icon(s.icon, { size: 18 })}</span>
+        <div class="nd-content">
+          <strong>${s.name}</strong>
+          <span>${s.desc}</span>
+        </div>
+        <span class="nd-arrow">${SC.icon('chevron-right', { size: 14 })}</span>
+      </a>
+    `).join('');
+
+    return `
+      <div class="nav-dropdown nav-dropdown-courses" id="navDropdown_courses" role="region" aria-label="Courses submenu">
+        <div class="nav-dropdown-inner">
+          <div class="nav-dropdown-header">
+            <span class="eyebrow">${SC.icon('library', { size: 13 })} University Courses</span>
+            <p>Structured courses with video lectures, study notes, tutorials and past papers.</p>
+          </div>
+          <div class="nav-dropdown-grid">
+            ${cards}
+          </div>
+          <div class="nav-dropdown-footer">
+            <a href="/pages/courses.html" class="nd-footer-link">
+              <span>View all 6 university course syllabus &amp; hubs</span>
+              ${SC.icon('arrow-right', { size: 14 })}
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function resourcesDropdownHtml() {
+    const items = [
+      { href: '/pages/resources.html?type=past_paper', icon: 'file', title: 'Past Papers', desc: 'Real exam papers with solutions & mark schemes' },
+      { href: '/pages/resources.html?type=document', icon: 'file-text', title: 'Study Notes', desc: 'Concise lecture summaries & revision sheets' },
+      { href: '/pages/courses.html', icon: 'video', title: 'Video Lessons', desc: 'Structured lectures inside course hubs' },
+      { href: '/pages/resources.html?type=tutorial', icon: 'book-open', title: 'Tutorial Sheets', desc: 'Step-by-step problem sets & practice sheets' }
+    ];
+
+    const cards = items.map((it) => `
+      <a class="nav-dropdown-card" href="${it.href}">
+        <span class="nd-icon">${SC.icon(it.icon, { size: 18 })}</span>
+        <div class="nd-content">
+          <strong>${it.title}</strong>
+          <span>${it.desc}</span>
+        </div>
+        <span class="nd-arrow">${SC.icon('chevron-right', { size: 14 })}</span>
+      </a>
+    `).join('');
+
+    return `
+      <div class="nav-dropdown nav-dropdown-resources" id="navDropdown_resources" role="region" aria-label="Resources submenu">
+        <div class="nav-dropdown-inner">
+          <div class="nav-dropdown-header">
+            <span class="eyebrow">${SC.icon('file-text', { size: 13 })} Study Resources</span>
+            <p>High-yield materials organized for quick revision and deep learning.</p>
+          </div>
+          <div class="nav-dropdown-grid nav-dropdown-grid-2">
+            ${cards}
+          </div>
+          <div class="nav-dropdown-footer">
+            <a href="/pages/resources.html" class="nd-footer-link">
+              <span>Browse &amp; filter complete resource repository</span>
+              ${SC.icon('arrow-right', { size: 14 })}
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   /* ── Navbar ─────────────────────────────── */
   function accountMenuHtml(user) {
     const label = StudyCoreAuth.subscriptionLabel(user);
@@ -90,21 +172,42 @@
   }
 
   function renderNav() {
-    const host = document.getElementById('siteNav');
-    if (!host) return;
+    let host = document.getElementById('siteNav');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'siteNav';
+      document.body.prepend(host);
+    }
+
     const linksHtml = NAV_LINKS.map((l) => {
       const active = isActive(l.id);
-      return `<li><a href="${l.href}"${active ? ' class="active" aria-current="page"' : ''}>${l.label}</a></li>`;
+      const hasDrop = l.id === 'courses' || l.id === 'resources';
+      const dropdownHtml = l.id === 'courses' ? coursesDropdownHtml() : (l.id === 'resources' ? resourcesDropdownHtml() : '');
+      const chevronHtml = hasDrop ? `<span class="nav-chevron">${SC.icon('chevron-down', { size: 13 })}</span>` : '';
+      return `
+        <li class="nav-item ${hasDrop ? 'nav-item-has-dropdown' : ''}" data-nav-id="${l.id}">
+          <a href="${l.href}" class="nav-link${active ? ' active' : ''}"${active ? ' aria-current="page"' : ''}${hasDrop ? ' aria-haspopup="true" aria-expanded="false"' : ''}>
+            <span>${l.label}</span>${chevronHtml}
+          </a>
+          ${dropdownHtml}
+        </li>
+      `;
     }).join('');
 
     host.className = 'navbar';
     host.innerHTML = `
+      <div class="nav-scroll-progress" id="navScrollProgress" aria-hidden="true">
+        <div class="nav-scroll-bar" id="navScrollBar"></div>
+      </div>
       <div class="container nav-inner">
         <a href="/" class="nav-brand" aria-label="StudyCore home">
           <img src="/assets/logo-icon.jpg" alt="" width="38" height="38" />
           <span class="nav-brand-text"><em>Study</em>Core</span>
         </a>
-        <ul class="nav-links">${linksHtml}</ul>
+        <ul class="nav-links" id="navLinksList">
+          <li class="nav-glider" id="navGlider" aria-hidden="true"></li>
+          ${linksHtml}
+        </ul>
         <div class="nav-actions" id="navActions">
           <button class="icon-btn nav-search-btn" id="navSearchBtn" aria-label="Search StudyCore">${SC.icon('search', { size: 19 })}</button>
           <span id="navAuthSlot" aria-live="polite"></span>
@@ -113,6 +216,151 @@
       </div>
     `;
     bindNavSearch();
+    bindNavGlider();
+    bindNavDropdowns();
+    bindScrollMorph();
+  }
+
+  /* ── Interactive Gliding Pill Indicator ─── */
+  function bindNavGlider() {
+    const list = document.getElementById('navLinksList');
+    const glider = document.getElementById('navGlider');
+    if (!list || !glider) return;
+
+    const items = Array.from(list.querySelectorAll('.nav-item'));
+    const activeItem = items.find((it) => it.querySelector('.nav-link.active'));
+
+    function moveGliderTo(targetEl) {
+      if (!targetEl) {
+        glider.style.opacity = '0';
+        return;
+      }
+      const listRect = list.getBoundingClientRect();
+      const targetRect = targetEl.getBoundingClientRect();
+      if (targetRect.width === 0) return;
+      const left = targetRect.left - listRect.left;
+      const width = targetRect.width;
+
+      glider.style.opacity = '1';
+      glider.style.width = `${width}px`;
+      glider.style.transform = `translateX(${left}px)`;
+    }
+
+    if (activeItem) {
+      requestAnimationFrame(() => moveGliderTo(activeItem));
+    } else {
+      glider.style.opacity = '0';
+    }
+
+    items.forEach((item) => {
+      item.addEventListener('mouseenter', () => moveGliderTo(item));
+      item.addEventListener('focusin', () => moveGliderTo(item));
+    });
+
+    list.addEventListener('mouseleave', () => {
+      if (activeItem) {
+        moveGliderTo(activeItem);
+      } else {
+        glider.style.opacity = '0';
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      const current = list.querySelector('.nav-item:hover') || activeItem;
+      if (current) moveGliderTo(current);
+    }, { passive: true });
+  }
+
+  /* ── Flyout Dropdown Hover & Focus Logic ─── */
+  function bindNavDropdowns() {
+    const items = document.querySelectorAll('.nav-item-has-dropdown');
+    items.forEach((item) => {
+      const link = item.querySelector('.nav-link');
+      const dropdown = item.querySelector('.nav-dropdown');
+      if (!link || !dropdown) return;
+
+      let closeTimer = null;
+
+      const openDropdown = () => {
+        clearTimeout(closeTimer);
+        items.forEach((other) => {
+          if (other !== item) {
+            other.classList.remove('is-active-dropdown');
+            other.querySelector('.nav-link')?.setAttribute('aria-expanded', 'false');
+          }
+        });
+        item.classList.add('is-active-dropdown');
+        link.setAttribute('aria-expanded', 'true');
+      };
+
+      const closeDropdown = () => {
+        closeTimer = setTimeout(() => {
+          item.classList.remove('is-active-dropdown');
+          link.setAttribute('aria-expanded', 'false');
+        }, 120);
+      };
+
+      item.addEventListener('mouseenter', openDropdown);
+      item.addEventListener('mouseleave', closeDropdown);
+      item.addEventListener('focusin', openDropdown);
+      item.addEventListener('focusout', (e) => {
+        if (!item.contains(e.relatedTarget)) closeDropdown();
+      });
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        items.forEach((it) => {
+          it.classList.remove('is-active-dropdown');
+          it.querySelector('.nav-link')?.setAttribute('aria-expanded', 'false');
+        });
+      }
+    });
+  }
+
+  /* ── Header Scroll Morphing & Progress Bar ─ */
+  function bindScrollMorph() {
+    const nav = document.getElementById('siteNav');
+    const scrollBar = document.getElementById('navScrollBar');
+    if (!nav) return;
+
+    let ticking = false;
+
+    function onScroll() {
+      const scrollY = window.scrollY || document.documentElement.scrollTop;
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const scrollPercent = docHeight > 0 ? Math.min(100, Math.max(0, (scrollY / docHeight) * 100)) : 0;
+
+      if (scrollY > 16) {
+        nav.classList.add('is-scrolled');
+      } else {
+        nav.classList.remove('is-scrolled');
+      }
+
+      if (scrollBar) {
+        scrollBar.style.width = `${scrollPercent}%`;
+      }
+
+      const dock = document.getElementById('floatingNavDock');
+      if (dock) {
+        if (scrollY > 300) {
+          dock.classList.add('visible');
+        } else {
+          dock.classList.remove('visible');
+        }
+      }
+
+      ticking = false;
+    }
+
+    window.addEventListener('scroll', () => {
+      if (!ticking) {
+        requestAnimationFrame(onScroll);
+        ticking = true;
+      }
+    }, { passive: true });
+
+    requestAnimationFrame(onScroll);
   }
 
   async function renderNavAuth() {
@@ -122,14 +370,14 @@
     if (user) {
       const dashHref = StudyCoreAuth.getDashboardPage(user);
       slot.innerHTML = `
-        <a class="btn btn-outline btn-sm" href="${dashHref}">${SC.icon('layout-dashboard', { size: 15 })} Dashboard</a>
+        <a class="btn btn-outline btn-sm btn-pill" href="${dashHref}">${SC.icon('layout-dashboard', { size: 15 })} Dashboard</a>
         ${accountMenuHtml(user)}
       `;
       bindAccountMenu();
     } else {
       slot.innerHTML = `
         <a class="btn btn-ghost btn-sm" href="/login.html">Log In</a>
-        <a class="btn btn-primary btn-sm" href="/signup.html">Get Started</a>
+        <a class="btn btn-primary btn-sm btn-pill" href="/signup.html">Get Started ${SC.icon('arrow-right', { size: 14 })}</a>
       `;
     }
   }
@@ -150,32 +398,134 @@
     if (logout) logout.addEventListener('click', StudyCoreAuth.logoutUser);
   }
 
-  /* ── Mobile navigation ──────────────────── */
+  /* ── Mobile navigation (Smooth Staggered Drawer) ─ */
   function renderMobileNav() {
-    const host = document.getElementById('mobileNavHost');
-    if (!host) return;
+    let host = document.getElementById('mobileNavHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'mobileNavHost';
+      document.body.appendChild(host);
+    }
     const activeAttrs = (id) => isActive(id) ? ' class="active" aria-current="page"' : '';
+
+    const subjectList = [
+      { slug: 'mathematics', name: 'Mathematics', icon: 'calculator' },
+      { slug: 'physics', name: 'Physics', icon: 'atom' },
+      { slug: 'chemistry', name: 'Chemistry', icon: 'flask' },
+      { slug: 'biology', name: 'Biology', icon: 'dna' },
+      { slug: 'programming', name: 'Programming', icon: 'code' },
+      { slug: 'communication', name: 'Communication Skills', icon: 'message' }
+    ];
+
+    const subjectLinks = subjectList.map((s) => `
+      <a href="/pages/subjects/${s.slug}.html" class="mobile-sub-link">
+        ${SC.icon(s.icon, { size: 16 })} ${s.name}
+      </a>
+    `).join('');
+
     host.innerHTML = `
       <div class="nav-backdrop" id="navBackdrop"></div>
       <nav class="mobile-nav" id="mobileNav" aria-label="Main navigation" aria-hidden="true">
-        <div class="mobile-nav-label">Study</div>
-        <a href="/pages/courses.html"${activeAttrs('courses')}>${SC.icon('library', { size: 20 })} Courses</a>
-        <a href="/pages/resources.html"${activeAttrs('resources')}>${SC.icon('file-text', { size: 20 })} Resources</a>
-        <button type="button" id="mobileSearchBtn" data-close-mobile>${SC.icon('search', { size: 20 })} Search</button>
-        <a href="/dashboard.html" id="mobileDashLink" style="display:none;">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
-        <a href="/admin.html" id="mobileAdminLink" style="display:none;">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>
-        <div class="mobile-nav-divider"></div>
-        <div class="mobile-nav-label">More</div>
-        <a href="/pages/announcements.html"${activeAttrs('announcements')}>${SC.icon('bell', { size: 20 })} Announcements</a>
-        <a href="/pages/pricing.html">${SC.icon('crown', { size: 20 })} Premium</a>
-        <a href="/pages/about.html"${activeAttrs('about')}>${SC.icon('info', { size: 20 })} About StudyCore</a>
-        <div class="mobile-nav-divider"></div>
-        <div class="mobile-nav-label">Account</div>
-        <div id="mobileAuthSlot"></div>
+        <div class="mobile-nav-header">
+          <div class="mobile-nav-brand">
+            <img src="/assets/logo-icon.jpg" alt="" width="32" height="32" />
+            <span><em>Study</em>Core</span>
+          </div>
+          <button class="icon-btn mobile-nav-close" id="mobileNavClose" aria-label="Close menu">${SC.icon('x', { size: 20 })}</button>
+        </div>
+
+        <div class="mobile-nav-search-wrap" style="--idx:0">
+          <button type="button" class="mobile-search-pill" id="mobileSearchBtn" data-close-mobile>
+            ${SC.icon('search', { size: 17 })}
+            <span>Search courses, notes &amp; papers…</span>
+            <span class="kbd">/</span>
+          </button>
+        </div>
+
+        <div class="mobile-nav-label" style="--idx:1">Study</div>
+
+        <!-- Courses Accordion -->
+        <div class="mobile-accordion" style="--idx:2">
+          <div class="mobile-accordion-header">
+            <a href="/pages/courses.html"${activeAttrs('courses')}>${SC.icon('library', { size: 20 })} Courses</a>
+            <button type="button" class="mobile-accordion-toggle" aria-expanded="false" aria-label="Toggle courses submenu">
+              ${SC.icon('chevron-down', { size: 16 })}
+            </button>
+          </div>
+          <div class="mobile-accordion-body">
+            <div class="mobile-accordion-content">
+              ${subjectLinks}
+              <a href="/pages/courses.html" class="mobile-sub-link mobile-sub-all">
+                ${SC.icon('arrow-right', { size: 15 })} View All Courses
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Resources Accordion -->
+        <div class="mobile-accordion" style="--idx:3">
+          <div class="mobile-accordion-header">
+            <a href="/pages/resources.html"${activeAttrs('resources')}>${SC.icon('file-text', { size: 20 })} Resources</a>
+            <button type="button" class="mobile-accordion-toggle" aria-expanded="false" aria-label="Toggle resources submenu">
+              ${SC.icon('chevron-down', { size: 16 })}
+            </button>
+          </div>
+          <div class="mobile-accordion-body">
+            <div class="mobile-accordion-content">
+              <a href="/pages/resources.html?type=past_paper" class="mobile-sub-link">${SC.icon('file', { size: 16 })} Past Papers</a>
+              <a href="/pages/resources.html?type=document" class="mobile-sub-link">${SC.icon('file-text', { size: 16 })} Study Notes</a>
+              <a href="/pages/resources.html?type=tutorial" class="mobile-sub-link">${SC.icon('book-open', { size: 16 })} Tutorial Sheets</a>
+              <a href="/pages/resources.html" class="mobile-sub-link mobile-sub-all">${SC.icon('arrow-right', { size: 15 })} All Resources</a>
+            </div>
+          </div>
+        </div>
+
+        <a href="/dashboard.html" id="mobileDashLink" style="display:none;--idx:4">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
+        <a href="/admin.html" id="mobileAdminLink" style="display:none;--idx:5">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>
+
+        <div class="mobile-nav-divider" style="--idx:6"></div>
+        <div class="mobile-nav-label" style="--idx:7">More</div>
+        <a href="/pages/announcements.html"${activeAttrs('announcements')} style="--idx:8">${SC.icon('bell', { size: 20 })} Announcements</a>
+        <a href="/pages/pricing.html" style="--idx:9">${SC.icon('crown', { size: 20 })} Premium</a>
+        <a href="/pages/about.html"${activeAttrs('about')} style="--idx:10">${SC.icon('info', { size: 20 })} About StudyCore</a>
+
+        <div class="mobile-nav-divider" style="--idx:11"></div>
+        <div class="mobile-nav-label" style="--idx:12">Community</div>
+        <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:13">
+          ${SC.icon('whatsapp', { size: 20 })} WhatsApp Academic Channel
+        </a>
+
+        <div class="mobile-nav-divider" style="--idx:14"></div>
+        <div class="mobile-nav-label" style="--idx:15">Account</div>
+        <div id="mobileAuthSlot" style="--idx:16"></div>
       </nav>
     `;
     const searchBtn = document.getElementById('mobileSearchBtn');
     if (searchBtn) searchBtn.addEventListener('click', () => openSearchOverlay());
+
+    const closeBtn = document.getElementById('mobileNavClose');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        const hamburger = document.getElementById('hamburgerBtn');
+        if (hamburger) hamburger.click();
+      });
+    }
+
+    bindMobileAccordions();
+  }
+
+  function bindMobileAccordions() {
+    const accordions = document.querySelectorAll('.mobile-accordion');
+    accordions.forEach((acc) => {
+      const toggle = acc.querySelector('.mobile-accordion-toggle');
+      if (!toggle) return;
+      toggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const open = acc.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', String(open));
+      });
+    });
   }
 
   async function renderMobileNavAuth() {
@@ -198,6 +548,85 @@
         <a href="/login.html">${SC.icon('user', { size: 20 })} Log In</a>
         <a href="/signup.html">${SC.icon('user-plus', { size: 20 })} Create Account</a>
       `;
+    }
+  }
+
+  /* ── Page Navigation Transition Progress Bar ─ */
+  function initPageProgressBar() {
+    let bar = document.getElementById('scPageProgressBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'scPageProgressBar';
+      bar.className = 'sc-page-progress';
+      bar.setAttribute('aria-hidden', 'true');
+      document.body.prepend(bar);
+    }
+
+    function startProgress() {
+      bar.classList.remove('done');
+      bar.classList.add('running');
+    }
+
+    function finishProgress() {
+      bar.classList.add('done');
+      setTimeout(() => {
+        bar.classList.remove('running', 'done');
+      }, 450);
+    }
+
+    document.addEventListener('click', (e) => {
+      const link = e.target.closest('a');
+      if (!link) return;
+      const href = link.getAttribute('href');
+      if (!href) return;
+      if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
+      if (link.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+      try {
+        const targetUrl = new URL(href, window.location.origin);
+        if (targetUrl.origin === window.location.origin && targetUrl.pathname !== window.location.pathname) {
+          startProgress();
+        }
+      } catch {}
+    });
+
+    finishProgress();
+  }
+
+  /* ── Floating Quick-Action Dock (Unique Academic Dock) ── */
+  function renderFloatingDock() {
+    let dock = document.getElementById('floatingNavDock');
+    if (dock) return;
+
+    dock = document.createElement('div');
+    dock.id = 'floatingNavDock';
+    dock.className = 'floating-nav-dock';
+    dock.setAttribute('aria-label', 'Quick shortcuts dock');
+    dock.innerHTML = `
+      <button class="dock-btn dock-btn-top" id="dockBackToTop" title="Back to top" aria-label="Back to top">
+        ${SC.icon('arrow-left', { size: 17, cls: 'dock-icon-top' })}
+      </button>
+      <button class="dock-btn dock-btn-search" id="dockSearchBtn" title="Search StudyCore" aria-label="Search StudyCore">
+        ${SC.icon('search', { size: 17 })}
+      </button>
+      <a class="dock-btn dock-btn-whatsapp" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" title="Follow WhatsApp Channel" aria-label="Follow WhatsApp Channel">
+        ${SC.icon('whatsapp', { size: 17 })}
+      </a>
+    `;
+    document.body.appendChild(dock);
+
+    const topBtn = document.getElementById('dockBackToTop');
+    if (topBtn) {
+      topBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    }
+
+    const searchBtn = document.getElementById('dockSearchBtn');
+    if (searchBtn) {
+      searchBtn.addEventListener('click', () => {
+        openSearchOverlay();
+      });
     }
   }
 
@@ -435,9 +864,11 @@
   /* ── Boot ──────────────────────────────── */
   function init() {
     ensureMobileMeta();
+    initPageProgressBar();
     renderTopBar();
     renderNav();
     renderMobileNav();
+    renderFloatingDock();
     renderFooter();
     StudyCoreAuth.initMobileNav();
     renderNavAuth();
