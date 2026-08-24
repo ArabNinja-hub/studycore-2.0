@@ -74,6 +74,28 @@ test('mobile course controls and drawer styles are present', () => {
   assert.match(css, /body\[data-page='courses'\] \.course-card/);
 });
 
+test('scroll reveal is shared, progressive, and reduced-motion aware', () => {
+  const revealJs = read('public/js/scroll-reveal.js');
+  const css = read('public/css/style.css');
+
+  assert.match(revealJs, /IntersectionObserver/);
+  assert.match(revealJs, /MutationObserver/);
+  assert.match(revealJs, /prefers-reduced-motion/);
+  assert.match(revealJs, /observer\.unobserve\(element\)/);
+  assert.match(css, /body\.scroll-reveal-enabled/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(css, /translate3d\(var\(--sc-reveal-x\), var\(--sc-reveal-y\), 0\)/);
+
+  const htmlFiles = [
+    ...fs.readdirSync(path.join(ROOT, 'public')).filter((name) => name.endsWith('.html')).map((name) => path.join('public', name)),
+    ...['public/pages', 'public/pages/subjects'].flatMap((dir) =>
+      fs.readdirSync(path.join(ROOT, dir)).filter((name) => name.endsWith('.html')).map((name) => path.join(dir, name))
+    ),
+    ...fs.readdirSync(path.join(ROOT, 'views')).filter((name) => name.endsWith('.html')).map((name) => path.join('views', name))
+  ];
+  for (const file of htmlFiles) assert.match(read(file), /<script src="\/js\/scroll-reveal\.js"><\/script>/, `${file}: shared reveal script`);
+});
+
 test('document reader is view-only and uses on-demand PDF ranges', () => {
   const viewerHtml = read('views/viewer.html');
   const viewerJs = read('public/js/viewer.js');
