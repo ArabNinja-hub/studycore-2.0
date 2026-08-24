@@ -52,6 +52,9 @@
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
 
   --nav-h: 68px;
+  /* Gap between the floating nav island and the viewport top (WhatsApp-style).
+     Every sticky element below the nav derives its offset from this. */
+  --nav-float: 10px;
   --container: 1180px;
   --grad-brand: linear-gradient(135deg, #12314e 0%, #0e7568 100%);
   --grad-teal: linear-gradient(135deg, #0f8c7f 0%, #0e7568 60%, #0d5f55 100%);
@@ -211,11 +214,13 @@ a:hover { color: var(--teal-700); }
 .top-bar .top-bar-close { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: rgba(255, 255, 255, 0.5); padding: 4px; }
 .top-bar .top-bar-close:hover { color: #fff; }
 
-/* Scroll progress indicator line */
+/* Scroll progress indicator line. Inset from the island's rounded caps
+   (22px ≈ half the pill's end radius) so a 100% fill never spills outside
+   the floating bar's silhouette. */
 .nav-scroll-progress {
-  position: absolute; bottom: -1px; left: 0; width: 100%; height: 2.5px;
+  position: absolute; bottom: -1.5px; left: 22px; right: 22px; width: auto; height: 2.5px;
   background: transparent; pointer-events: none; z-index: 1003;
-  overflow: hidden; border-radius: 0 0 999px 999px;
+  overflow: hidden; border-radius: 999px;
 }
 .nav-scroll-bar {
   height: 100%; width: 0%;
@@ -235,35 +240,42 @@ a:hover { color: var(--teal-700); }
 .sc-page-progress.running { opacity: 1; width: 78%; transition: width 1.2s cubic-bezier(0.1, 0.6, 0.2, 1); }
 .sc-page-progress.done { opacity: 1; width: 100%; transition: width 0.15s ease-out, opacity 0.3s ease 0.15s; }
 
-/* Navbar Base + WhatsApp-Style Morphing Floating Island */
+/* Navbar — WhatsApp-Style Floating Island --------------------------------
+   A rounded, frosted-glass bar that floats above the page at all times:
+   centred, with top + side margins, and pinned near the top of the
+   viewport as you scroll (like whatsapp.com). The pinned state only
+   changes elevation (shadow/opacity/a 2px lift) — never the geometry —
+   so nothing jumps when the class toggles. */
 .navbar {
-  position: sticky; top: 0; z-index: 1000;
-  background: color-mix(in srgb, var(--card) 88%, transparent);
+  position: sticky; top: var(--nav-float); z-index: 1000;
+  margin: var(--nav-float) auto 0;
+  max-width: min(var(--container), calc(100vw - 28px));
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--card) 84%, transparent);
   backdrop-filter: blur(16px) saturate(180%); -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border-bottom: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--teal-500) 16%, var(--border));
+  box-shadow:
+    0 10px 28px -8px rgba(8, 23, 38, 0.12),
+    0 2px 8px rgba(8, 23, 38, 0.05);
   transition:
     top 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    max-width 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    margin 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    border-radius 0.35s cubic-bezier(0.16, 1, 0.3, 1),
     border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
     box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
     background 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: top, max-width, border-radius, box-shadow;
+  will-change: top, box-shadow;
 }
 
+/* Pinned state: the island lifts a touch and gains a deeper shadow so it
+   clearly reads as floating above the content it scrolls over. */
 .navbar.is-scrolled {
-  top: 10px;
-  margin: 0 auto;
-  max-width: min(var(--container), calc(100vw - 32px));
-  border-radius: 9999px;
-  background: color-mix(in srgb, var(--card) 92%, transparent);
+  top: 8px;
+  background: color-mix(in srgb, var(--card) 93%, transparent);
   backdrop-filter: blur(20px) saturate(190%);
   -webkit-backdrop-filter: blur(20px) saturate(190%);
-  border: 1px solid color-mix(in srgb, var(--teal-500) 24%, var(--border-strong));
+  border-color: color-mix(in srgb, var(--teal-500) 26%, var(--border-strong));
   box-shadow:
-    0 16px 36px -6px rgba(8, 23, 38, 0.14),
-    0 4px 12px rgba(8, 23, 38, 0.06),
+    0 18px 40px -8px rgba(8, 23, 38, 0.18),
+    0 6px 14px rgba(8, 23, 38, 0.07),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 body[data-theme='dark'] .navbar.is-scrolled {
@@ -339,10 +351,12 @@ body[data-theme='dark'] .nav-item a.nav-link.active { color: var(--teal-400); }
   color: var(--teal-600);
 }
 
-/* Rich Flyout Submenus (WhatsApp Style) */
+/* Rich Flyout Submenus (WhatsApp Style). The island is centred, so a flyout
+   under an edge link can overflow the viewport; JS writes --dd-shift to
+   nudge the panel back inside the screen edges. */
 .nav-dropdown {
   position: absolute; top: calc(100% + 10px); left: 50%;
-  transform: translateX(-50%) translateY(8px) scale(0.97);
+  transform: translateX(calc(-50% + var(--dd-shift, 0px))) translateY(8px) scale(0.97);
   width: min(580px, 92vw);
   background: color-mix(in srgb, var(--card) 96%, transparent);
   backdrop-filter: blur(24px) saturate(190%); -webkit-backdrop-filter: blur(24px) saturate(190%);
@@ -374,7 +388,7 @@ body[data-theme='dark'] .nav-dropdown {
 .nav-item:focus-within > .nav-dropdown,
 .nav-item.is-active-dropdown > .nav-dropdown {
   opacity: 1; visibility: visible; pointer-events: auto;
-  transform: translateX(-50%) translateY(0) scale(1);
+  transform: translateX(calc(-50% + var(--dd-shift, 0px))) translateY(0) scale(1);
   transition:
     opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
     transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
@@ -596,7 +610,12 @@ body[data-theme='dark'] .mobile-nav-brand span { color: #fff; }
   #navAuthSlot { display: none !important; }
   .hamburger { display: inline-flex; }
   .nav-inner { gap: 10px; }
-  .navbar.is-scrolled { top: 6px; max-width: calc(100vw - 20px); border-radius: 20px; }
+  /* Tablet/phone: the island keeps floating, with tighter side margins. */
+  .navbar { top: 8px; margin-top: 8px; max-width: calc(100vw - 20px); }
+  .navbar.is-scrolled { top: 6px; }
+  /* The drawer sits under the island (z-index), so its content must start
+     below the island on every width where the hamburger is shown. */
+  .mobile-nav { padding-top: calc(var(--nav-h) + var(--nav-float) + 14px); }
   .floating-nav-dock { bottom: 18px; right: 18px; }
 }
 
@@ -1200,7 +1219,7 @@ a.video-term-card:hover {
 
 /* ── Lesson experience page ──────────────── */
 .lesson-layout { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 28px; align-items: start; }
-.lesson-sidebar { display: flex; flex-direction: column; gap: 18px; position: sticky; top: calc(var(--nav-h) + 20px); }
+.lesson-sidebar { display: flex; flex-direction: column; gap: 18px; position: sticky; top: calc(var(--nav-h) + var(--nav-float) + 24px); }
 .lesson-nav-card { padding: 20px; }
 .lesson-nav-card .nav-slot { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; transition: background 0.15s; }
 .lesson-nav-card .nav-slot + .nav-slot { margin-top: 8px; border-top: 1px solid var(--border); }
@@ -1307,7 +1326,7 @@ a.video-term-card:hover {
 .password-toggle-btn:hover { color: var(--teal-600); background: var(--bg-alt); }
 
 /* Auth pages */
-.auth-wrap { min-height: calc(100vh - var(--nav-h)); display: grid; place-items: center; padding: 48px 24px; }
+.auth-wrap { min-height: calc(100vh - var(--nav-h) - var(--nav-float) * 2); display: grid; place-items: center; padding: 48px 24px; }
 .auth-card { width: 100%; max-width: 440px; padding: 36px; }
 .auth-card h1 { font-size: 1.7rem; margin-bottom: 6px; }
 .auth-card .auth-sub { margin-bottom: 26px; }
@@ -1333,7 +1352,7 @@ table.table tbody tr:last-child td { border-bottom: none; }
 .table-actions button, .table-actions a { padding: 6px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: 600; }
 
 /* ── Toasts ──────────────────────────────── */
-#scToastContainer { position: fixed; top: calc(var(--nav-h) + 14px); right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; max-width: min(360px, calc(100vw - 40px)); }
+#scToastContainer { position: fixed; top: calc(var(--nav-h) + var(--nav-float) + 16px); right: 20px; z-index: 3000; display: flex; flex-direction: column; gap: 10px; max-width: min(360px, calc(100vw - 40px)); }
 .sc-toast {
   display: flex; align-items: flex-start; gap: 11px;
   background: var(--navy-900); color: #fff; padding: 13px 16px; border-radius: var(--radius-sm);
@@ -1512,7 +1531,7 @@ table.table tbody tr:last-child td { border-bottom: none; }
   padding: 8px 16px; border-radius: 999px;
 }
 .course-subnav {
-  position: sticky; top: var(--nav-h); z-index: 900;
+  position: sticky; top: calc(var(--nav-h) + var(--nav-float) + 8px); z-index: 900;
   background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
@@ -1533,7 +1552,7 @@ table.table tbody tr:last-child td { border-bottom: none; }
 .course-subnav .subnav-links a:hover { background: var(--bg-alt); color: var(--teal-600); }
 .course-subnav .subnav-links a.active { color: var(--teal-600); background: var(--teal-50); }
 .course-jump { display: none; }
-body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-h) + 70px); }
+body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-h) + var(--nav-float) + 78px); }
 
 .course-overview { max-width: 920px; }
 .course-overview-copy { margin-top: 14px; }
@@ -1594,7 +1613,7 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .course-quick-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
-  :root { --nav-h: 60px; }
+  :root { --nav-h: 60px; --nav-float: 8px; }
   .container {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -1669,7 +1688,7 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .course-hero .hero-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .course-hero .hero-actions .btn { width: 100%; padding-left: 14px; padding-right: 14px; }
 
-  .course-subnav { top: var(--nav-h); }
+  .course-subnav { top: calc(var(--nav-h) + var(--nav-float) + 8px); }
   .course-subnav-inner { min-height: 62px; gap: 8px; }
   .course-subnav .nav-inner { height: 50px; }
   body[data-page='course'] .course-subnav .subnav-links { display: none; }
@@ -1683,7 +1702,7 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
     border: 1px solid var(--border-strong); border-radius: 10px;
     background: var(--card); color: var(--ink); font-weight: 600; font-size: 0.88rem;
   }
-  body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-h) + 72px); }
+  body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-h) + var(--nav-float) + 80px); }
   body[data-page='course'] .section { padding: 38px 0; }
   body[data-page='course'] .section-heading { text-align: left; margin: 0 0 24px; }
   body[data-page='course'] .section-heading h2 { margin: 7px 0 8px; }
@@ -1776,7 +1795,8 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   #scToastContainer { left: 12px; right: 12px; max-width: none; }
   .hamburger { width: 44px; height: 44px; }
   .mobile-nav {
-    padding: calc(var(--nav-h) + 12px) 18px calc(28px + env(safe-area-inset-bottom, 0px));
+    /* Top padding clears the floating island (nav + its float gap). */
+    padding: calc(var(--nav-h) + var(--nav-float) + 14px) 18px calc(28px + env(safe-area-inset-bottom, 0px));
   }
   .mobile-nav a, .mobile-nav button { min-height: 48px; padding: 14px 14px; }
   .account-panel { right: 8px; width: min(250px, calc(100vw - 24px)); }
