@@ -31,6 +31,14 @@
     return document.body.dataset.page || '';
   }
 
+  // Course homes already provide focused topic, lesson, material and progress
+  // navigation. Keep the shared global search out of those pages so it does
+  // not compete with the course controls; search remains available everywhere
+  // else and through the dedicated Search page.
+  function globalSearchEnabled() {
+    return currentPage() !== 'course';
+  }
+
   function isActive(id) {
     const page = currentPage();
     if (id === 'courses') return ['courses', 'course', 'lesson', 'videos'].includes(page);
@@ -206,6 +214,10 @@
       `;
     }).join('');
 
+    const searchButtonHtml = globalSearchEnabled()
+      ? `<button class="icon-btn nav-search-btn" id="navSearchBtn" aria-label="Search StudyCore">${SC.icon('search', { size: 19 })}</button>`
+      : '';
+
     host.className = 'navbar';
     host.innerHTML = `
       <div class="container nav-inner">
@@ -217,7 +229,7 @@
           ${linksHtml}
         </ul>
         <div class="nav-actions" id="navActions">
-          <button class="icon-btn nav-search-btn" id="navSearchBtn" aria-label="Search StudyCore">${SC.icon('search', { size: 19 })}</button>
+          ${searchButtonHtml}
           ${notificationBellHtml()}
           <span id="navAuthSlot" aria-live="polite"></span>
         </div>
@@ -388,6 +400,15 @@
         ${SC.icon(s.icon, { size: 16 })} ${s.name}
       </a>
     `).join('');
+    const mobileSearchHtml = globalSearchEnabled()
+      ? `<div class="mobile-nav-search-wrap" style="--idx:0">
+          <button type="button" class="mobile-search-pill" id="mobileSearchBtn" data-close-mobile>
+            ${SC.icon('search', { size: 17 })}
+            <span>Search courses, notes &amp; papers…</span>
+            <span class="kbd">/</span>
+          </button>
+        </div>`
+      : '';
 
     host.innerHTML = `
       <div class="nav-backdrop" id="navBackdrop"></div>
@@ -400,13 +421,7 @@
           <button class="icon-btn mobile-nav-close" id="mobileNavClose" aria-label="Close menu">${SC.icon('x', { size: 20 })}</button>
         </div>
 
-        <div class="mobile-nav-search-wrap" style="--idx:0">
-          <button type="button" class="mobile-search-pill" id="mobileSearchBtn" data-close-mobile>
-            ${SC.icon('search', { size: 17 })}
-            <span>Search courses, notes &amp; papers…</span>
-            <span class="kbd">/</span>
-          </button>
-        </div>
+        ${mobileSearchHtml}
 
         <div class="mobile-nav-label" style="--idx:1">Study</div>
 
@@ -526,6 +541,7 @@
   };
 
   function bindNavSearch() {
+    if (!globalSearchEnabled()) return;
     const btn = document.getElementById('navSearchBtn');
     if (btn) btn.addEventListener('click', openSearchOverlay);
     document.addEventListener('keydown', (e) => {
@@ -538,6 +554,7 @@
   }
 
   function openSearchOverlay() {
+    if (!globalSearchEnabled()) return;
     let overlay = document.getElementById('searchOverlay');
     if (!overlay) {
       overlay = document.createElement('div');
