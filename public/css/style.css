@@ -814,22 +814,13 @@ body[data-theme='dark'] .notif-unread-dot {
   width: min(380px, 88vw);
   background: color-mix(in srgb, var(--card) 96%, transparent);
   backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
-  padding: 20px 20px 32px;
+  padding: 20px 20px calc(32px + env(safe-area-inset-bottom, 0px));
   box-shadow: -18px 0 48px rgba(8, 23, 38, 0.2);
   transform: translateX(105%); visibility: hidden;
   transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.32s;
   overflow-y: auto; overscroll-behavior: contain;
 }
 .mobile-nav.open { transform: translateX(0); visibility: visible; transition-delay: 0s; }
-.mobile-nav-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 16px; margin-bottom: 12px; border-bottom: 1px solid var(--border);
-}
-.mobile-nav-brand { display: flex; align-items: center; gap: 10px; }
-.mobile-nav-brand img { border-radius: 8px; }
-.mobile-nav-brand span { font-family: var(--font-display); font-weight: 800; font-size: 1.15rem; color: var(--navy-800); }
-body[data-theme='dark'] .mobile-nav-brand span { color: #fff; }
-.mobile-nav-brand span em { font-style: normal; color: var(--teal-500); }
 .mobile-search-pill {
   display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 10px 14px; border-radius: 9999px; background: var(--bg-alt);
@@ -851,10 +842,14 @@ body[data-theme='dark'] .mobile-nav-brand span { color: #fff; }
 }
 .mobile-accordion { margin-bottom: 4px; border-radius: 12px; transition: background 0.18s ease; }
 .mobile-accordion.open { background: var(--bg-alt); }
-.mobile-accordion-header { display: flex; align-items: center; justify-content: space-between; }
-.mobile-accordion-header a { flex: 1; margin-bottom: 0; }
-.mobile-accordion-toggle {
-  width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+.mobile-nav .mobile-accordion-header { display: flex; align-items: center; justify-content: space-between; }
+/* Higher specificity than the generic ".mobile-nav a, .mobile-nav button"
+   row rule, so the header link and its 44px chevron target keep their own
+   sizing instead of inheriting the row's 48px height / 12px 14px padding. */
+.mobile-nav .mobile-accordion-header a { flex: 1; margin-bottom: 0; }
+.mobile-nav .mobile-accordion-toggle {
+  width: 44px; height: 44px; min-height: 44px; padding: 0;
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
   color: var(--muted); border-radius: 10px;
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease;
 }
@@ -893,7 +888,6 @@ body[data-theme='dark'] .mobile-nav-brand span { color: #fff; }
 
 @media (max-width: 900px) {
   .nav-links,
-  .nav-actions .btn-outline,
   .nav-actions .btn-primary,
   .nav-actions .btn-ghost,
   .nav-actions .account-menu,

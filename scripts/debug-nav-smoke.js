@@ -203,9 +203,21 @@ async function testMobile() {
   check('hamburger reports expanded', burger?.getAttribute('aria-expanded') === 'true');
   check('backdrop active', document.getElementById('navBackdrop')?.classList.contains('open'));
 
-  // Close it again through the drawer's own close button.
-  document.getElementById('mobileNavClose')?.click();
-  check('drawer closes via close button', !drawer?.classList.contains('open'));
+  // The drawer slides in under the floating island, which keeps the brand
+  // and turns the hamburger into the close control — no duplicate brand row
+  // or close button inside the drawer itself.
+  check('no duplicate brand row in drawer', !drawer?.querySelector('.mobile-nav-header'));
+  check('no duplicate close button in drawer', !drawer?.querySelector('#mobileNavClose'));
+  check('hamburger morphs to close control', burger?.getAttribute('aria-label') === 'Close menu');
+
+  // Close it again through the island hamburger (X).
+  burger?.click();
+  check('drawer closes via island hamburger', !drawer?.classList.contains('open'));
+  check('hamburger reports collapsed', burger?.getAttribute('aria-expanded') === 'false');
+
+  burger?.click();
+  document.getElementById('navBackdrop')?.click();
+  check('drawer closes via backdrop click', !drawer?.classList.contains('open'));
 
   window.close();
 }

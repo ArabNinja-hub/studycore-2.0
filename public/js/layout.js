@@ -8,10 +8,12 @@
 // The chrome is intentionally quiet: one sticky island,
 // no promotional top bar, no scroll progress bars, no
 // floating docks. Navigation model (learning-first):
-//   Logo/Home · Courses · Resources · Announcements · About · [Search] · [Dashboard] · [Profile/Login]
+//   Logo/Home · Courses · Resources · Announcements · About · [Search] · [Avatar / Log In]
 // The global navigation stays intentionally small. Video lessons are opened
 // from a course home rather than competing with Courses as a second route to
-// the same content.
+// the same content. The dashboard is deliberately NOT a top-level nav item on
+// desktop/tablet — logged-in users reach it from the avatar menu, and mobile
+// users from the Account section of the drawer.
 // =============================================
 
 (function (global) {
@@ -345,11 +347,9 @@
     if (!slot) return;
     const user = await StudyCoreAuth.fetchSession();
     if (user) {
-      const dashHref = StudyCoreAuth.getDashboardPage(user);
-      slot.innerHTML = `
-        <a class="btn btn-outline btn-sm btn-pill" href="${dashHref}">${SC.icon('layout-dashboard', { size: 15 })} Dashboard</a>
-        ${accountMenuHtml(user)}
-      `;
+      // No standalone Dashboard button in the bar: the avatar menu is the
+      // single desktop entry point (keeps the island compact on PC/tablet).
+      slot.innerHTML = accountMenuHtml(user);
       bindAccountMenu();
     } else {
       slot.innerHTML = `
@@ -410,17 +410,13 @@
         </div>`
       : '';
 
+    // The drawer slides in BELOW the floating island, which stays visible on
+    // top with the brand and a hamburger that morphs into a close (X) button.
+    // A second brand row + close button here would only repeat both, so the
+    // drawer opens straight into its content.
     host.innerHTML = `
       <div class="nav-backdrop" id="navBackdrop"></div>
       <nav class="mobile-nav" id="mobileNav" aria-label="Main navigation" aria-hidden="true">
-        <div class="mobile-nav-header">
-          <div class="mobile-nav-brand">
-            <img src="/assets/logo-icon.jpg" alt="" width="32" height="32" />
-            <span><em>Study</em>Core</span>
-          </div>
-          <button class="icon-btn mobile-nav-close" id="mobileNavClose" aria-label="Close menu">${SC.icon('x', { size: 20 })}</button>
-        </div>
-
         ${mobileSearchHtml}
 
         <div class="mobile-nav-label" style="--idx:1">Study</div>
@@ -436,9 +432,6 @@
           <div class="mobile-accordion-body">
             <div class="mobile-accordion-content">
               ${subjectLinks}
-              <a href="/pages/courses.html" class="mobile-sub-link mobile-sub-all">
-                ${SC.icon('arrow-right', { size: 15 })} View All Courses
-              </a>
             </div>
           </div>
         </div>
@@ -456,41 +449,29 @@
               <a href="/pages/resources.html?type=past_paper" class="mobile-sub-link">${SC.icon('file', { size: 16 })} Past Papers</a>
               <a href="/pages/resources.html?type=document" class="mobile-sub-link">${SC.icon('file-text', { size: 16 })} Study Notes</a>
               <a href="/pages/resources.html?type=tutorial" class="mobile-sub-link">${SC.icon('book-open', { size: 16 })} Tutorial Sheets</a>
-              <a href="/pages/resources.html" class="mobile-sub-link mobile-sub-all">${SC.icon('arrow-right', { size: 15 })} All Resources</a>
             </div>
           </div>
         </div>
 
-        <a href="/dashboard.html" id="mobileDashLink" style="display:none;--idx:4">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
-        <a href="/admin.html" id="mobileAdminLink" style="display:none;--idx:5">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>
+        <div class="mobile-nav-divider" style="--idx:4"></div>
+        <div class="mobile-nav-label" style="--idx:5">More</div>
+        <a href="/pages/announcements.html"${activeAttrs('announcements')} style="--idx:6" id="mobileNavAnnouncementsLink">${SC.icon('bell', { size: 20 })} <span>Announcements</span><span class="notif-badge-inline" id="mobileNavNotifBadge" style="display:none;"></span></a>
+        <a href="/pages/pricing.html" style="--idx:7">${SC.icon('crown', { size: 20 })} Premium</a>
+        <a href="/pages/about.html"${activeAttrs('about')} style="--idx:8">${SC.icon('info', { size: 20 })} About StudyCore</a>
 
-        <div class="mobile-nav-divider" style="--idx:6"></div>
-        <div class="mobile-nav-label" style="--idx:7">More</div>
-        <a href="/pages/announcements.html"${activeAttrs('announcements')} style="--idx:8" id="mobileNavAnnouncementsLink">${SC.icon('bell', { size: 20 })} <span>Announcements</span><span class="notif-badge-inline" id="mobileNavNotifBadge" style="display:none;"></span></a>
-        <a href="/pages/pricing.html" style="--idx:9">${SC.icon('crown', { size: 20 })} Premium</a>
-        <a href="/pages/about.html"${activeAttrs('about')} style="--idx:10">${SC.icon('info', { size: 20 })} About StudyCore</a>
-
-        <div class="mobile-nav-divider" style="--idx:11"></div>
-        <div class="mobile-nav-label" style="--idx:12">Community</div>
-        <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:13">
+        <div class="mobile-nav-divider" style="--idx:9"></div>
+        <div class="mobile-nav-label" style="--idx:10">Community</div>
+        <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:11">
           ${SC.icon('whatsapp', { size: 20 })} WhatsApp Academic Channel
         </a>
 
-        <div class="mobile-nav-divider" style="--idx:14"></div>
-        <div class="mobile-nav-label" style="--idx:15">Account</div>
-        <div id="mobileAuthSlot" style="--idx:16"></div>
+        <div class="mobile-nav-divider" style="--idx:12"></div>
+        <div class="mobile-nav-label" style="--idx:13">Account</div>
+        <div id="mobileAuthSlot" style="--idx:14"></div>
       </nav>
     `;
     const searchBtn = document.getElementById('mobileSearchBtn');
     if (searchBtn) searchBtn.addEventListener('click', () => openSearchOverlay());
-
-    const closeBtn = document.getElementById('mobileNavClose');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        const hamburger = document.getElementById('hamburgerBtn');
-        if (hamburger) hamburger.click();
-      });
-    }
 
     bindMobileAccordions();
   }
@@ -514,11 +495,14 @@
     if (!slot) return;
     const user = await StudyCoreAuth.fetchSession();
     if (user) {
-      const dashLink = document.getElementById('mobileDashLink');
-      if (dashLink) dashLink.style.display = 'flex';
-      const adminLink = document.getElementById('mobileAdminLink');
-      if (adminLink) adminLink.style.display = StudyCoreAuth.isAdmin(user) ? 'flex' : 'none';
+      // Mirrors the desktop avatar menu: dashboard entry points live in the
+      // Account section (not at the top of the Study section).
+      const adminLink = StudyCoreAuth.isAdmin(user)
+        ? `<a href="/admin.html">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>`
+        : '';
       slot.innerHTML = `
+        <a href="/dashboard.html">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
+        ${adminLink}
         <a href="/dashboard.html#profile">${SC.icon('user', { size: 20 })} Profile</a>
         <button type="button" id="mobileLogoutBtn" style="color:var(--red-600);">${SC.icon('log-out', { size: 20 })} Log Out</button>
       `;
