@@ -3,13 +3,12 @@
    HEADLESS NAV SMOKE TEST (dev-only, not part of `npm test`)
    ------------------------------------------------------------
    Loads the real pages from the running dev server into jsdom,
-   executes the real <script> tags, and verifies the floating
-   WhatsApp-style navbar:
+   executes the real <script> tags, and verifies the quiet shared
+   chrome:
      1. renders on every page (brand, links, dropdowns, footer)
-     2. announcement top bar renders and is dismissible
-     3. pins on scroll (is-scrolled) and reveals the quick dock
-     4. flyout panels are clamped into the viewport (—dd-shift)
-     5. mobile drawer opens/closes via the hamburger
+     2. pins on scroll (is-scrolled)
+     3. flyout panels are clamped into the viewport (—dd-shift)
+     4. mobile drawer opens/closes via the hamburger
    Run with:  node server.js  (in one terminal)
               node scripts/debug-nav-smoke.js  (in another)
    ============================================================= */
@@ -116,23 +115,21 @@ async function testDesktop(path) {
   const items = [...nav?.querySelectorAll('.nav-item') || []];
   check('4 nav links rendered', items.length === 4, `got ${items.length}`);
   check('2 flyout dropdowns rendered', nav?.querySelectorAll('.nav-dropdown').length === 2, `got ${nav?.querySelectorAll('.nav-dropdown').length}`);
-  check('glider indicator present', !!nav?.querySelector('#navGlider'));
-  check('scroll progress track present', !!nav?.querySelector('.nav-scroll-progress'));
   check('search button present', !!nav?.querySelector('#navSearchBtn'));
+  // Quiet chrome: no glider pill, no scroll progress bar, no floating dock,
+  // no promotional top bar.
+  check('no glider pill', !nav?.querySelector('#navGlider'));
+  check('no nav scroll progress', !nav?.querySelector('.nav-scroll-progress'));
+  check('no floating dock', !document.getElementById('floatingNavDock'));
+  check('no promo top bar', !document.querySelector('.top-bar') && !document.getElementById('topBarHost'));
   if (document.getElementById('siteFooter')) {
     check('footer rendered', !!document.querySelector('.footer'));
   }
   check('mobile drawer host rendered', !!document.getElementById('mobileNav'));
-  check('quick-action dock rendered', !!document.getElementById('floatingNavDock'));
 
-  if (document.getElementById('topBarHost')) {
-    check('announcement top bar visible', !!document.querySelector('.top-bar'));
-  }
-
-  // Scroll: island should pin (is-scrolled) and the dock should appear.
+  // Scroll: island should pin (is-scrolled).
   await scrollWindow(window, 420);
   check('nav pins with .is-scrolled after scroll', nav?.classList.contains('is-scrolled'));
-  check('quick dock visible after scroll', document.getElementById('floatingNavDock')?.classList.contains('visible'));
 
   await scrollWindow(window, 0);
   check('nav unpins at top of page', !nav?.classList.contains('is-scrolled'));
@@ -191,19 +188,6 @@ async function testMobile() {
   window.close();
 }
 
-async function testTopBarDismiss() {
-  console.log(`\n— / (top bar dismissal) —`);
-  const { dom } = await bootPage('/');
-  const { window } = dom;
-  const { document } = window;
-
-  check('top bar present initially', !!document.querySelector('.top-bar'));
-  document.querySelector('.top-bar-close')?.click();
-  check('top bar removed after dismiss', !document.querySelector('.top-bar'));
-  check('dismissal persisted to sessionStorage', window.sessionStorage.getItem('sc_topbar_dismissed') === '1');
-  window.close();
-}
-
 (async () => {
   for (const p of PAGES) {
     try {
@@ -218,12 +202,6 @@ async function testTopBarDismiss() {
   } catch (err) {
     failures++;
     console.log(`  FAIL  mobile crashed: ${err.message}`);
-  }
-  try {
-    await testTopBarDismiss();
-  } catch (err) {
-    failures++;
-    console.log(`  FAIL  top-bar dismissal crashed: ${err.message}`);
   }
 
   console.log(`\n${passes} passed, ${failures} failed`);

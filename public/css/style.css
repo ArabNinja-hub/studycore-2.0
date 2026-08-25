@@ -153,6 +153,14 @@ a:hover { color: var(--teal-700); }
 .btn-outline:hover { border-color: var(--teal-500); color: var(--teal-600); transform: translateY(-2px); }
 .btn-ghost { background: transparent; color: var(--muted); }
 .btn-ghost:hover { background: var(--bg-alt); color: var(--ink); }
+/* Secondary action on dark navy surfaces (hero, Premium, community) — one
+   shared style instead of per-button inline overrides. */
+.btn-on-dark {
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+}
+.btn-on-dark:hover { background: rgba(255, 255, 255, 0.13); color: #fff; transform: translateY(-2px); }
 .btn-amber { background: var(--amber-500); color: #3d2a05; }
 .btn-amber:hover { background: #ffbe45; color: #3d2a05; transform: translateY(-2px); box-shadow: 0 8px 20px rgba(245, 166, 35, 0.35); }
 .btn-danger { background: var(--red-600); color: #fff; }
@@ -203,43 +211,7 @@ a:hover { color: var(--teal-700); }
   background: var(--teal-50); color: var(--teal-600); border: 1px solid rgba(15, 140, 127, 0.2);
 }
 
-/* ── Top bar + navigation ────────────────── */
-.top-bar {
-  background: var(--navy-950); color: rgba(255, 255, 255, 0.85);
-  text-align: center; padding: 9px 48px; font-size: 0.8rem; font-weight: 500;
-  position: relative; z-index: 1002;
-  display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
-}
-.top-bar a { color: var(--teal-400); font-weight: 600; }
-.top-bar .top-bar-close { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: rgba(255, 255, 255, 0.5); padding: 4px; }
-.top-bar .top-bar-close:hover { color: #fff; }
-
-/* Scroll progress indicator line. Inset from the island's rounded caps
-   (22px ≈ half the pill's end radius) so a 100% fill never spills outside
-   the floating bar's silhouette. */
-.nav-scroll-progress {
-  position: absolute; bottom: -1.5px; left: 22px; right: 22px; width: auto; height: 2.5px;
-  background: transparent; pointer-events: none; z-index: 1003;
-  overflow: hidden; border-radius: 999px;
-}
-.nav-scroll-bar {
-  height: 100%; width: 0%;
-  background: linear-gradient(90deg, var(--teal-400), var(--teal-500), var(--amber-500));
-  box-shadow: 0 0 8px rgba(43, 179, 163, 0.6);
-  transition: width 0.08s linear;
-}
-
-/* Page Navigation Transition Progress Bar */
-.sc-page-progress {
-  position: fixed; top: 0; left: 0; height: 3px; width: 0%;
-  background: linear-gradient(90deg, #2bb3a3, #0f8c7f, #f5a623);
-  box-shadow: 0 0 10px rgba(43, 179, 163, 0.7);
-  z-index: 9999; pointer-events: none; opacity: 0;
-  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
-}
-.sc-page-progress.running { opacity: 1; width: 78%; transition: width 1.2s cubic-bezier(0.1, 0.6, 0.2, 1); }
-.sc-page-progress.done { opacity: 1; width: 100%; transition: width 0.15s ease-out, opacity 0.3s ease 0.15s; }
-
+/* ── Navigation ──────────────────────────── */
 /* Navbar — WhatsApp-Style Floating Island --------------------------------
    A rounded, frosted-glass bar that floats above the page at all times:
    centred, with top + side margins, and pinned near the top of the
@@ -295,7 +267,7 @@ body[data-theme='dark'] .navbar.is-scrolled {
 body[data-theme='dark'] .nav-brand-text { color: #fff; }
 .nav-brand-text em { font-style: normal; color: var(--teal-500); }
 
-/* Navigation Capsule & Sliding Magic Glider */
+/* Navigation Capsule */
 .nav-links {
   position: relative;
   display: flex; align-items: center; gap: 2px; list-style: none;
@@ -309,37 +281,29 @@ body[data-theme='dark'] .nav-links {
   border-color: rgba(255, 255, 255, 0.07);
 }
 
-.nav-glider {
-  position: absolute; top: 4px; bottom: 4px; left: 0;
-  border-radius: 9999px; background: var(--card);
-  box-shadow: 0 2px 8px rgba(11, 32, 51, 0.08), 0 1px 2px rgba(11, 32, 51, 0.04);
-  pointer-events: none; opacity: 0; transform: translateX(0);
-  transition:
-    transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-    width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.2s ease;
-  z-index: 1;
-}
-body[data-theme='dark'] .nav-glider {
-  background: #152b3e;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
 .nav-item {
-  position: relative; z-index: 2; list-style: none; display: inline-flex; align-items: center;
+  position: relative; list-style: none; display: inline-flex; align-items: center;
 }
 .nav-item a.nav-link {
-  position: relative; z-index: 2;
+  position: relative;
   display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 16px; border-radius: 9999px;
   font-weight: 500; font-size: 0.9rem; color: var(--ink);
-  transition: color 0.18s ease; text-decoration: none;
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease; text-decoration: none;
   user-select: none; -webkit-tap-highlight-color: transparent;
 }
 .nav-item a.nav-link:hover { color: var(--teal-600); }
 body[data-theme='dark'] .nav-item a.nav-link:hover { color: var(--teal-400); }
-.nav-item a.nav-link.active { color: var(--teal-600); font-weight: 600; }
-body[data-theme='dark'] .nav-item a.nav-link.active { color: var(--teal-400); }
+.nav-item a.nav-link.active {
+  color: var(--teal-700); font-weight: 600;
+  background: var(--card);
+  box-shadow: 0 2px 8px rgba(11, 32, 51, 0.08), 0 1px 2px rgba(11, 32, 51, 0.04);
+}
+body[data-theme='dark'] .nav-item a.nav-link.active {
+  color: var(--teal-400);
+  background: #152b3e;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
 
 .nav-chevron {
   display: inline-flex; align-items: center; color: var(--muted);
@@ -451,33 +415,6 @@ body[data-theme='dark'] .nd-footer-link:hover { background: #143530; color: #fff
 .nav-actions { display: flex; align-items: center; gap: 10px; }
 .nav-search-btn { width: 40px; height: 40px; }
 .btn-pill { border-radius: 9999px; }
-
-/* Floating Quick-Action Dock */
-.floating-nav-dock {
-  position: fixed; bottom: 24px; right: 24px; z-index: 900;
-  display: flex; align-items: center; gap: 6px; padding: 6px;
-  background: color-mix(in srgb, var(--card) 90%, transparent);
-  backdrop-filter: blur(18px) saturate(180%); -webkit-backdrop-filter: blur(18px) saturate(180%);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, var(--teal-500) 20%);
-  border-radius: 9999px;
-  box-shadow:
-    0 12px 30px -4px rgba(8, 23, 38, 0.18),
-    0 4px 10px rgba(8, 23, 38, 0.06);
-  opacity: 0; transform: translateY(18px) scale(0.92); pointer-events: none;
-  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.floating-nav-dock.visible { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
-.dock-btn {
-  width: 38px; height: 38px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center;
-  color: var(--ink); background: transparent; border: none; cursor: pointer;
-  transition: background 0.18s ease, color 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.dock-btn:hover { background: var(--bg-alt); color: var(--teal-600); transform: translateY(-2px) scale(1.08); }
-.dock-btn:active { transform: scale(0.94); }
-.dock-btn-whatsapp { color: #25d366; }
-.dock-btn-whatsapp:hover { background: rgba(37, 211, 102, 0.14); color: #128c7e; }
-.dock-icon-top { transform: rotate(90deg); }
 
 /* Account menu (avatar) */
 .account-menu { position: relative; }
@@ -616,25 +553,35 @@ body[data-theme='dark'] .mobile-nav-brand span { color: #fff; }
   /* The drawer sits under the island (z-index), so its content must start
      below the island on every width where the hamburger is shown. */
   .mobile-nav { padding-top: calc(var(--nav-h) + var(--nav-float) + 14px); }
-  .floating-nav-dock { bottom: 18px; right: 18px; }
 }
 
-/* ── Hero (home) ──────────────────────── */
+/* ── Hero (home) ────────────────────────
+   One stage, one message. The only motion is a single ambient teal glow
+   drifting slowly behind the copy — it never competes with the text. */
 .hero {
   position: relative;
   overflow: hidden;
   isolation: isolate;
   width: 100%;
   max-width: 100%;
-  min-height: clamp(560px, 82vh, 840px);
+  min-height: clamp(520px, 76vh, 760px);
   display: flex;
   align-items: center;
-  background:
-    radial-gradient(1000px 500px at 85% -10%, rgba(15, 140, 127, 0.14), transparent 60%),
-    radial-gradient(800px 420px at -10% 110%, rgba(245, 166, 35, 0.1), transparent 55%),
-    linear-gradient(180deg, var(--navy-950) 0%, var(--navy-900) 100%);
+  background: linear-gradient(180deg, var(--navy-950) 0%, var(--navy-900) 100%);
   color: #fff;
   padding: 72px 0 88px;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  left: -15%; top: -15%; right: -15%; bottom: -15%;
+  z-index: 0; pointer-events: none;
+  background: radial-gradient(640px 480px at 76% 16%, rgba(15, 140, 127, 0.22), transparent 64%);
+  animation: hero-glow 24s ease-in-out infinite alternate;
+}
+@keyframes hero-glow {
+  from { transform: translate3d(-2.5%, -1.5%, 0) scale(1); }
+  to { transform: translate3d(2.5%, 2.5%, 0) scale(1.05); }
 }
 .hero .container {
   position: relative;
@@ -687,8 +634,29 @@ body[data-theme='dark'] .mobile-nav-brand span { color: #fff; }
 
 /* ── Course cards ────────────────────────── */
 .course-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
-.how-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; }
 .feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+
+/* How-it-works steps — a plain numbered row, no card chrome. The order
+   numbers already communicate sequence, so no decorative icons needed. */
+.steps { list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px; }
+.step { display: flex; gap: 14px; align-items: flex-start; }
+.step-num {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--teal-50); color: var(--teal-700); border: 1px solid rgba(15, 140, 127, 0.28);
+  font-family: var(--font-display); font-weight: 700; font-size: 0.9rem;
+}
+.step strong { display: block; font-family: var(--font-display); font-size: 1.02rem; color: var(--ink); margin-bottom: 4px; }
+.step p { font-size: 0.88rem; margin: 0; }
+
+/* Slim supporting-resources row under the course grid. Reuses the shared
+   .section-link style — quiet text links, not competing cards. */
+.support-links {
+  display: flex; align-items: center; justify-content: center;
+  gap: 12px 28px; flex-wrap: wrap; margin-top: 40px;
+}
+.support-links-label { font-size: 0.9rem; color: var(--muted); }
+.support-links .section-link { margin-top: 0; }
 .plans-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 24px; align-items: stretch; }
 .resource-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .admin-four-col { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
@@ -707,7 +675,7 @@ body[data-theme='dark'] .mobile-nav-brand span { color: #fff; }
   display: flex; align-items: center; justify-content: center;
 }
 .course-card-visual svg { color: rgba(255, 255, 255, 0.9); transition: transform 0.3s ease; }
-.course-card:hover .course-card-visual svg { transform: scale(1.12); }
+.course-card:hover .course-card-visual svg { transform: scale(1.06); }
 .course-card-visual::after {
   content: ''; position: absolute; inset: 0;
   background: radial-gradient(240px 130px at 70% 0%, rgba(255, 255, 255, 0.14), transparent 70%);
@@ -888,23 +856,19 @@ a.video-term-card:hover {
 .announcement-body p { font-size: 0.9rem; }
 .announcement-meta { display: flex; gap: 10px; align-items: center; font-size: 0.78rem; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
 
-/* ── WhatsApp / community ────────────────── */
+/* ── WhatsApp / community ──────────────────
+   A quiet light card — the dark navy + gradient treatment is reserved for
+   the hero and the single Premium callout. */
 .community-panel {
   display: block;
-  background: linear-gradient(135deg, var(--navy-950), #0d3a33);
-  border-radius: var(--radius-lg); padding: 40px; color: #fff; position: relative; overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 36px 40px;
 }
-.community-panel::before {
-  content: ''; position: absolute; inset: 0;
-  background: radial-gradient(500px 300px at 100% 0%, rgba(37, 211, 102, 0.16), transparent 60%);
-}
-.community-panel > * { position: relative; z-index: 1; max-width: 640px; }
-.community-panel h2 { color: #fff; margin-bottom: 14px; }
-.community-panel p { color: rgba(255, 255, 255, 0.75); margin-bottom: 20px; }
+.community-panel h2 { margin: 10px 0 12px; }
+.community-panel p { margin-bottom: 22px; max-width: 640px; }
 .community-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-.community-points { list-style: none; display: grid; gap: 10px; margin-bottom: 26px; }
-.community-points li { display: flex; align-items: center; gap: 10px; font-size: 0.92rem; color: rgba(255, 255, 255, 0.85); }
-.community-points svg { color: #4ade80; flex-shrink: 0; }
 .whatsapp-btn { background: #25d366; color: #06281a; font-weight: 700; }
 .whatsapp-btn:hover { background: #3ce07b; color: #06281a; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37, 211, 102, 0.35); }
 
@@ -912,11 +876,7 @@ a.video-term-card:hover {
 .premium-card {
   position: relative; overflow: hidden;
   background: linear-gradient(135deg, var(--navy-950) 0%, #0d3a33 100%);
-  border-radius: var(--radius-lg); color: #fff; padding: 34px;
-}
-.premium-card::before {
-  content: ''; position: absolute; inset: 0;
-  background: radial-gradient(400px 260px at 90% 10%, rgba(245, 166, 35, 0.18), transparent 65%);
+  border-radius: var(--radius-lg); color: #fff; padding: 40px;
 }
 .premium-card > * { position: relative; z-index: 1; }
 .premium-card h3 { color: #fff; }
@@ -1247,7 +1207,6 @@ a.video-term-card:hover {
   background: linear-gradient(135deg, var(--navy-950) 0%, #0d3a33 100%);
   border-radius: var(--radius-lg); padding: 30px 34px; color: #fff; position: relative; overflow: hidden;
 }
-.dash-hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(500px 260px at 100% 0%, rgba(15, 140, 127, 0.25), transparent 60%); }
 .dash-hero > * { position: relative; z-index: 1; }
 .dash-hero h1 { color: #fff; font-size: clamp(1.5rem, 3vw, 2rem); }
 .dash-hero p { color: rgba(255, 255, 255, 0.72); }
@@ -1503,7 +1462,7 @@ table.table tbody tr:last-child td { border-bottom: none; }
   background: linear-gradient(150deg, var(--navy-950) 0%, var(--navy-800) 55%, var(--teal-700) 130%);
   padding: 64px 0 72px;
 }
-.course-hero-canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.5; }
+.course-hero-canvas { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.55; }
 .course-hero::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(180deg, transparent 40%, color-mix(in srgb, var(--navy-950) 80%, transparent) 100%);
@@ -1556,32 +1515,12 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
 
 .course-overview { max-width: 920px; }
 .course-overview-copy { margin-top: 14px; }
-.course-quick-nav {
-  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
-  margin-top: 28px;
-}
-.course-quick-nav a {
-  display: flex; align-items: center; gap: 12px; min-width: 0;
-  padding: 15px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--card); color: var(--ink); box-shadow: var(--shadow-sm);
-  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
-}
-.course-quick-nav a:hover { color: var(--ink); border-color: var(--teal-400); transform: translateY(-2px); box-shadow: var(--shadow); }
-.course-quick-icon {
-  width: 38px; height: 38px; border-radius: 11px; flex: 0 0 auto;
-  display: inline-flex; align-items: center; justify-content: center;
-  background: var(--teal-50); color: var(--teal-600);
-}
-.course-quick-nav strong, .course-quick-nav small { display: block; }
-.course-quick-nav strong { font-family: var(--font-display); font-size: 0.86rem; line-height: 1.25; color: var(--ink); }
-.course-quick-nav small { margin-top: 3px; color: var(--muted); font-size: 0.7rem; line-height: 1.3; }
 
 /* Course completion banner */
 .complete-banner {
   text-align: center; padding: 44px 30px; border-radius: var(--radius-lg);
   background: linear-gradient(135deg, var(--navy-950), #0d3a33); color: #fff; position: relative; overflow: hidden;
 }
-.complete-banner::before { content: ''; position: absolute; inset: 0; background: radial-gradient(400px 240px at 50% 0%, rgba(245, 166, 35, 0.2), transparent 70%); }
 .complete-banner > * { position: relative; z-index: 1; }
 .complete-banner .trophy {
   width: 84px; height: 84px; margin: 0 auto 18px; border-radius: 50%;
@@ -1599,18 +1538,16 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .course-grid,
   .feature-grid,
   .resource-grid,
-  .resource-grid-2,
-  .how-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .resource-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lesson-layout { grid-template-columns: minmax(0, 1fr); }
   .lesson-sidebar { position: static; }
   .dash-grid > * { grid-column: span 6 !important; }
   .footer-grid { grid-template-columns: 1fr 1fr; }
-  .community-panel { grid-template-columns: 1fr; padding: 32px; gap: 28px; }
   .topic-grid { grid-template-columns: 1fr; }
   .video-term-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-four-col { grid-template-columns: 1fr 1fr; }
   .plans-grid { grid-template-columns: 1fr; }
-  .course-quick-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   :root { --nav-h: 60px; --nav-float: 8px; }
@@ -1621,13 +1558,12 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .section { padding: 44px 0; }
   .section-tight { padding: 28px 0; }
   .page-hero { padding: 36px 0 28px; }
-  /* Mobile hero: still ONE bounded stage. Height is driven by the viewport
-     (dvh so a collapsing address bar doesn't resize it mid-scroll), the copy
-     is centred in it, and the stats compress to a single tidy row instead of
-     stacking into the tall scattered column this used to produce. */
+  /* Mobile hero: ONE bounded stage, copy stacked naturally, no decorative
+     competition. Height is driven by the viewport (dvh so a collapsing
+     address bar doesn't resize it mid-scroll). */
   .hero {
-    min-height: min(640px, 88vh);
-    min-height: min(640px, 88dvh);
+    min-height: min(620px, 84vh);
+    min-height: min(620px, 84dvh);
     padding: 40px 0 64px;
   }
   .hero-copy { max-width: 100%; }
@@ -1642,7 +1578,7 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .hero-actions .btn { flex: 1 1 160px; }
   .course-grid,
   .feature-grid,
-  .how-grid,
+  .steps,
   .resource-grid,
   .resource-grid-2,
   .form-row,
@@ -1709,10 +1645,6 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   body[data-page='course'] .section-heading p { font-size: 0.92rem; }
   .course-overview h2 { margin-top: 7px; font-size: 1.45rem; }
   .course-overview-copy { margin-top: 10px; font-size: 0.92rem; }
-  .course-quick-nav { grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
-  .course-quick-nav a { padding: 13px 12px; gap: 10px; }
-  .course-quick-icon { width: 36px; height: 36px; }
-  .course-quick-nav small { display: none; }
   body[data-page='course'] .lesson-row { flex-wrap: nowrap; padding: 12px; gap: 10px; }
   body[data-page='course'] .lesson-row-action { width: auto; justify-content: flex-end; }
   body[data-page='course'] .lesson-row-action > .lesson-type { display: none; }
@@ -1744,10 +1676,6 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .player-shell.lock-wall { min-height: 280px; }
   .player-premium-lock { padding: 22px 16px; }
   .player-premium-lock .lock-ring { width: 64px; height: 64px; }
-  .top-bar {
-    padding: 8px max(40px, env(safe-area-inset-right, 0px)) 8px max(12px, env(safe-area-inset-left, 0px));
-    font-size: 0.74rem;
-  }
   .dash-hero { padding: 22px 18px; }
   .dash-hero-actions { width: 100%; }
   .dash-hero-actions .btn { flex: 1 1 140px; }
@@ -1811,7 +1739,6 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .hero-actions .btn,
   .dash-hero-actions .btn { flex: 1 1 100%; width: 100%; }
   .course-hero .hero-actions { grid-template-columns: 1fr; }
-  .course-quick-nav strong { font-size: 0.8rem; }
   .achievement-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .player-skip-btn { display: none; }
   .nav-brand-text { font-size: 1.08rem; }
@@ -1825,7 +1752,7 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
    rules never hide content. Only opacity and transform are animated, so
    cards keep their layout space and never create horizontal overflow. */
 [data-scroll-reveal] {
-  --sc-reveal-duration: 680ms;
+  --sc-reveal-duration: 560ms;
   transition:
     opacity var(--sc-reveal-duration) cubic-bezier(0.22, 1, 0.36, 1),
     transform var(--sc-reveal-duration) cubic-bezier(0.22, 1, 0.36, 1),
@@ -1834,7 +1761,7 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
 }
 body.scroll-reveal-enabled [data-scroll-reveal]:not(.sc-reveal-visible) {
   --sc-reveal-x: 0px;
-  --sc-reveal-y: 24px;
+  --sc-reveal-y: 18px;
   opacity: 0;
   transform: translate3d(var(--sc-reveal-x), var(--sc-reveal-y), 0);
   transition-delay: var(--sc-reveal-delay, 0ms);

@@ -34,7 +34,6 @@
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body data-page="courses">
-    <div id="topBarHost"></div>
     <div id="siteNav"></div>
     <div id="mobileNavHost"></div>
 
@@ -57,7 +56,7 @@
             <a class="course-card" href="/pages/subjects/mathematics.html" data-course="mathematics">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Mathematics</h3>
+                <h3>Mathematics</h3>
                 <p>Explore functions, calculus, algebra and problem-solving with structured university-level lessons.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
@@ -67,7 +66,7 @@
             <a class="course-card" href="/pages/subjects/physics.html" data-course="physics">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Physics</h3>
+                <h3>Physics</h3>
                 <p>Master mechanics, waves, electricity and modern physics through lessons, notes and past papers.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
@@ -77,7 +76,7 @@
             <a class="course-card" href="/pages/subjects/chemistry.html" data-course="chemistry">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Chemistry</h3>
+                <h3>Chemistry</h3>
                 <p>Understand atoms, bonding, reactions and quantitative chemistry with guided lessons and notes.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
@@ -87,7 +86,7 @@
             <a class="course-card" href="/pages/subjects/biology.html" data-course="biology">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Biology</h3>
+                <h3>Biology</h3>
                 <p>Study cells, genetics, physiology and living systems through structured lessons and resources.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
@@ -97,7 +96,7 @@
             <a class="course-card" href="/pages/subjects/programming.html" data-course="programming">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Programming</h3>
+                <h3>Programming</h3>
                 <p>Build programming fundamentals, logic and problem-solving skills with step-by-step lessons.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
@@ -107,7 +106,7 @@
             <a class="course-card" href="/pages/subjects/communication.html" data-course="communication">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Communication Skills</h3>
+                <h3>Communication Skills</h3>
                 <p>Improve writing, speaking, presentations and academic communication with focused lessons.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
@@ -147,10 +146,6 @@
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 }); });
-        document.querySelectorAll('[data-course-icon]').forEach((el) => {
-          const slug = el.closest('[data-course]').getAttribute('data-course');
-          el.innerHTML = SC.icon(SC.courseIcon(slug), { size: 20 });
-        });
         document.querySelectorAll('[data-hero-icon]').forEach((el) => {
           const slug = el.closest('[data-course]').getAttribute('data-course');
           el.innerHTML = SC.icon(SC.courseIcon(slug), { size: 54 });

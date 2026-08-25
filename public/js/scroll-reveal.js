@@ -2,10 +2,16 @@
 // STUDYCORE — Scroll reveal (js/scroll-reveal.js)
 // -----------------------------------------------
 // One small, shared progressive-enhancement layer for
-// the public site, course homes and authenticated views.
-// It observes content once, reveals it when it enters the
-// viewport, and also picks up cards rendered later by page
-// scripts without needing a second animation system.
+// the public content pages. It observes content once and
+// reveals it when it enters the viewport.
+//
+// Simplicity rules:
+//   · Heroes and first-screen copy render instantly — the
+//     most important message never animates in late.
+//   · Only whole content GROUPS reveal (card grids, big
+//     panels) — never utility surfaces like the dashboard,
+//     lesson rows, images or legal text.
+//   · One gentle fade-up, one shared speed, small stagger.
 // =============================================
 
 (function () {
@@ -13,56 +19,31 @@
 
   const REVEAL_SELECTORS = [
     '[data-scroll-reveal]',
-    '.hero-copy',
-    '.hero-stats',
-    '.page-hero > .container',
-    '.course-hero > .container',
     '.section-heading',
-    '.how-grid > .card:not(.skeleton)',
+    '.steps > .step',
     '.course-grid > .course-card',
     '.feature-grid > .card:not(.skeleton)',
-    '.plans-grid > *:not(.skeleton)',
     '.resource-grid > .resource-card',
     '.topic-grid > .topic-card',
     '.video-term-grid > .video-term-card',
-    '.lesson-list > .lesson-row',
-    '.term-group-heading',
     '.announcement-list > .announcement-card',
     '.premium-card',
-    '.community-panel',
-    '.status-banner',
-    '.continue-card',
-    '.complete-banner',
-    '.course-quick-nav',
-    '.lesson-layout > *',
-    '.dash-hero',
-    '.dash-grid > .card:not(.skeleton)',
-    'main .card:not(.skeleton)',
-    'main .pay-method',
-    '.legal-wrap > h1',
-    '.legal-wrap > h2',
-    '.legal-wrap .placeholder-note',
-    'main img:not([aria-hidden="true"])',
-    '[data-scroll-reveal-image]'
+    '.community-panel'
   ].join(',');
 
   const STAGGER_SELECTORS = [
-    '.how-grid',
+    '.steps',
     '.course-grid',
     '.feature-grid',
     '.resource-grid',
     '.topic-grid',
     '.video-term-grid',
-    '.lesson-list',
-    '.announcement-list',
-    '.plans-grid',
-    '.dash-grid',
-    '.pay-methods'
+    '.announcement-list'
   ].join(',');
 
   const HIDDEN_PARENT_SELECTOR = '[hidden], [aria-hidden="true"]';
-  const MAX_STAGGER = 360;
-  const STAGGER_STEP = 72;
+  const MAX_STAGGER = 240;
+  const STAGGER_STEP = 56;
 
   function prefersReducedMotion() {
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

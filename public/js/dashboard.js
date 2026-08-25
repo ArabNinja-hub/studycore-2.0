@@ -39,7 +39,7 @@
     $('#dashSub').textContent = `${user.email} · ${sub}`;
     $('#dashHeroActions').innerHTML = `
       <a class="btn btn-amber btn-sm" href="#premium">${SC.icon('crown', { size: 15 })} Premium</a>
-      <a class="btn btn-ghost btn-sm" style="color:#fff;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.07);" href="/pages/courses.html">Browse Courses</a>`;
+      <a class="btn btn-on-dark btn-sm" href="/pages/courses.html">Browse Courses</a>`;
   }
 
   /* ── Status banner ──────────────────────── */

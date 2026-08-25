@@ -23,9 +23,6 @@
   // Hero visual + icon
   SC.Hero.init($('#courseHero'), slug);
   $('#courseHeroIcon').innerHTML = SC.icon(SC.courseIcon(slug), { size: 30 });
-  document.querySelectorAll('[data-course-quick-icon]').forEach((slot) => {
-    slot.innerHTML = SC.icon(slot.getAttribute('data-course-quick-icon'), { size: 18 });
-  });
 
   const topicAnchor = (name) => `lesson-topic-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 
@@ -225,7 +222,7 @@
         </div>
         <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
           <a class="btn btn-amber" href="#lessons">Review Course</a>
-          <a class="btn btn-ghost" style="color:#fff;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.07);" href="/pages/courses.html">Explore Another Course</a>
+          <a class="btn btn-on-dark" href="/pages/courses.html">Explore Another Course</a>
         </div>`;
     }
 
