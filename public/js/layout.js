@@ -121,6 +121,35 @@
   }
 
   /* ── Navbar ─────────────────────────────── */
+  function notificationBellHtml() {
+    return `
+      <div class="notif-wrapper" id="notifWrapper">
+        <button class="icon-btn notif-bell-btn" id="notifBellBtn" aria-label="Notifications" aria-haspopup="true" aria-expanded="false" title="Notifications">
+          ${SC.icon('bell', { size: 19 })}
+          <span class="notif-badge" id="notifBadge" style="display:none;" aria-live="polite"></span>
+        </button>
+        <div class="notif-panel" id="notifPanel" role="region" aria-label="Notifications panel">
+          <div class="notif-panel-head">
+            <div class="notif-panel-title-row">
+              <h3>Notifications</h3>
+              <span class="notif-unread-count-pill" id="notifUnreadCountPill" style="display:none;"></span>
+            </div>
+            <button type="button" class="notif-mark-all-btn" id="notifMarkAllBtn" style="display:none;">Mark all as read</button>
+          </div>
+          <div class="notif-panel-body" id="notifList">
+            <div class="notif-loading"><div class="skeleton skeleton-row" style="height:56px;"></div><div class="skeleton skeleton-row" style="height:56px;"></div></div>
+          </div>
+          <div class="notif-panel-foot">
+            <a href="/pages/announcements.html" class="notif-view-all-link">
+              <span>View all announcements</span>
+              ${SC.icon('arrow-right', { size: 14 })}
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
   function accountMenuHtml(user) {
     const label = StudyCoreAuth.subscriptionLabel(user);
     const badgeCls = { premium: 'badge-amber', trial: '', pending: 'badge-amber', expired: 'badge-red' }[label.cls] || '';
@@ -189,6 +218,7 @@
         </ul>
         <div class="nav-actions" id="navActions">
           <button class="icon-btn nav-search-btn" id="navSearchBtn" aria-label="Search StudyCore">${SC.icon('search', { size: 19 })}</button>
+          ${notificationBellHtml()}
           <span id="navAuthSlot" aria-live="polite"></span>
         </div>
         <button class="icon-btn hamburger" id="hamburgerBtn" aria-label="Open menu" aria-expanded="false">${SC.icon('menu', { size: 22 })}</button>
@@ -323,6 +353,7 @@
     if (!trigger || !panel) return;
     trigger.addEventListener('click', (e) => {
       e.stopPropagation();
+      NotificationManager.closePanel();
       const open = panel.classList.toggle('open');
       trigger.setAttribute('aria-expanded', String(open));
     });
@@ -420,7 +451,7 @@
 
         <div class="mobile-nav-divider" style="--idx:6"></div>
         <div class="mobile-nav-label" style="--idx:7">More</div>
-        <a href="/pages/announcements.html"${activeAttrs('announcements')} style="--idx:8">${SC.icon('bell', { size: 20 })} Announcements</a>
+        <a href="/pages/announcements.html"${activeAttrs('announcements')} style="--idx:8" id="mobileNavAnnouncementsLink">${SC.icon('bell', { size: 20 })} <span>Announcements</span><span class="notif-badge-inline" id="mobileNavNotifBadge" style="display:none;"></span></a>
         <a href="/pages/pricing.html" style="--idx:9">${SC.icon('crown', { size: 20 })} Premium</a>
         <a href="/pages/about.html"${activeAttrs('about')} style="--idx:10">${SC.icon('info', { size: 20 })} About StudyCore</a>
 
@@ -707,6 +738,422 @@
     bindCommunityGroupBtn(host);
   }
 
+  /* ── Announcement Details Modal ──────────── */
+  function openAnnouncementModal(announcement) {
+    if (!announcement) return;
+    let overlay = document.getElementById('announcementModalOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'announcementModalOverlay';
+      overlay.className = 'modal-overlay announcement-modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal announcement-modal" role="dialog" aria-modal="true" aria-labelledby="annModalTitle">
+          <button type="button" class="icon-btn modal-close" id="annModalClose" aria-label="Close dialog">
+            ${SC.icon('x', { size: 19 })}
+          </button>
+          <div class="ann-modal-header">
+            <span class="eyebrow" id="annModalEyebrow" style="margin-bottom:6px;">
+              ${SC.icon('bell', { size: 13 })} Announcement
+            </span>
+            <h2 id="annModalTitle" style="font-size:1.35rem;line-height:1.25;margin:6px 0 10px;"></h2>
+            <div class="ann-modal-meta" id="annModalMeta" style="display:flex;align-items:center;gap:10px;font-size:0.8rem;color:var(--muted);flex-wrap:wrap;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--border);"></div>
+          </div>
+          <div class="ann-modal-body" id="annModalBody" style="font-size:0.95rem;line-height:1.7;color:var(--ink);white-space:pre-wrap;word-break:break-word;max-height:55vh;overflow-y:auto;padding-right:4px;"></div>
+          <div class="ann-modal-actions" style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:16px;border-top:1px solid var(--border);flex-wrap:wrap;gap:12px;">
+            <a href="/pages/announcements.html" class="btn btn-outline btn-sm">
+              <span>Announcement Centre</span>
+              ${SC.icon('arrow-right', { size: 14 })}
+            </a>
+            <button type="button" class="btn btn-primary btn-sm" id="annModalDismissBtn">Done</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      const closeDialog = () => {
+        overlay.classList.remove('open');
+        document.body.style.overflow = '';
+      };
+
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeDialog();
+      });
+      document.getElementById('annModalClose').addEventListener('click', closeDialog);
+      document.getElementById('annModalDismissBtn').addEventListener('click', closeDialog);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && overlay.classList.contains('open')) closeDialog();
+      });
+    }
+
+    const titleEl = document.getElementById('annModalTitle');
+    const eyebrowEl = document.getElementById('annModalEyebrow');
+    const metaEl = document.getElementById('annModalMeta');
+    const bodyEl = document.getElementById('annModalBody');
+
+    titleEl.textContent = announcement.title || 'Announcement';
+
+    const iconHtml = announcement.pinned ? SC.icon('crown', { size: 13 }) : SC.icon('bell', { size: 13 });
+    eyebrowEl.innerHTML = `${iconHtml} Official Announcement`;
+
+    const metaParts = [];
+    if (announcement.createdAt) {
+      metaParts.push(`<span>${SC.icon('calendar', { size: 13 })} ${formatDate(announcement.createdAt)} (${timeAgo(announcement.createdAt)})</span>`);
+    }
+    if (announcement.subject) {
+      metaParts.push(`<span>${SC.icon('library', { size: 13 })} ${escapeHtml(announcement.subject)}</span>`);
+    }
+    if (announcement.pinned) {
+      metaParts.push(`<span class="badge badge-amber" style="font-size:0.68rem;">Pinned</span>`);
+    }
+    metaEl.innerHTML = metaParts.join(' ');
+
+    bodyEl.textContent = announcement.description || 'No additional details provided.';
+
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  /* ── Announcement Notification System ───── */
+  const NotificationManager = {
+    cachedAnnouncements: [],
+    unreadCount: 0,
+    isOpen: false,
+    currentUser: null,
+    pollInterval: null,
+    channel: null,
+
+    init(user) {
+      this.currentUser = user;
+      this.bindUI();
+      this.bindSync();
+      if (this.currentUser) {
+        this.fetchStatus();
+        this.startPolling();
+      } else {
+        this.updateBadge(0);
+      }
+    },
+
+    bindUI() {
+      const bellBtn = document.getElementById('notifBellBtn');
+      const panel = document.getElementById('notifPanel');
+      const markAllBtn = document.getElementById('notifMarkAllBtn');
+      if (!bellBtn || !panel) return;
+
+      bellBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.togglePanel();
+      });
+
+      if (markAllBtn) {
+        markAllBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.markAllAsRead();
+        });
+      }
+
+      document.addEventListener('click', (e) => {
+        const wrapper = document.getElementById('notifWrapper');
+        if (this.isOpen && wrapper && !wrapper.contains(e.target)) {
+          this.closePanel();
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.isOpen) {
+          this.closePanel();
+        }
+      });
+
+      window.addEventListener('resize', () => {
+        if (this.isOpen) this.clampPanelToViewport();
+      }, { passive: true });
+    },
+
+    bindSync() {
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          this.channel = new BroadcastChannel('studycore_notifications');
+          this.channel.onmessage = (event) => {
+            if (event.data && event.data.type === 'NOTIFICATIONS_UPDATED') {
+              this.fetchStatus(false);
+            }
+          };
+        } catch { /* ignore */ }
+      }
+
+      window.addEventListener('storage', (e) => {
+        if (e.key === 'sc_notifs_synced_at') {
+          this.fetchStatus(false);
+        }
+      });
+    },
+
+    broadcastUpdate() {
+      if (this.channel) {
+        try { this.channel.postMessage({ type: 'NOTIFICATIONS_UPDATED', timestamp: Date.now() }); } catch {}
+      }
+      try {
+        localStorage.setItem('sc_notifs_synced_at', String(Date.now()));
+      } catch {}
+    },
+
+    startPolling() {
+      if (this.pollInterval) clearInterval(this.pollInterval);
+      this.pollInterval = setInterval(() => {
+        if (!document.hidden && this.currentUser) {
+          this.fetchStatus(false);
+        }
+      }, 45000);
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && this.currentUser) {
+          this.fetchStatus(false);
+        }
+      });
+
+      window.addEventListener('focus', () => {
+        if (this.currentUser) {
+          this.fetchStatus(false);
+        }
+      });
+    },
+
+    async fetchStatus(forceListRefresh = false) {
+      if (!this.currentUser) return;
+      try {
+        if (this.isOpen || forceListRefresh) {
+          const data = await StudyCoreAPI.getNotifications({ limit: 15 });
+          this.unreadCount = data.unreadCount || 0;
+          this.cachedAnnouncements = data.announcements || [];
+          this.updateBadge(this.unreadCount);
+          this.renderList();
+        } else {
+          const data = await StudyCoreAPI.getUnreadNotificationCount();
+          this.unreadCount = data.unreadCount || 0;
+          this.updateBadge(this.unreadCount);
+        }
+      } catch (err) {
+        // network error or unauthorized
+      }
+    },
+
+    updateBadge(count) {
+      this.unreadCount = count;
+      const badge = document.getElementById('notifBadge');
+      const mobileBadge = document.getElementById('mobileNavNotifBadge');
+      const pill = document.getElementById('notifUnreadCountPill');
+      const markAllBtn = document.getElementById('notifMarkAllBtn');
+
+      if (badge) {
+        if (count > 0) {
+          badge.style.display = 'flex';
+          badge.textContent = count > 99 ? '99+' : String(count);
+          badge.setAttribute('aria-label', `${count} unread notifications`);
+        } else {
+          badge.style.display = 'none';
+          badge.textContent = '';
+          badge.removeAttribute('aria-label');
+        }
+      }
+
+      if (mobileBadge) {
+        if (count > 0) {
+          mobileBadge.style.display = 'inline-flex';
+          mobileBadge.textContent = count > 99 ? '99+' : String(count);
+        } else {
+          mobileBadge.style.display = 'none';
+          mobileBadge.textContent = '';
+        }
+      }
+
+      if (pill) {
+        if (count > 0) {
+          pill.style.display = 'inline-flex';
+          pill.textContent = `${count} new`;
+        } else {
+          pill.style.display = 'none';
+        }
+      }
+
+      if (markAllBtn) {
+        markAllBtn.style.display = (count > 0 && this.currentUser) ? 'inline-block' : 'none';
+      }
+    },
+
+    togglePanel() {
+      if (this.isOpen) this.closePanel();
+      else this.openPanel();
+    },
+
+    openPanel() {
+      const panel = document.getElementById('notifPanel');
+      const bellBtn = document.getElementById('notifBellBtn');
+      const accountPanel = document.getElementById('accountPanel');
+      const accountTrigger = document.getElementById('accountTrigger');
+      if (accountPanel) accountPanel.classList.remove('open');
+      if (accountTrigger) accountTrigger.setAttribute('aria-expanded', 'false');
+
+      if (!panel || !bellBtn) return;
+      this.isOpen = true;
+      panel.classList.add('open');
+      bellBtn.setAttribute('aria-expanded', 'true');
+      this.clampPanelToViewport();
+
+      if (!this.currentUser) {
+        this.renderGuestState();
+        return;
+      }
+
+      this.renderLoading();
+      this.fetchStatus(true);
+    },
+
+    closePanel() {
+      const panel = document.getElementById('notifPanel');
+      const bellBtn = document.getElementById('notifBellBtn');
+      if (panel) panel.classList.remove('open');
+      if (bellBtn) bellBtn.setAttribute('aria-expanded', 'false');
+      this.isOpen = false;
+    },
+
+    clampPanelToViewport() {
+      const panel = document.getElementById('notifPanel');
+      if (!panel) return;
+      const margin = 10;
+      const rect = panel.getBoundingClientRect();
+      if (rect.width === 0) return;
+      let shift = 0;
+      if (rect.left < margin) shift += margin - rect.left;
+      else if (rect.right > window.innerWidth - margin) shift -= rect.right - (window.innerWidth - margin);
+      panel.style.setProperty('--notif-shift', `${Math.round(shift)}px`);
+    },
+
+    renderLoading() {
+      const list = document.getElementById('notifList');
+      if (list) {
+        list.innerHTML = `
+          <div style="padding:16px;display:flex;flex-direction:column;gap:10px;">
+            <div class="skeleton skeleton-row" style="height:54px;"></div>
+            <div class="skeleton skeleton-row" style="height:54px;"></div>
+          </div>`;
+      }
+    },
+
+    renderGuestState() {
+      const list = document.getElementById('notifList');
+      const markAllBtn = document.getElementById('notifMarkAllBtn');
+      if (markAllBtn) markAllBtn.style.display = 'none';
+      if (!list) return;
+      list.innerHTML = `
+        <div class="notif-guest-state">
+          <div class="notif-guest-icon">${SC.icon('bell', { size: 24 })}</div>
+          <h4>Stay updated with StudyCore</h4>
+          <p>Log in or create a free account to track notifications and announcements.</p>
+          <div class="notif-guest-actions">
+            <a href="/login.html" class="btn btn-outline btn-sm">Log In</a>
+            <a href="/signup.html" class="btn btn-primary btn-sm">Get Started</a>
+          </div>
+        </div>
+      `;
+    },
+
+    renderList() {
+      const list = document.getElementById('notifList');
+      if (!list) return;
+      const items = this.cachedAnnouncements;
+      if (!items || !items.length) {
+        list.innerHTML = `
+          <div class="notif-empty-state">
+            <span class="notif-empty-icon">${SC.icon('bell', { size: 24 })}</span>
+            <strong>No notifications right now</strong>
+            <p>Notices from StudyCore will appear here.</p>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = items.map((a) => {
+        const isUnread = !a.isRead;
+        const iconName = a.pinned ? 'crown' : 'bell';
+        const rawDesc = a.description || '';
+        const preview = rawDesc.length > 110 ? rawDesc.slice(0, 107) + '…' : rawDesc;
+        const timeStr = timeAgo(a.createdAt);
+        const tag = a.subject ? `<span class="notif-tag">${escapeHtml(a.subject)}</span>` : '';
+        const pinnedBadge = a.pinned ? `<span class="badge badge-amber" style="font-size:0.6rem;padding:1px 6px;">Pinned</span>` : '';
+
+        return `
+          <div class="notif-item ${isUnread ? 'unread' : ''} ${a.pinned ? 'pinned' : ''}" data-notif-id="${a.id}" role="button" tabindex="0" aria-label="${escapeHtml(a.title)}">
+            <div class="notif-item-icon">${SC.icon(iconName, { size: 16 })}</div>
+            <div class="notif-item-content">
+              <div class="notif-item-header">
+                <span class="notif-item-title">${escapeHtml(a.title)}</span>
+                ${isUnread ? '<span class="notif-unread-dot" title="Unread"></span>' : ''}
+              </div>
+              ${preview ? `<p class="notif-item-desc">${escapeHtml(preview)}</p>` : ''}
+              <div class="notif-item-meta">
+                <span>${timeStr}</span>
+                ${tag}
+                ${pinnedBadge}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      list.querySelectorAll('.notif-item').forEach((el) => {
+        const id = el.getAttribute('data-notif-id');
+        const item = items.find((it) => it.id === id);
+        if (!item) return;
+
+        const openHandler = (e) => {
+          e.preventDefault();
+          this.handleItemClick(item);
+        };
+
+        el.addEventListener('click', openHandler);
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openHandler(e);
+          }
+        });
+      });
+    },
+
+    async handleItemClick(announcement) {
+      if (!announcement.isRead) {
+        announcement.isRead = true;
+        this.unreadCount = Math.max(0, this.unreadCount - 1);
+        this.updateBadge(this.unreadCount);
+        this.renderList();
+        try {
+          await StudyCoreAPI.markNotificationRead(announcement.id);
+          this.broadcastUpdate();
+        } catch (err) {
+          console.error('Failed to mark read', err);
+        }
+      }
+      this.closePanel();
+      openAnnouncementModal(announcement);
+    },
+
+    async markAllAsRead() {
+      if (!this.currentUser || this.unreadCount === 0) return;
+      this.unreadCount = 0;
+      this.cachedAnnouncements.forEach((a) => { a.isRead = true; });
+      this.updateBadge(0);
+      this.renderList();
+      try {
+        await StudyCoreAPI.markAllNotificationsRead();
+        this.broadcastUpdate();
+        showToast('All notifications marked as read.', 'info');
+      } catch (err) {
+        showToast(err.message || 'Could not mark all as read.', 'error');
+      }
+    }
+  };
+
   function ensureMobileMeta() {
     const vp = document.querySelector('meta[name="viewport"]');
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
@@ -719,7 +1166,7 @@
   }
 
   /* ── Boot ──────────────────────────────── */
-  function init() {
+  async function init() {
     ensureMobileMeta();
     renderNav();
     renderMobileNav();
@@ -731,8 +1178,10 @@
     } catch (err) {
       console.error('StudyCore: mobile nav init failed', err);
     }
+    const user = await StudyCoreAuth.fetchSession();
     renderNavAuth();
     renderMobileNavAuth();
+    NotificationManager.init(user);
 
     // Footer group button (official invite link from the server)
     whatsappLinks().then((links) => {
@@ -747,6 +1196,8 @@
   global.SCLayout = {
     init,
     openSearchOverlay,
+    openAnnouncementModal,
+    refreshNotifications: (force = true) => NotificationManager.fetchStatus(force),
     whatsappLinks,
     renderCommunityPanel,
     bindCommunityGroupBtn,

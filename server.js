@@ -13,6 +13,7 @@ const authRoutes = require('./routes/auth.routes');
 const resourceRoutes = require('./routes/resources.routes');
 const coursesRoutes = require('./routes/courses.routes');
 const adminRoutes = require('./routes/admin.routes');
+const notificationRoutes = require('./routes/notifications.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,6 +53,7 @@ app.get('/api/config', (req, res) => {
 app.use('/api/resources', resourceRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // ---- Protected view routes (server-side gated, must be registered BEFORE
 // the static file middleware so an unauthenticated request can never receive

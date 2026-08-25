@@ -31,6 +31,7 @@
 
       <section class="section">
         <div class="container" style="max-width:860px;">
+          <div id="announcementToolbar" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;"></div>
           <div class="announcement-list" id="announcementList">
             <div class="skeleton skeleton-row" style="height:90px;"></div>
             <div class="skeleton skeleton-row" style="height:90px;"></div>
@@ -51,6 +52,7 @@
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
         const list = document.getElementById('announcementList');
+        const toolbar = document.getElementById('announcementToolbar');
         const user = await StudyCoreAuth.fetchSession();
         if (!user) {
           list.innerHTML = emptyState({
@@ -60,28 +62,94 @@
           });
           return;
         }
-        try {
-          const { resources } = await StudyCoreAPI.listResources({ category: 'announcement', sort: 'newest', pageSize: 30 });
-          if (!resources.length) {
-            list.innerHTML = emptyState({ icon: 'bell', title: 'No announcements yet', body: 'Notices from StudyCore will appear here.' });
-            return;
-          }
-          list.innerHTML = resources.map((a) => `
-            <article class="announcement-card ${a.pinned ? 'pinned' : ''}">
-              <div class="announcement-icon">${a.pinned ? SC.icon('crown', { size: 19 }) : SC.icon('bell', { size: 19 })}</div>
-              <div class="announcement-body" style="flex:1;">
-                <h3>${escapeHtml(a.title)} ${a.pinned ? '<span class="badge badge-amber" style="margin-left:8px;">Pinned</span>' : ''}</h3>
-                ${a.description ? `<p style="white-space:pre-wrap;">${escapeHtml(a.description)}</p>` : ''}
-                <div class="announcement-meta">
-                  ${a.subject ? `<span>${SC.icon('library', { size: 13 })} ${escapeHtml(a.subject)}</span>` : ''}
-                  <span>${SC.icon('calendar', { size: 13 })} ${formatDate(a.createdAt)}</span>
+
+        async function load() {
+          try {
+            const data = await StudyCoreAPI.getNotifications({ limit: 50 });
+            const resources = data.announcements || [];
+            const unreadCount = data.unreadCount || 0;
+
+            if (!resources.length) {
+              toolbar.innerHTML = '';
+              list.innerHTML = emptyState({ icon: 'bell', title: 'No announcements yet', body: 'Notices from StudyCore will appear here.' });
+              return;
+            }
+
+            if (unreadCount > 0) {
+              toolbar.innerHTML = `
+                <div style="font-size:0.88rem;color:var(--muted);">
+                  <strong>${unreadCount}</strong> unread ${unreadCount === 1 ? 'notice' : 'notices'}
                 </div>
-              </div>
-            </article>
-          `).join('');
-        } catch (err) {
-          list.innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load announcements', body: escapeHtml(err.message) });
+                <button class="btn btn-outline btn-sm" id="pageMarkAllBtn" style="font-size:0.8rem;">
+                  ${SC.icon('check', { size: 14 })} Mark all as read
+                </button>
+              `;
+              document.getElementById('pageMarkAllBtn').addEventListener('click', async () => {
+                try {
+                  await StudyCoreAPI.markAllNotificationsRead();
+                  if (window.SCLayout && window.SCLayout.refreshNotifications) {
+                    window.SCLayout.refreshNotifications();
+                  }
+                  showToast('All announcements marked as read.', 'success');
+                  load();
+                } catch (err) {
+                  showToast(err.message, 'error');
+                }
+              });
+            } else {
+              toolbar.innerHTML = `<div style="font-size:0.85rem;color:var(--muted);">${resources.length} total ${resources.length === 1 ? 'announcement' : 'announcements'} · You're all caught up</div>`;
+            }
+
+            list.innerHTML = resources.map((a) => {
+              const isUnread = !a.isRead;
+              return `
+                <article class="announcement-card ${a.pinned ? 'pinned' : ''} ${isUnread ? 'is-unread' : ''}" data-ann-id="${a.id}" style="cursor:pointer;${isUnread ? 'border-color:rgba(15,140,127,0.35);background:color-mix(in srgb,var(--teal-50) 40%,var(--card));' : ''}">
+                  <div class="announcement-icon">${a.pinned ? SC.icon('crown', { size: 19 }) : SC.icon('bell', { size: 19 })}</div>
+                  <div class="announcement-body" style="flex:1;min-width:0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+                      <h3 style="margin-bottom:0;">
+                        ${escapeHtml(a.title)}
+                        ${a.pinned ? '<span class="badge badge-amber" style="margin-left:6px;font-size:0.68rem;">Pinned</span>' : ''}
+                        ${isUnread ? '<span class="badge badge-green" style="margin-left:6px;font-size:0.68rem;">New</span>' : ''}
+                      </h3>
+                      ${isUnread ? '<span class="notif-unread-dot" title="Unread"></span>' : ''}
+                    </div>
+                    ${a.description ? `<p style="white-space:pre-wrap;margin-top:6px;">${escapeHtml(a.description)}</p>` : ''}
+                    <div class="announcement-meta">
+                      ${a.subject ? `<span>${SC.icon('library', { size: 13 })} ${escapeHtml(a.subject)}</span>` : ''}
+                      <span>${SC.icon('calendar', { size: 13 })} ${formatDate(a.createdAt)} (${timeAgo(a.createdAt)})</span>
+                    </div>
+                  </div>
+                </article>
+              `;
+            }).join('');
+
+            list.querySelectorAll('[data-ann-id]').forEach((el) => {
+              const id = el.getAttribute('data-ann-id');
+              const ann = resources.find((r) => r.id === id);
+              if (!ann) return;
+              el.addEventListener('click', async () => {
+                if (!ann.isRead) {
+                  try {
+                    await StudyCoreAPI.markNotificationRead(ann.id);
+                    ann.isRead = true;
+                    if (window.SCLayout && window.SCLayout.refreshNotifications) {
+                      window.SCLayout.refreshNotifications();
+                    }
+                    load();
+                  } catch {}
+                }
+                if (window.SCLayout && window.SCLayout.openAnnouncementModal) {
+                  window.SCLayout.openAnnouncementModal(ann);
+                }
+              });
+            });
+          } catch (err) {
+            list.innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load announcements', body: escapeHtml(err.message) });
+          }
         }
+
+        load();
       });
     </script>
   </body>
