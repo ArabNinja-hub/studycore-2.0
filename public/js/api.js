@@ -79,6 +79,16 @@
     bookmark: (id) => request(`/api/resources/${id}/bookmark`, { method: 'POST' }),
     unbookmark: (id) => request(`/api/resources/${id}/bookmark`, { method: 'DELETE' }),
 
+    // Notifications & Announcements
+    getNotifications: (params = {}) => {
+      const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+      const qStr = qs.toString();
+      return request(`/api/notifications${qStr ? `?${qStr}` : ''}`);
+    },
+    getUnreadNotificationCount: () => request('/api/notifications/unread-count'),
+    markNotificationRead: (id) => request(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
+    markAllNotificationsRead: () => request('/api/notifications/read-all', { method: 'POST' }),
+
     // Admin
     adminListResources: (params = {}) => {
       const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));

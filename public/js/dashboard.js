@@ -313,16 +313,45 @@
   async function loadAnnouncements() {
     const list = $('#announcementList');
     try {
-      const { resources } = await StudyCoreAPI.listResources({ category: 'announcement', sort: 'newest', pageSize: 4 });
-      if (!resources.length) { list.innerHTML = '<p>No announcements right now.</p>'; return; }
-      list.innerHTML = resources.map((a) => `
-        <div class="activity-item" style="border-bottom:1px solid var(--border);">
-          <span class="act-icon">${a.pinned ? SC.icon('crown', { size: 15 }) : SC.icon('bell', { size: 15 })}</span>
+      const data = await StudyCoreAPI.getNotifications({ limit: 4 });
+      const resources = data.announcements || [];
+      if (!resources.length) { list.innerHTML = '<p style="color:var(--muted);font-size:0.88rem;">No announcements right now.</p>'; return; }
+      list.innerHTML = resources.map((a) => {
+        const isUnread = !a.isRead;
+        return `
+        <div class="activity-item" data-dash-ann="${a.id}" style="border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s;padding:8px 6px;border-radius:8px;${isUnread ? 'background:color-mix(in srgb,var(--teal-50) 40%,transparent);' : ''}">
+          <span class="act-icon" style="${a.pinned ? 'background:var(--amber-100);color:var(--amber-600);' : (isUnread ? 'background:var(--teal-50);color:var(--teal-600);' : '')}">${a.pinned ? SC.icon('crown', { size: 15 }) : SC.icon('bell', { size: 15 })}</span>
           <span class="act-body">
-            <strong style="white-space:normal;">${escapeHtml(a.title)}${a.pinned ? ' <span class="badge badge-amber" style="font-size:0.62rem;padding:1px 8px;">Pinned</span>' : ''}</strong>
-            <span>${formatDate(a.createdAt)}</span>
+            <strong style="white-space:normal;display:flex;align-items:center;gap:6px;">
+              ${escapeHtml(a.title)}
+              ${a.pinned ? '<span class="badge badge-amber" style="font-size:0.62rem;padding:1px 8px;">Pinned</span>' : ''}
+              ${isUnread ? '<span class="badge badge-green" style="font-size:0.62rem;padding:1px 7px;">New</span>' : ''}
+            </strong>
+            <span>${formatDate(a.createdAt)} (${timeAgo(a.createdAt)})</span>
           </span>
-        </div>`).join('');
+        </div>`;
+      }).join('');
+
+      list.querySelectorAll('[data-dash-ann]').forEach((el) => {
+        const id = el.getAttribute('data-dash-ann');
+        const ann = resources.find((r) => r.id === id);
+        if (!ann) return;
+        el.addEventListener('click', async () => {
+          if (!ann.isRead) {
+            try {
+              await StudyCoreAPI.markNotificationRead(ann.id);
+              ann.isRead = true;
+              if (window.SCLayout && window.SCLayout.refreshNotifications) {
+                window.SCLayout.refreshNotifications();
+              }
+              loadAnnouncements();
+            } catch {}
+          }
+          if (window.SCLayout && window.SCLayout.openAnnouncementModal) {
+            window.SCLayout.openAnnouncementModal(ann);
+          }
+        });
+      });
     } catch (err) {
       list.innerHTML = `<p style="color:var(--muted);">${escapeHtml(err.message)}</p>`;
     }

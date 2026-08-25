@@ -109,6 +109,17 @@ CREATE TABLE IF NOT EXISTS payments (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS announcement_reads (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  announcement_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+  read_at TEXT NOT NULL,
+  UNIQUE(user_id, announcement_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_announcement_reads_user ON announcement_reads(user_id);
+CREATE INDEX IF NOT EXISTS idx_announcement_reads_announcement ON announcement_reads(announcement_id);
+
 CREATE INDEX IF NOT EXISTS idx_resources_category ON resources(category);
 CREATE INDEX IF NOT EXISTS idx_resources_publish ON resources(publish_status);
 CREATE INDEX IF NOT EXISTS idx_downloads_resource ON downloads(resource_id);
@@ -170,6 +181,23 @@ try {
   db.exec('ALTER TABLE resources ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
 } catch {
   // column already exists - fine
+}
+
+// Read status for announcements per user (persistent read/unread tracking)
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS announcement_reads (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      announcement_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      read_at TEXT NOT NULL,
+      UNIQUE(user_id, announcement_id)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_announcement_reads_user ON announcement_reads(user_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_announcement_reads_announcement ON announcement_reads(announcement_id)');
+} catch {
+  // already exists - fine
 }
 
 // Student profile pictures are stored in R2 like every other upload; the

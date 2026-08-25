@@ -54,6 +54,20 @@
     categoryFieldVisibility();
   }
 
+  function notifyAnnouncementChange() {
+    if (window.SCLayout && window.SCLayout.refreshNotifications) {
+      window.SCLayout.refreshNotifications();
+    }
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('studycore_notifications');
+        bc.postMessage({ type: 'NOTIFICATIONS_UPDATED', timestamp: Date.now() });
+        bc.close();
+      }
+    } catch {}
+    try { localStorage.setItem('sc_notifs_synced_at', String(Date.now())); } catch {}
+  }
+
   function resetAnnouncementForm() {
     editingAnnouncementId = null;
     document.getElementById('announcementForm').reset();
@@ -98,6 +112,7 @@
       resetAnnouncementForm();
       loadResourceTable();
       loadAnalytics();
+      notifyAnnouncementChange();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -187,6 +202,7 @@
       loadResourceTable();
       loadAnalytics();
       loadTopicSuggest();
+      notifyAnnouncementChange();
     } catch (err) {
       showToast(err.message, 'error');
     } finally {
@@ -228,6 +244,7 @@
       showToast('Resource deleted.', 'success');
       loadResourceTable();
       loadAnalytics();
+      notifyAnnouncementChange();
     } catch (err) {
       showToast(err.message, 'error');
     }
@@ -247,6 +264,7 @@
       }
       showToast(`Marked as ${next}.`, 'success');
       loadResourceTable();
+      notifyAnnouncementChange();
     } catch (err) {
       showToast(err.message, 'error');
     }

@@ -461,7 +461,8 @@ router.get('/', requireAuth, gate, (req, res) => {
     resources: rows.map((row) => ({
       ...serializeResource(row),
       locked: canAccess(row, req.access) ? null : lockReason(row, req.access),
-      completed: db.prepare('SELECT 1 AS x FROM lesson_progress WHERE user_id = ? AND resource_id = ?').get(req.user.id, row.id) ? true : false
+      completed: db.prepare('SELECT 1 AS x FROM lesson_progress WHERE user_id = ? AND resource_id = ?').get(req.user.id, row.id) ? true : false,
+      isRead: row.category === 'announcement' ? Boolean(db.prepare('SELECT 1 FROM announcement_reads WHERE user_id = ? AND announcement_id = ?').get(req.user.id, row.id)) : undefined
     })),
     total,
     page: Number(page),
@@ -624,7 +625,25 @@ router.get('/:id', requireAuth, gate, (req, res) => {
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   db.prepare('UPDATE resources SET view_count = view_count + 1 WHERE id = ?').run(row.id);
-  res.json({ resource: serializeResource(row) });
+
+  if (row.category === 'announcement' && req.user) {
+    try {
+      db.prepare(`
+        INSERT INTO announcement_reads (id, user_id, announcement_id, read_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, announcement_id) DO NOTHING
+      `).run(`ar-${uuidv4()}`, req.user.id, row.id, new Date().toISOString());
+    } catch {
+      // ignore
+    }
+  }
+
+  res.json({
+    resource: {
+      ...serializeResource(row),
+      isRead: row.category === 'announcement' ? true : undefined
+    }
+  });
 });
 
 // Documents and videos are view-only. Keep an explicit denial at the former
