@@ -27,6 +27,11 @@ const PAGES = [
   '/',
   '/pages/courses.html',
   '/pages/subjects/mathematics.html',
+  '/pages/subjects/physics.html',
+  '/pages/subjects/chemistry.html',
+  '/pages/subjects/biology.html',
+  '/pages/subjects/programming.html',
+  '/pages/subjects/communication.html',
   '/pages/resources.html',
   '/login.html'
 ];
@@ -115,7 +120,24 @@ async function testDesktop(path) {
   const items = [...nav?.querySelectorAll('.nav-item') || []];
   check('4 nav links rendered', items.length === 4, `got ${items.length}`);
   check('2 flyout dropdowns rendered', nav?.querySelectorAll('.nav-dropdown').length === 2, `got ${nav?.querySelectorAll('.nav-dropdown').length}`);
-  check('search button present', !!nav?.querySelector('#navSearchBtn'));
+  const isCourseHome = document.body.dataset.page === 'course';
+  check(
+    isCourseHome ? 'search button omitted from course home' : 'search button present',
+    isCourseHome ? !nav?.querySelector('#navSearchBtn') : !!nav?.querySelector('#navSearchBtn')
+  );
+  check(
+    isCourseHome ? 'mobile search bar omitted from course home' : 'mobile search bar present',
+    isCourseHome ? !document.getElementById('mobileSearchBtn') : !!document.getElementById('mobileSearchBtn')
+  );
+  if (isCourseHome) {
+    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    check('search shortcut disabled on course home', !document.getElementById('searchOverlay'));
+  } else {
+    document.getElementById('navSearchBtn')?.click();
+    check('search button opens the global overlay', document.getElementById('searchOverlay')?.classList.contains('open'));
+    document.getElementById('globalSearchClose')?.click();
+    check('global search overlay closes', !document.getElementById('searchOverlay')?.classList.contains('open'));
+  }
   // Quiet chrome: no glider pill, no scroll progress bar, no floating dock,
   // no promotional top bar.
   check('no glider pill', !nav?.querySelector('#navGlider'));

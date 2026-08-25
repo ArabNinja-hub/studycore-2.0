@@ -43,6 +43,25 @@ test('all six course homes expose the same compact navigation', () => {
   }
 });
 
+test('course homes do not render the shared search controls', () => {
+  const layout = read('public/js/layout.js');
+  const courseCss = read('public/css/course.css');
+
+  assert.match(layout, /function globalSearchEnabled\(\)/);
+  assert.match(layout, /return currentPage\(\) !== 'course'/);
+  assert.match(layout, /const searchButtonHtml = globalSearchEnabled\(\)/);
+  assert.match(layout, /const mobileSearchHtml = globalSearchEnabled\(\)/);
+  assert.match(layout, /function bindNavSearch\(\) \{\s*if \(!globalSearchEnabled\(\)\) return;/);
+  assert.match(layout, /function openSearchOverlay\(\) \{\s*if \(!globalSearchEnabled\(\)\) return;/);
+  assert.doesNotMatch(courseCss, /course-search-row/, 'remove the obsolete course search styles');
+
+  for (const file of subjectPages) {
+    const html = fs.readFileSync(path.join(SUBJECT_DIR, file), 'utf8');
+    assert.match(html, /<body data-page="course"/, `${file}: identifies itself as a course home`);
+    assert.doesNotMatch(html, /<input[^>]+type="search"/i, `${file}: no course-level search field`);
+  }
+});
+
 test('course terms open a single-course video page', () => {
   const courseJs = read('public/js/course.js');
   const videoJs = read('public/js/video.js');
