@@ -29,8 +29,9 @@ test('all six course homes expose the same compact navigation', () => {
     assert.match(html, /<nav class="course-subnav" aria-label="Course sections">/);
     assert.equal(occurrences(html, /id="courseSubnav"/g), 1, `${file}: desktop course navigation`);
     assert.equal(occurrences(html, /id="courseJump"/g), 1, `${file}: mobile section picker`);
-    assert.equal(occurrences(html, /class="course-quick-nav"/g), 1, `${file}: course shortcuts`);
-    assert.equal(occurrences(html, /data-course-quick-icon=/g), 4, `${file}: shortcut icons`);
+    // The sticky subnav is the single source of course-section navigation;
+    // a second shortcut grid would repeat the same links on the same screen.
+    assert.doesNotMatch(html, /class="course-quick-nav"/, `${file}: no duplicate shortcut grid`);
 
     for (const target of targets) {
       assert.match(html, new RegExp(`(?:id="${target}"|value="#${target}")`), `${file}: ${target} is reachable`);

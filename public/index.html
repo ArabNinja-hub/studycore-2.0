@@ -56,12 +56,11 @@
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body data-page="home">
-    <div id="topBarHost"></div>
     <div id="siteNav"></div>
     <div id="mobileNavHost"></div>
 
     <main>
-      <!-- Hero -->
+      <!-- Hero: one stage, one message, one primary action -->
       <section class="hero">
         <div class="container">
           <div class="hero-copy">
@@ -69,14 +68,12 @@
             <h1>Learn with purpose.<br />Succeed with <em>confidence</em>.</h1>
             <p class="lead">
               StudyCore brings your university courses, structured lessons, study notes,
-              video learning, past papers and revision resources together in one place —
-              so everything you need to learn and stay on track is right here.
+              video learning and past papers together in one place — so you always know
+              what to study next.
             </p>
             <div class="hero-actions">
               <a class="btn btn-primary btn-lg" href="/pages/courses.html">Explore Courses</a>
-              <a class="btn btn-ghost btn-lg" style="color:rgba(255,255,255,0.9);border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.06);" href="/signup.html">
-                Start Free Trial <span aria-hidden="true"></span>
-              </a>
+              <a class="btn btn-on-dark btn-lg" href="/signup.html">Start Free Trial</a>
             </div>
           </div>
 
@@ -88,45 +85,12 @@
         </div>
       </section>
 
-      <!-- How it works -->
-      <section class="section">
-        <div class="container">
-          <div class="section-heading">
-            <span class="eyebrow">How StudyCore works</span>
-            <h2>One clear path from course to exam-ready</h2>
-            <p>Everything happens inside StudyCore — no tabs, no scattered files, no guesswork.</p>
-          </div>
-          <div class="how-grid" id="howItWorksGrid">
-            <div class="card card-pad card-hover">
-              <div class="card-icon" data-icon="library"></div>
-              <h3 style="margin-top:14px;">1. Choose a course</h3>
-              <p>Open Mathematics, Physics, Chemistry, Biology, Programming or Communication Skills.</p>
-            </div>
-            <div class="card card-pad card-hover">
-              <div class="card-icon" data-icon="layers"></div>
-              <h3 style="margin-top:14px;">2. Pick a topic</h3>
-              <p>Move through a course topic by topic — each one builds on the last.</p>
-            </div>
-            <div class="card card-pad card-hover">
-              <div class="card-icon" data-icon="play"></div>
-              <h3 style="margin-top:14px;">3. Work the lesson</h3>
-              <p>Watch the video, read the notes, practice with past papers — then mark it complete.</p>
-            </div>
-            <div class="card card-pad card-hover">
-              <div class="card-icon" data-icon="trending-up"></div>
-              <h3 style="margin-top:14px;">4. Track your progress</h3>
-              <p>Streaks, achievements and course completion keep you moving forward.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Courses -->
+      <!-- Courses: the primary content, right after the hero -->
       <section class="section" style="background:var(--bg-alt);">
         <div class="container">
           <div class="section-heading">
             <span class="eyebrow">Courses</span>
-            <h2>Every course, built for real exams</h2>
+            <h2>Pick a course and start learning</h2>
             <p>Structured university-level courses with lessons, notes and past papers organised the way you actually study.</p>
           </div>
           <div class="course-grid" id="courseGrid">
@@ -135,57 +99,57 @@
             <a class="course-card" href="/pages/subjects/mathematics.html" data-course="mathematics">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Mathematics</h3>
+                <h3>Mathematics</h3>
                 <p>Explore functions, calculus, algebra and problem-solving with structured university-level lessons.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
-                <span class="course-card-cta">Explore Mathematics Lessons</span>
+                <span class="course-card-cta">Explore Mathematics</span>
               </div>
             </a>
             <a class="course-card" href="/pages/subjects/physics.html" data-course="physics">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Physics</h3>
+                <h3>Physics</h3>
                 <p>Master mechanics, waves, electricity and modern physics through lessons, notes and past papers.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
-                <span class="course-card-cta">Explore Physics Lessons</span>
+                <span class="course-card-cta">Explore Physics</span>
               </div>
             </a>
             <a class="course-card" href="/pages/subjects/chemistry.html" data-course="chemistry">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Chemistry</h3>
+                <h3>Chemistry</h3>
                 <p>Understand atoms, bonding, reactions and quantitative chemistry with guided lessons and notes.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
-                <span class="course-card-cta">Explore Chemistry Lessons</span>
+                <span class="course-card-cta">Explore Chemistry</span>
               </div>
             </a>
             <a class="course-card" href="/pages/subjects/biology.html" data-course="biology">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Biology</h3>
+                <h3>Biology</h3>
                 <p>Study cells, genetics, physiology and living systems through structured lessons and resources.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
-                <span class="course-card-cta">Explore Biology Lessons</span>
+                <span class="course-card-cta">Explore Biology</span>
               </div>
             </a>
             <a class="course-card" href="/pages/subjects/programming.html" data-course="programming">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Programming</h3>
+                <h3>Programming</h3>
                 <p>Build programming fundamentals, logic and problem-solving skills with step-by-step lessons.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
-                <span class="course-card-cta">Explore Programming Lessons</span>
+                <span class="course-card-cta">Explore Programming</span>
               </div>
             </a>
             <a class="course-card" href="/pages/subjects/communication.html" data-course="communication">
               <div class="course-card-visual"><span data-hero-icon style="width:54px;height:54px;"></span></div>
               <div class="course-card-body">
-                <h3><span data-course-icon></span> Communication Skills</h3>
+                <h3>Communication Skills</h3>
                 <p>Improve writing, speaking, presentations and academic communication with focused lessons.</p>
                 <div class="course-card-meta"><span data-course-counts></span></div>
                 <div class="course-card-progress" data-course-progress hidden></div>
@@ -193,31 +157,78 @@
               </div>
             </a>
           </div>
+
+          <!-- Supporting resources: quiet text links, not competing cards -->
+          <div class="support-links">
+            <span class="support-links-label">Revision library:</span>
+            <a class="section-link" href="/pages/resources.html?type=past_paper">Past papers <span data-icon="arrow-right" data-icon-size="14"></span></a>
+            <a class="section-link" href="/pages/resources.html?type=document">Study notes <span data-icon="arrow-right" data-icon-size="14"></span></a>
+            <a class="section-link" href="/pages/resources.html?type=tutorial">Tutorial sheets <span data-icon="arrow-right" data-icon-size="14"></span></a>
+            <a class="section-link" href="/pages/resources.html">All resources <span data-icon="arrow-right" data-icon-size="14"></span></a>
+          </div>
         </div>
       </section>
 
-      <!-- Premium band -->
+      <!-- How it works: one compact numbered path, no card chrome -->
+      <section class="section">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">How it works</span>
+            <h2>One clear path from course to exam-ready</h2>
+            <p>Everything happens inside StudyCore — no scattered files, no guesswork.</p>
+          </div>
+          <ol class="steps">
+            <li class="step">
+              <span class="step-num">1</span>
+              <div>
+                <strong>Choose a course</strong>
+                <p>Mathematics, Physics, Chemistry, Biology, Programming or Communication Skills.</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">2</span>
+              <div>
+                <strong>Pick a topic</strong>
+                <p>Move through each course topic by topic — every step builds on the last.</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">3</span>
+              <div>
+                <strong>Work the lesson</strong>
+                <p>Watch the video, read the notes, practise with past papers.</p>
+              </div>
+            </li>
+            <li class="step">
+              <span class="step-num">4</span>
+              <div>
+                <strong>Track your progress</strong>
+                <p>Mark lessons complete and watch your streaks and completion grow.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- Premium callout: a single dark CTA panel -->
       <section class="section" style="padding-top:0;">
         <div class="container">
           <div class="premium-card">
-            <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-              <span class="badge badge-amber" style="background:rgba(245,166,35,0.15);color:#ffd080;border-color:rgba(245,166,35,0.4);">StudyCore Premium</span>
-            </div>
+            <span class="badge badge-amber" style="margin-bottom:14px;background:rgba(245,166,35,0.15);color:#ffd080;border-color:rgba(245,166,35,0.4);">StudyCore Premium</span>
             <h2 style="margin-bottom:10px;">Unlock the full learning experience</h2>
-            <p style="color:rgba(255,255,255,0.75);max-width:640px;">
-              Premium students get unlimited access to all video lessons, every study note,
-              tutorial sheet and past paper — across every course — plus full progress tracking.
+            <p style="color:rgba(255,255,255,0.75);max-width:620px;margin-bottom:24px;">
+              Premium students get unlimited video lessons, every study note, tutorial sheet
+              and past paper — across every course — plus full progress tracking.
             </p>
-            <ul class="premium-perks" style="max-width:640px;" id="premiumPerksHome"></ul>
             <div style="display:flex;gap:14px;flex-wrap:wrap;">
               <a class="btn btn-amber" href="/pages/pricing.html">See Premium</a>
-              <a class="btn btn-ghost" style="color:#fff;border:1.5px solid rgba(255,255,255,0.3);background:rgba(255,255,255,0.07);" href="/signup.html">Start Free Trial</a>
+              <a class="btn btn-on-dark" href="/signup.html">Start Free Trial</a>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- Community band -->
+      <!-- Community -->
       <section class="section" style="padding-top:0;">
         <div class="container">
           <div class="community-panel" id="communityPanel"></div>
@@ -237,11 +248,7 @@
       document.addEventListener('DOMContentLoaded', async () => {
         // Inject the shared icon set into static slots (progressive enhancement)
         document.querySelectorAll('[data-icon]').forEach((el) => {
-          el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 });
-        });
-        document.querySelectorAll('[data-course-icon]').forEach((el) => {
-          const slug = el.closest('[data-course]').getAttribute('data-course');
-          el.innerHTML = SC.icon(SC.courseIcon(slug), { size: 20 });
+          el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: Number(el.getAttribute('data-icon-size')) || 22 });
         });
         document.querySelectorAll('[data-hero-icon]').forEach((el) => {
           const slug = el.closest('[data-course]').getAttribute('data-course');

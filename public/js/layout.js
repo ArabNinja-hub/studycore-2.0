@@ -1,13 +1,13 @@
 // =============================================
 // STUDYCORE — Shared Layout (js/layout.js)
 // -----------------------------------------------
-// Renders the top bar, morphing navbar, interactive
-// sliding pill indicator, rich flyout submenus, mobile
-// navigation, account menu, global search overlay,
-// page progress transitions and footer for every public
-// + student page.
+// Renders the navbar, flyout submenus, mobile
+// navigation, account menu, global search overlay and
+// footer for every public + student page.
 //
-// Navigation model (learning-first, LMS-style):
+// The chrome is intentionally quiet: one sticky island,
+// no promotional top bar, no scroll progress bars, no
+// floating docks. Navigation model (learning-first):
 //   Logo/Home · Courses · Resources · Announcements · About · [Search] · [Dashboard] · [Profile/Login]
 // The global navigation stays intentionally small. Video lessons are opened
 // from a course home rather than competing with Courses as a second route to
@@ -37,24 +37,7 @@
     return page === id;
   }
 
-  /* ── Top announcement bar ───────────────── */
-  function renderTopBar() {
-    const host = document.getElementById('topBarHost');
-    if (!host) return;
-    if (sessionStorage.getItem('sc_topbar_dismissed')) { host.remove(); return; }
-    host.className = 'top-bar';
-    host.innerHTML = `
-      <span>${SC.icon('sparkles', { size: 14 })} StudyCore Premium — video lessons, study notes and past papers, all in one place.</span>
-      <a href="/pages/pricing.html">See Premium</a>
-      <button class="top-bar-close" aria-label="Dismiss announcement">${SC.icon('x', { size: 15 })}</button>
-    `;
-    host.querySelector('.top-bar-close').addEventListener('click', () => {
-      sessionStorage.setItem('sc_topbar_dismissed', '1');
-      host.remove();
-    });
-  }
-
-  /* ── Rich Flyout Submenus (WhatsApp Style) ── */
+  /* ── Rich Flyout Submenus ───────────────── */
   function coursesDropdownHtml() {
     const subjects = [
       { slug: 'mathematics', name: 'Mathematics', icon: 'calculator', desc: 'Calculus, algebra & problem-solving' },
@@ -196,16 +179,12 @@
 
     host.className = 'navbar';
     host.innerHTML = `
-      <div class="nav-scroll-progress" id="navScrollProgress" aria-hidden="true">
-        <div class="nav-scroll-bar" id="navScrollBar"></div>
-      </div>
       <div class="container nav-inner">
         <a href="/" class="nav-brand" aria-label="StudyCore home">
           <img src="/assets/logo-icon.jpg" alt="" width="38" height="38" />
           <span class="nav-brand-text"><em>Study</em>Core</span>
         </a>
         <ul class="nav-links" id="navLinksList">
-          <li class="nav-glider" id="navGlider" aria-hidden="true"></li>
           ${linksHtml}
         </ul>
         <div class="nav-actions" id="navActions">
@@ -216,59 +195,8 @@
       </div>
     `;
     bindNavSearch();
-    bindNavGlider();
     bindNavDropdowns();
     bindScrollMorph();
-  }
-
-  /* ── Interactive Gliding Pill Indicator ─── */
-  function bindNavGlider() {
-    const list = document.getElementById('navLinksList');
-    const glider = document.getElementById('navGlider');
-    if (!list || !glider) return;
-
-    const items = Array.from(list.querySelectorAll('.nav-item'));
-    const activeItem = items.find((it) => it.querySelector('.nav-link.active'));
-
-    function moveGliderTo(targetEl) {
-      if (!targetEl) {
-        glider.style.opacity = '0';
-        return;
-      }
-      const listRect = list.getBoundingClientRect();
-      const targetRect = targetEl.getBoundingClientRect();
-      if (targetRect.width === 0) return;
-      const left = targetRect.left - listRect.left;
-      const width = targetRect.width;
-
-      glider.style.opacity = '1';
-      glider.style.width = `${width}px`;
-      glider.style.transform = `translateX(${left}px)`;
-    }
-
-    if (activeItem) {
-      requestAnimationFrame(() => moveGliderTo(activeItem));
-    } else {
-      glider.style.opacity = '0';
-    }
-
-    items.forEach((item) => {
-      item.addEventListener('mouseenter', () => moveGliderTo(item));
-      item.addEventListener('focusin', () => moveGliderTo(item));
-    });
-
-    list.addEventListener('mouseleave', () => {
-      if (activeItem) {
-        moveGliderTo(activeItem);
-      } else {
-        glider.style.opacity = '0';
-      }
-    });
-
-    window.addEventListener('resize', () => {
-      const current = list.querySelector('.nav-item:hover') || activeItem;
-      if (current) moveGliderTo(current);
-    }, { passive: true });
   }
 
   /* ── Flyout Dropdown Hover & Focus Logic ─── */
@@ -343,38 +271,20 @@
     }, { passive: true });
   }
 
-  /* ── Header Scroll Morphing & Progress Bar ─ */
+  /* ── Header pinned state ─────────────────── */
   function bindScrollMorph() {
     const nav = document.getElementById('siteNav');
-    const scrollBar = document.getElementById('navScrollBar');
     if (!nav) return;
 
     let ticking = false;
 
     function onScroll() {
       const scrollY = window.scrollY || document.documentElement.scrollTop;
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight;
-      const scrollPercent = docHeight > 0 ? Math.min(100, Math.max(0, (scrollY / docHeight) * 100)) : 0;
-
       if (scrollY > 16) {
         nav.classList.add('is-scrolled');
       } else {
         nav.classList.remove('is-scrolled');
       }
-
-      if (scrollBar) {
-        scrollBar.style.width = `${scrollPercent}%`;
-      }
-
-      const dock = document.getElementById('floatingNavDock');
-      if (dock) {
-        if (scrollY > 300) {
-          dock.classList.add('visible');
-        } else {
-          dock.classList.remove('visible');
-        }
-      }
-
       ticking = false;
     }
 
@@ -576,85 +486,6 @@
     }
   }
 
-  /* ── Page Navigation Transition Progress Bar ─ */
-  function initPageProgressBar() {
-    let bar = document.getElementById('scPageProgressBar');
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = 'scPageProgressBar';
-      bar.className = 'sc-page-progress';
-      bar.setAttribute('aria-hidden', 'true');
-      document.body.prepend(bar);
-    }
-
-    function startProgress() {
-      bar.classList.remove('done');
-      bar.classList.add('running');
-    }
-
-    function finishProgress() {
-      bar.classList.add('done');
-      setTimeout(() => {
-        bar.classList.remove('running', 'done');
-      }, 450);
-    }
-
-    document.addEventListener('click', (e) => {
-      const link = e.target.closest('a');
-      if (!link) return;
-      const href = link.getAttribute('href');
-      if (!href) return;
-      if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:') || href.startsWith('tel:')) return;
-      if (link.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-
-      try {
-        const targetUrl = new URL(href, window.location.origin);
-        if (targetUrl.origin === window.location.origin && targetUrl.pathname !== window.location.pathname) {
-          startProgress();
-        }
-      } catch {}
-    });
-
-    finishProgress();
-  }
-
-  /* ── Floating Quick-Action Dock (Unique Academic Dock) ── */
-  function renderFloatingDock() {
-    let dock = document.getElementById('floatingNavDock');
-    if (dock) return;
-
-    dock = document.createElement('div');
-    dock.id = 'floatingNavDock';
-    dock.className = 'floating-nav-dock';
-    dock.setAttribute('aria-label', 'Quick shortcuts dock');
-    dock.innerHTML = `
-      <button class="dock-btn dock-btn-top" id="dockBackToTop" title="Back to top" aria-label="Back to top">
-        ${SC.icon('arrow-left', { size: 17, cls: 'dock-icon-top' })}
-      </button>
-      <button class="dock-btn dock-btn-search" id="dockSearchBtn" title="Search StudyCore" aria-label="Search StudyCore">
-        ${SC.icon('search', { size: 17 })}
-      </button>
-      <a class="dock-btn dock-btn-whatsapp" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" title="Follow WhatsApp Channel" aria-label="Follow WhatsApp Channel">
-        ${SC.icon('whatsapp', { size: 17 })}
-      </a>
-    `;
-    document.body.appendChild(dock);
-
-    const topBtn = document.getElementById('dockBackToTop');
-    if (topBtn) {
-      topBtn.addEventListener('click', () => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      });
-    }
-
-    const searchBtn = document.getElementById('dockSearchBtn');
-    if (searchBtn) {
-      searchBtn.addEventListener('click', () => {
-        openSearchOverlay();
-      });
-    }
-  }
-
   /* ── Global search overlay ──────────────── */
   const CAT_META = {
     video: { label: 'Video lesson', icon: 'video' },
@@ -810,7 +641,7 @@
             <p style="margin-bottom:12px;">Follow the official academic channel for tips, mentoring and updates.</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
               <a class="btn whatsapp-btn btn-sm" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">${SC.icon('whatsapp', { size: 16 })} Follow Channel</a>
-              <a class="btn btn-outline btn-sm" id="footerGroupBtn" style="display:none;border-color:rgba(255,255,255,0.3);color:#fff;" target="_blank" rel="noopener">Join Group</a>
+              <a class="btn btn-on-dark btn-sm" id="footerGroupBtn" style="display:none;" target="_blank" rel="noopener">Join Group</a>
             </div>
           </div>
         </div>
@@ -850,7 +681,6 @@
     whatsappLinks().then((links) => {
       if (links.group) {
         groupBtn.href = links.group;
-        groupBtn.innerHTML = SC.icon('whatsapp', { size: 16 }) + ' Join the WhatsApp Group';
         groupBtn.style.display = '';
       }
     });
@@ -861,14 +691,16 @@
     host.classList.add('community-panel');
     host.innerHTML = `
       <div>
-        <span class="badge badge-white" style="margin-bottom:14px;">${SC.icon('whatsapp', { size: 13 })} Official Academic Channel</span>
-        <h2>Stay connected with StudyCore</h2>
-        <p>Follow the official channel for academic tips, mentoring and updates — or join the student WhatsApp group.</p>
+        <span class="eyebrow" style="color:#128c7e;">${SC.icon('whatsapp', { size: 14 })} Community</span>
+        <h2>Study together on WhatsApp</h2>
+        <p>Follow the official academic channel for tips, mentoring and updates — and join the student group to ask questions and revise with classmates.</p>
         <div class="community-actions">
           <a class="btn whatsapp-btn" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">
-            ${SC.icon('whatsapp', { size: 18 })} Follow on WhatsApp
+            ${SC.icon('whatsapp', { size: 18 })} Follow the Channel
           </a>
-          <a class="btn btn-ghost" id="communityGroupBtn" style="display:none;color:#fff;border:1.5px solid rgba(255,255,255,0.28);" target="_blank" rel="noopener"></a>
+          <a class="btn btn-outline" id="communityGroupBtn" style="display:none;" target="_blank" rel="noopener">
+            ${SC.icon('users', { size: 18 })} Join the Student Group
+          </a>
         </div>
       </div>
     `;
@@ -889,11 +721,8 @@
   /* ── Boot ──────────────────────────────── */
   function init() {
     ensureMobileMeta();
-    initPageProgressBar();
-    renderTopBar();
     renderNav();
     renderMobileNav();
-    renderFloatingDock();
     renderFooter();
     // One failing sub-initialiser must not silently kill the rest of the
     // chrome (e.g. the Log In / Get Started buttons in the nav).
