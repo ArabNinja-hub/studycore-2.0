@@ -61,7 +61,31 @@
 
     <main>
       <!-- Hero: one stage, one message, one primary action -->
-      <section class="hero">
+      <section class="hero" id="homeHero">
+        <!-- Decorative floating animated StudyCore background logo -->
+        <div class="hero-bg-visual" aria-hidden="true">
+          <div class="hero-floating-logo-stage" id="heroLogoStage">
+            <div class="hero-floating-logo-track">
+              <div class="hero-floating-logo-element" id="heroLogoElement">
+                <!-- Ambient backlight aura -->
+                <div class="hero-logo-glow"></div>
+                <!-- Subtle orbital rings for futuristic academic depth -->
+                <div class="hero-logo-orbit hero-logo-orbit-1"></div>
+                <div class="hero-logo-orbit hero-logo-orbit-2"></div>
+                <!-- 3D StudyCore floating emblem graphic -->
+                <img
+                  src="/assets/studycore-emblem.png"
+                  alt=""
+                  class="hero-logo-img"
+                  draggable="false"
+                  loading="eager"
+                  decoding="async"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="container">
           <div class="hero-copy">
             <span class="eyebrow">University Learning Platform</span>
@@ -292,6 +316,65 @@
         } catch { /* static cards remain */ }
 
         SCLayout.renderCommunityPanel(document.getElementById('communityPanel'));
+
+        // Home hero decorative floating background logo controller
+        (function initHeroLogo() {
+          const heroEl = document.getElementById('homeHero');
+          const stageEl = document.getElementById('heroLogoStage');
+          const trackEl = heroEl ? heroEl.querySelector('.hero-floating-logo-track') : null;
+          const elemEl = document.getElementById('heroLogoElement');
+          if (!heroEl || !stageEl || !trackEl || !elemEl) return;
+
+          const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (prefersReduced) return;
+
+          // Pause animations when hero is scrolled out of view or tab is inactive to preserve performance
+          if ('IntersectionObserver' in window) {
+            const io = new IntersectionObserver(([entry]) => {
+              const isVis = entry.isIntersecting;
+              trackEl.style.animationPlayState = isVis ? 'running' : 'paused';
+              elemEl.style.animationPlayState = isVis ? 'running' : 'paused';
+            }, { threshold: 0.05 });
+            io.observe(heroEl);
+          }
+
+          document.addEventListener('visibilitychange', () => {
+            const state = document.hidden ? 'paused' : 'running';
+            trackEl.style.animationPlayState = state;
+            elemEl.style.animationPlayState = state;
+          });
+
+          // Subtle interactive mouse parallax on desktop devices with fine pointer
+          if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+            let targetX = 0, targetY = 0;
+            let currentX = 0, currentY = 0;
+            let rafId = null;
+
+            function onMouseMove(e) {
+              const rect = heroEl.getBoundingClientRect();
+              if (e.clientY < rect.top || e.clientY > rect.bottom) return;
+              const relX = (e.clientX - rect.left) / rect.width - 0.5;
+              const relY = (e.clientY - rect.top) / rect.height - 0.5;
+              targetX = relX * -22; // subtle shift opposite to mouse
+              targetY = relY * -16;
+            }
+
+            function updateParallax() {
+              currentX += (targetX - currentX) * 0.06;
+              currentY += (targetY - currentY) * 0.06;
+              stageEl.style.setProperty('--parallax-x', `${currentX.toFixed(2)}px`);
+              stageEl.style.setProperty('--parallax-y', `${currentY.toFixed(2)}px`);
+              rafId = requestAnimationFrame(updateParallax);
+            }
+
+            heroEl.addEventListener('mousemove', onMouseMove, { passive: true });
+            heroEl.addEventListener('mouseleave', () => {
+              targetX = 0;
+              targetY = 0;
+            });
+            updateParallax();
+          }
+        })();
       });
     </script>
   </body>
