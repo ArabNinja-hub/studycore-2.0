@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test scripts/test-ui.js scripts/test-notifications.js",
+    "test": "node --test scripts/test-ui.js scripts/test-notifications.js scripts/test-emails.js",
     "make-admin": "node scripts/make-admin.js"
   },
   "dependencies": {
@@ -20,6 +20,7 @@
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
+    "nodemailer": "^6.10.1",
     "uuid": "^11.1.1"
   },
   "engines": {
