@@ -19,6 +19,40 @@
 (function (global) {
   'use strict';
 
+  function applyTheme() {
+    // Delegate to StudyCoreAuth.applyTheme which reads localStorage and
+    // sets document.body.dataset.theme. Falls back to 'light' if auth.js
+    // hasn't loaded yet (shouldn't happen in normal page order).
+    if (typeof StudyCoreAuth !== 'undefined' && StudyCoreAuth.applyTheme) {
+      StudyCoreAuth.applyTheme();
+    } else {
+      const saved = localStorage.getItem('studycore_theme') || 'light';
+      document.body.dataset.theme = saved;
+    }
+  }
+
+  function toggleTheme() {
+    const current = document.body.dataset.theme || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    if (typeof StudyCoreAuth !== 'undefined' && StudyCoreAuth.applyTheme) {
+      StudyCoreAuth.applyTheme(next);
+    } else {
+      document.body.dataset.theme = next;
+      localStorage.setItem('studycore_theme', next);
+    }
+    // Update all toggle buttons to reflect the new state
+    document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+      const isDark = next === 'dark';
+      btn.innerHTML = SC.icon(isDark ? 'sun' : 'moon', { size: 20 });
+      btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+    });
+    document.querySelectorAll('[data-theme-toggle-desktop]').forEach((btn) => {
+      const isDark = next === 'dark';
+      btn.innerHTML = SC.icon(isDark ? 'sun' : 'moon', { size: 17 });
+      btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+    });
+  }
+
   const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k';
   const SITE = 'https://studycore.academy/';
 
@@ -219,6 +253,8 @@
     const searchButtonHtml = globalSearchEnabled()
       ? `<button class="icon-btn nav-search-btn" id="navSearchBtn" aria-label="Search StudyCore">${SC.icon('search', { size: 19 })}</button>`
       : '';
+    const isDarkInit = (document.body.dataset.theme || 'light') === 'dark';
+    const themeToggleHtml = `<button class="icon-btn nav-theme-btn" data-theme-toggle-desktop aria-label="${isDarkInit ? 'Switch to light mode' : 'Switch to dark mode'}">${SC.icon(isDarkInit ? 'sun' : 'moon', { size: 17 })}</button>`;
 
     host.className = 'navbar';
     host.innerHTML = `
@@ -232,6 +268,7 @@
         </ul>
         <div class="nav-actions" id="navActions">
           ${searchButtonHtml}
+          ${themeToggleHtml}
           ${notificationBellHtml()}
           <span id="navAuthSlot" aria-live="polite"></span>
         </div>
@@ -241,6 +278,12 @@
     bindNavSearch();
     bindNavDropdowns();
     bindScrollMorph();
+
+    // Desktop theme toggle
+    const desktopThemeBtn = host.querySelector('[data-theme-toggle-desktop]');
+    if (desktopThemeBtn) {
+      desktopThemeBtn.addEventListener('click', toggleTheme);
+    }
   }
 
   /* ── Flyout Dropdown Hover & Focus Logic ─── */
@@ -467,11 +510,27 @@
 
         <div class="mobile-nav-divider" style="--idx:12"></div>
         <div class="mobile-nav-label" style="--idx:13">Account</div>
-        <div id="mobileAuthSlot" style="--idx:14"></div>
+        <button type="button" data-theme-toggle style="--idx:14" aria-label="Switch to dark mode">${SC.icon('moon', { size: 20 })} <span>Dark Mode</span></button>
+        <div id="mobileAuthSlot" style="--idx:15"></div>
       </nav>
     `;
     const searchBtn = document.getElementById('mobileSearchBtn');
     if (searchBtn) searchBtn.addEventListener('click', () => openSearchOverlay());
+
+    // Theme toggle in mobile sidebar
+    const themeBtn = host.querySelector('[data-theme-toggle]');
+    if (themeBtn) {
+      // Set correct icon/label based on current theme
+      const isDark = (document.body.dataset.theme || 'light') === 'dark';
+      themeBtn.innerHTML = `${SC.icon(isDark ? 'sun' : 'moon', { size: 20 })} <span>${isDark ? 'Light Mode' : 'Dark Mode'}</span>`;
+      themeBtn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+      themeBtn.addEventListener('click', () => {
+        toggleTheme();
+        // Update the label text too
+        const nowDark = (document.body.dataset.theme || 'light') === 'dark';
+        themeBtn.querySelector('span').textContent = nowDark ? 'Light Mode' : 'Dark Mode';
+      });
+    }
 
     bindMobileAccordions();
   }
@@ -1168,6 +1227,9 @@
 
   /* ── Boot ──────────────────────────────── */
   async function init() {
+    // Apply the saved theme preference BEFORE rendering any chrome so the
+    // first paint is already in the correct mode (no flash of wrong theme).
+    applyTheme();
     ensureMobileMeta();
     renderNav();
     renderMobileNav();

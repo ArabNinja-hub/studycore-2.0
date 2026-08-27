@@ -130,6 +130,7 @@
     let resumeLoaded = false;
     let completed = false;
     let speedIdx = SPEEDS.indexOf(1);
+    let bufferTimer = null;
 
     const streamUrl = StudyCoreAPI.streamUrl(resourceId);
     let attachedSrc = '';
@@ -144,7 +145,7 @@
 
     async function probeStream() {
       const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), 12000);
+      const t = setTimeout(() => ctrl.abort(), 8000);
       try {
         let probe = await fetch(streamUrl, { method: 'HEAD', credentials: 'include', signal: ctrl.signal });
         if (probe.status === 405 || probe.status === 501) {
@@ -219,7 +220,7 @@
           console.error('[StudyCore player] metadata timeout', { src: video.currentSrc, readyState: video.readyState });
           showStreamError('The video is taking too long to start. Check your connection and try again.');
         }
-      }, 20000);
+      }, 15000);
     }
 
     function showStreamError(message) {
@@ -337,8 +338,17 @@
       clearTimeout(uiTimer);
       reportPosition();
     });
-    video.addEventListener('waiting', () => { if (playing()) loading.hidden = false; });
-    video.addEventListener('playing', () => { loading.hidden = true; });
+    video.addEventListener('waiting', () => {
+      if (!playing()) return;
+      // Debounce: only show the spinner if buffering lasts >400 ms, so
+      // brief stalls during seeking or network jitter don't flash it.
+      clearTimeout(bufferTimer);
+      bufferTimer = setTimeout(() => { if (playing()) loading.hidden = false; }, 400);
+    });
+    video.addEventListener('playing', () => {
+      clearTimeout(bufferTimer);
+      loading.hidden = true;
+    });
     video.addEventListener('timeupdate', tick);
     video.addEventListener('progress', tick);
     video.addEventListener('volumechange', () => {
@@ -432,6 +442,20 @@
       video.playbackRate = SPEEDS[speedIdx];
       speedBtn.textContent = `${SPEEDS[speedIdx]}×`;
     });
+    function lockLandscape() {
+      // On mobile, lock the screen to landscape when entering fullscreen so
+      // the video fills the width. The Screen Orientation API is supported on
+      // Android Chrome 37+ and iOS Safari 16.4+.  Silently ignored where
+      // unsupported or denied (e.g. iOS <16.4, system rotation lock on).
+      if (isTouch && screen.orientation && typeof screen.orientation.lock === 'function') {
+        screen.orientation.lock('landscape').catch(() => {});
+      }
+    }
+    function unlockOrientation() {
+      if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+        screen.orientation.unlock();
+      }
+    }
     function toggleFullscreen() {
       const docFs = document.fullscreenElement || document.webkitFullscreenElement;
       if (docFs) {
@@ -444,21 +468,23 @@
       // the button actually does something there instead of silently failing.
       if (typeof video.webkitEnterFullscreen === 'function'
         && !(shell.requestFullscreen || shell.webkitRequestFullscreen)) {
-        try { video.webkitEnterFullscreen(); return; } catch { /* fall through */ }
+        try { video.webkitEnterFullscreen(); lockLandscape(); return; } catch { /* fall through */ }
       }
       const req = shell.requestFullscreen || shell.webkitRequestFullscreen;
       if (req) {
         const result = req.call(shell);
         if (result && typeof result.catch === 'function') {
-          result.catch(() => {
+          result.then(lockLandscape).catch(() => {
             if (typeof video.webkitEnterFullscreen === 'function') {
-              try { video.webkitEnterFullscreen(); } catch { /* nothing else to try */ }
+              try { video.webkitEnterFullscreen(); lockLandscape(); } catch { /* nothing else to try */ }
             }
           });
+        } else {
+          lockLandscape();
         }
         return;
       }
-      if (typeof video.webkitEnterFullscreen === 'function') video.webkitEnterFullscreen();
+      if (typeof video.webkitEnterFullscreen === 'function') { video.webkitEnterFullscreen(); lockLandscape(); }
     }
     fsBtn.addEventListener('click', toggleFullscreen);
     function syncFsIcon() {
@@ -466,6 +492,7 @@
       fsBtn.innerHTML = fs
         ? SC.icon('minimize', { size: 18 })
         : SC.icon('maximize', { size: 18 });
+      if (!fs) unlockOrientation();
     }
     document.addEventListener('fullscreenchange', syncFsIcon);
     document.addEventListener('webkitfullscreenchange', syncFsIcon);
@@ -532,6 +559,8 @@
       destroy() {
         clearInterval(reportTimer);
         clearMetaTimer();
+        clearTimeout(bufferTimer);
+        unlockOrientation();
         window.removeEventListener('beforeunload', onBeforeUnload);
         video.pause();
         video.removeAttribute('src');
