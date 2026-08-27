@@ -418,6 +418,10 @@ body[data-theme='dark'] .nd-footer-link:hover { background: #143530; color: #fff
 
 .nav-actions { display: flex; align-items: center; gap: 10px; }
 .nav-search-btn { width: 40px; height: 40px; }
+.nav-theme-btn { width: 40px; height: 40px; }
+@media (max-width: 900px) {
+  .nav-theme-btn { display: none !important; }
+}
 .btn-pill { border-radius: 9999px; }
 
 /* ── Notification Bell & Dropdown ────────── */
