@@ -5,6 +5,7 @@ const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
+const { sendAccessGrantedEmail } = require('../lib/mailer');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('ADMIN'));
@@ -312,10 +313,12 @@ router.get('/payments', (req, res) => {
   res.json({ payments: rows });
 });
 
-router.post('/payments/:id/approve', (req, res) => {
+router.post('/payments/:id/approve', async (req, res) => {
   const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id);
   if (!payment) return res.status(404).json({ message: 'Payment request not found.' });
   if (payment.status !== 'PENDING') return res.status(400).json({ message: 'This payment has already been reviewed.' });
+
+  const student = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(payment.user_id);
 
   const now = new Date().toISOString();
   const subEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -325,7 +328,30 @@ router.post('/payments/:id/approve', (req, res) => {
   db.prepare(`UPDATE users SET subscription = 'premium', subscription_start = ?, subscription_end = ? WHERE id = ?`)
     .run(now, subEnd, payment.user_id);
 
-  res.json({ message: 'Payment approved - the student now has 30 days of premium access.' });
+  // The student just paid and is waiting to get in - tell them straight away
+  // that access is granted. This never throws (see lib/mailer.js), so a mail
+  // outage can't roll back or fail an already-approved payment.
+  let emailResult = { sent: false };
+  if (student && student.email) {
+    emailResult = await sendAccessGrantedEmail({
+      to: student.email,
+      name: student.name,
+      subscriptionEnd: subEnd,
+      method: payment.method,
+      amount: payment.amount
+    });
+  }
+
+  let message = 'Payment approved - the student now has 30 days of premium access.';
+  if (emailResult.sent) {
+    message += ` An access-granted email was sent to ${student.email}.`;
+  } else if (emailResult.simulated) {
+    message += ' (No email sent - SMTP is not configured. Add SMTP_HOST/SMTP_USER/SMTP_PASS to .env to enable emails.)';
+  } else {
+    message += ` (Email could not be sent: ${emailResult.error || 'unknown error'} - the subscription is still active.)`;
+  }
+
+  res.json({ message, emailSent: emailResult.sent });
 });
 
 router.post('/payments/:id/reject', (req, res) => {

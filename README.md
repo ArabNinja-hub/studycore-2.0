@@ -67,7 +67,15 @@ Manual mobile-money flow (no merchant API required):
 2. Student submits phone + method + reference from the dashboard **Premium section**
    (`/dashboard.html#premium`) → creates a `PENDING` payment.
 3. Admin confirms receipt on their phone and **Approves** in the admin dashboard →
-   30 days of Premium is activated. Rejecting leaves the student's plan unchanged.
+   30 days of Premium is activated, and the student is **emailed an "access granted"
+   confirmation** (payment confirmed, Premium active-until date, what it unlocks, and a
+   start-watching link). Rejecting leaves the student's plan unchanged.
+
+Emails go out over SMTP configured in `.env` (`SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` /
+`SMTP_PASS` / `EMAIL_FROM`), so any provider works — Gmail app password, Brevo, Mailgun,
+SendGrid, Resend SMTP. When SMTP is not configured (local dev, tests), approving still
+works: the email is rendered to the server console instead, and a mail failure can never
+block or roll back an approval. See `lib/mailer.js`.
 
 The public Pricing page routes logged-out visitors to signup and logged-in students
 straight to the dashboard Premium payment section.
@@ -91,6 +99,7 @@ middleware/security.js  security headers + in-memory rate limiting (auth endpoin
 middleware/upload.js    streaming R2 upload (SHA-256) + strict avatar upload config
 lib/r2.js               Cloudflare R2 client (S3-compatible)
 lib/storage.js          R2 + local-disk fallback, range-aware reads (never buffers whole files)
+lib/mailer.js           SMTP email (access-granted confirmation), console fallback when unconfigured
 routes/auth.routes.js   register/login/me, profile, password, avatar, subscribe, payment-info
 routes/courses.routes.js  public course directory, course home (topics/progress/continue), lesson flow
 routes/resources.routes.js  resource list/detail/view-only stream, search, bookmarks,
@@ -126,6 +135,8 @@ npm start
 | `DATA_DIR` | Persistent disk path for the SQLite file (Render etc.) |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage. If these are unset, uploads stream to `DATA_DIR/uploads` instead so local development still works. |
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP for the access-granted email sent when a payment is approved. Unset = email is logged to console instead of sent. |
+| `APP_URL` | Public base URL of this deployment, used for links inside emails |
 | `WHATSAPP_CHANNEL_URL` | Official academic channel link (community panels, footer) |
 | `WHATSAPP_GROUP_URL` | Official WhatsApp group invite link ("Join the WhatsApp Group" buttons) |
 
