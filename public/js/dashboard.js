@@ -560,15 +560,18 @@
     renderCommunity();
     loadAnnouncements();
     loadBookmarks();
-      loadReferral();
-      // Live refresh for referral stats (smooth, real-time feel)
-      setInterval(async () => {
-        const slot = document.getElementById('referralArea');
-        if (!slot) return;
-        try {
-          await loadReferral();
-        } catch { /* silent refresh */ }
-      }, 30000);
+    loadReferral();
+
+    // Live refresh: smooth real-time updates across the entire dashboard
+    setInterval(async () => {
+      try { await loadAnnouncements(); } catch {}
+    }, 25000);
+    setInterval(async () => {
+      try { await loadBookmarks(); } catch {}
+    }, 30000);
+    setInterval(async () => {
+      try { await loadReferral(); } catch {}
+    }, 30000);
 
     // Fill profile forms
     document.getElementById('profileName').value = user.name || '';
