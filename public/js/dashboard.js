@@ -560,7 +560,15 @@
     renderCommunity();
     loadAnnouncements();
     loadBookmarks();
-    loadReferral();
+      loadReferral();
+      // Live refresh for referral stats (smooth, real-time feel)
+      setInterval(async () => {
+        const slot = document.getElementById('referralArea');
+        if (!slot) return;
+        try {
+          await loadReferral();
+        } catch { /* silent refresh */ }
+      }, 30000);
 
     // Fill profile forms
     document.getElementById('profileName').value = user.name || '';
