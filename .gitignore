@@ -7,3 +7,5 @@ data/uploads/
 data/fixtures/
 .env
 *.log
+.env
+.env.backup
