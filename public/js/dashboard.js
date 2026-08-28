@@ -380,15 +380,56 @@
   async function loadReferral() {
     const slot = $('#referralArea');
     try {
-      const { code, referredCount, bonusDaysPerReferral } = await StudyCoreAPI.myReferral();
+      const { code, referredCount, bonusDaysPerReferral, capReached } = await StudyCoreAPI.myReferral();
       const link = `${window.location.origin}/signup.html?ref=${code}`;
+      const cap = 1; // reward cap defined in auth.routes.js
+      const progressPercent = Math.min(100, (referredCount / cap) * 100);
+
       slot.innerHTML = `
-        <p style="margin-bottom:10px;">Share your link — the first friend who joins earns you both <strong>${bonusDaysPerReferral} bonus days</strong>.</p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <input id="referralLinkInput" type="text" readonly value="${escapeHtml(link)}" style="flex:1;min-width:180px;padding:9px 11px;border-radius:9px;border:1.5px solid var(--border-strong);font-size:0.82rem;background:var(--bg-alt);" />
-          <button class="btn btn-outline btn-sm" id="copyReferralBtn">Copy</button>
-        </div>
-        <p style="margin-top:10px;font-size:0.8rem;">${referredCount} friend${referredCount === 1 ? '' : 's'} joined through your link so far.</p>`;
+        <div style="border-radius:16px;overflow:hidden;background:linear-gradient(135deg,#12314e 0%,#0e7568 100%);box-shadow:0 4px 24px rgba(11,32,51,0.22);padding:28px 28px 24px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+            <span style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.12);display:inline-flex;align-items:center;justify-content:center;">${SC.icon('gift', { size: 22 })}</span>
+            <div>
+              <h3 style="margin:0;color:#fff;font-size:1.1rem;letter-spacing:0.2px;">Invite a Friend</h3>
+              <p style="margin:0;color:rgba(255,255,255,0.75);font-size:0.82rem;">Both get <strong style="color:#ffd080;">${bonusDaysPerReferral} bonus days</strong></p>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
+            <a href="https://wa.me/?text=${encodeURIComponent('Join me on StudyCore! ' + link)}"
+               target="_blank" rel="noopener noreferrer"
+               class="btn btn-sm"
+               style="background:#25D366;color:#fff;border:none;font-weight:600;padding:8px 16px;border-radius:8px;text-decoration:none;display:inline-flex;align-items:center;gap:8px;font-size:0.85rem;">
+              ${SC.icon('whatsapp', { size: 18 })} Share on WhatsApp
+            </a>
+            <button class="btn btn-outline btn-sm" id="copyReferralBtn" style="border-color:rgba(255,255,255,0.3);color:#fff;background:rgba(255,255,255,0.08);padding:8px 14px;border-radius:8px;font-size:0.85rem;display:inline-flex;align-items:center;gap:6px;">
+              ${SC.icon('link', { size: 15 })} Copy Link
+            </button>
+          </div>
+
+          <div style="background:rgba(255,255,255,0.08);border-radius:12px;padding:16px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <span style="font-size:0.78rem;color:rgba(255,255,255,0.65);">Your referral link</span>
+              <span style="font-family:var(--font-mono);font-size:1.1rem;font-weight:700;color:#ffd080;letter-spacing:0.5px;">${code}</span>
+            </div>
+            <input id="referralLinkInput" type="text" readonly value="${escapeHtml(link)}"
+              style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.2);font-size:0.82rem;background:rgba(0,0,0,0.15);color:#fff;font-family:var(--font-mono);" />
+          </div>
+
+          <div style="margin-top:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+              <span style="font-size:0.82rem;color:rgba(255,255,255,0.65);">Friends invited</span>
+              <span style="font-size:0.82rem;color:#fff;font-weight:700;">${referredCount} / ${cap}</span>
+            </div>
+            <div style="height:10px;background:rgba(255,255,255,0.12);border-radius:10px;overflow:hidden;">
+              <div style="height:100%;width:${progressPercent}%;background:linear-gradient(90deg,#ffd080,#0e7568);border-radius:10px;transition:width 0.4s ease;"></div>
+            </div>
+            <p style="margin-top:10px;font-size:0.78rem;color:rgba(255,255,255,0.55);">
+              First friend earns you both <strong style="color:#ffd080;">+${bonusDaysPerReferral} days</strong>.
+              ${capReached ? '<span style="color:#4ade80;">Cap reached!</span>' : ''}
+            </p>
+          </div>
+        </div>`;
       document.getElementById('copyReferralBtn').addEventListener('click', async () => {
         const input = document.getElementById('referralLinkInput');
         input.select();
