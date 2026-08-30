@@ -1251,6 +1251,14 @@ body[data-theme='dark'] .notif-unread-dot {
 .course-card-body h3 { display: flex; align-items: center; gap: 10px; }
 .course-card-body h3 svg { color: var(--teal-600); flex-shrink: 0; }
 .course-card-body p { font-size: 0.9rem; flex: 1; }
+.course-name-secondary { color: var(--muted); font-size: 0.86em; font-weight: 500; }
+.program-code {
+  align-self: flex-start; padding: 4px 8px; border-radius: 999px;
+  background: var(--teal-50); color: var(--teal-700); border: 1px solid rgba(15, 140, 127, 0.2);
+  font-size: 0.7rem; line-height: 1; font-weight: 800; letter-spacing: 0.08em;
+}
+.program-showcase-card:hover { transform: none; }
+.program-showcase-card .course-card-cta { align-self: flex-start; }
 .course-card-meta { display: flex; align-items: center; gap: 14px; font-size: 0.8rem; color: var(--muted); font-weight: 600; flex-wrap: wrap; }
 .course-card-meta span { display: inline-flex; align-items: center; gap: 6px; }
 .course-card-progress { margin-top: 4px; }
