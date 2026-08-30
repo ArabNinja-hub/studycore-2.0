@@ -51,6 +51,10 @@
 
   function isCandidateVisible(element) {
     if (!(element instanceof HTMLElement)) return false;
+    // Some API-rendered regions (notably the personalised home catalog) must
+    // swap skeletons for live content immediately, without cards appearing to
+    // "fly in" after the request completes.
+    if (element.closest('[data-no-scroll-reveal]')) return false;
     if (element.matches(HIDDEN_PARENT_SELECTOR) || element.closest(HIDDEN_PARENT_SELECTOR)) return false;
     // offsetParent is null for display:none elements, while fixed elements
     // (which may legitimately be revealed) are handled by their rect.

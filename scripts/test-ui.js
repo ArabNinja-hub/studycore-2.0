@@ -138,6 +138,20 @@ test('document reader is view-only and uses on-demand PDF ranges', () => {
   assert.doesNotMatch(resourceRoutes, /disposition:\s*['"]attachment['"]|INSERT INTO downloads/);
 });
 
+test('homepage is program-aware and never ships the obsolete subject cards', () => {
+  const indexHtml = read('public/index.html');
+  const revealJs = read('public/js/scroll-reveal.js');
+
+  assert.match(indexHtml, /id="homeCatalog"[^>]*data-no-scroll-reveal/);
+  assert.match(indexHtml, /StudyCoreAPI\.myProgram\(\)/);
+  assert.match(indexHtml, /StudyCoreAPI\.listPrograms\(true\)/);
+  assert.match(indexHtml, /data\.courses\.map\(\(course\) => courseCard/);
+  assert.match(indexHtml, /Choose your program\. We organise the rest\./);
+  assert.doesNotMatch(indexHtml, /data-course="(?:mathematics|physics|chemistry|biology|programming|communication)"/);
+  assert.doesNotMatch(indexHtml, /Pick a course and start learning/);
+  assert.match(revealJs, /closest\('\[data-no-scroll-reveal\]'\)/);
+});
+
 test('hero section contains decorative animated background logo behind content', () => {
   const indexHtml = read('public/index.html');
   const css = read('public/css/style.css');
