@@ -32,10 +32,29 @@
             <div class="skeleton skeleton-card span-3" style="height:96px;"></div>
           </div>
 
+          <!-- Programs & Courses management -->
+          <div class="card card-pad" style="margin-bottom:28px;">
+            <h3 style="display:flex;align-items:center;gap:10px;" id="programsHeading"><span id="programsHeadingIcon"></span> Programs &amp; Courses</h3>
+            <p style="margin:6px 0 18px;">
+              Manage the university programs (Law, Business, SNR, School of Mines, Non-Quota, SICT) and the courses
+              attached to each. The same course code can belong to several programs; Mines and Non-Quota share their
+              foundation courses but keep separate course lists.
+            </p>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+              <button class="btn btn-outline btn-sm" id="addProgramBtn" type="button">Create program</button>
+              <button class="btn btn-outline btn-sm" id="addCourseBtn" type="button">Add course to a program</button>
+            </div>
+
+            <div id="programMgmtGrid" class="program-mgmt-grid">
+              <p class="loading-text">Loading programs…</p>
+            </div>
+          </div>
+
           <!-- Announcements -->
           <div class="card card-pad" style="margin-bottom:28px;">
             <h3 style="display:flex;align-items:center;gap:10px;" id="annTitleHeading"><span data-ann-icon></span> Post an announcement</h3>
-            <p style="margin:6px 0 18px;">A quick notice for students — shown in the announcement centre and dashboards. Pinned announcements stay on top.</p>
+            <p style="margin:6px 0 18px;">A quick notice for students — shown in the announcement centre, notification bell and dashboards. Pinned announcements stay on top.</p>
             <form id="announcementForm" class="upload-form" style="max-width:720px;">
               <input type="hidden" id="annId" value="" />
               <div class="form-row">
@@ -52,6 +71,11 @@
               <div class="form-group">
                 <label for="annMessage">Message</label>
                 <textarea id="annMessage" placeholder="Details students should know" rows="3"></textarea>
+              </div>
+              <div class="form-group">
+                <label>Target audience</label>
+                <div class="target-checkboxes" id="annTargetPrograms"></div>
+                <small style="color:var(--muted);margin-top:6px;display:block;">Tick “All Students” to reach everyone, or pick the specific program(s) the announcement is for.</small>
               </div>
               <button class="btn btn-primary" type="submit" id="announcementSubmitBtn">Post Announcement</button>
             </form>
@@ -112,9 +136,23 @@
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="resSubject">Subject / Course</label>
+                  <label for="resProgram">Program (whose students see this)</label>
+                  <select id="resProgram">
+                    <option value="">All Programs (general content)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="resCourseSelect">Course (attach to a program course)</label>
+                  <select id="resCourseSelect">
+                    <option value="">No specific course (general resource)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="resSubject">Legacy subject (optional)</label>
                   <select id="resSubject">
-                    <option value="">General</option>
+                    <option value="">None</option>
                     <option>Mathematics</option>
                     <option>Physics</option>
                     <option>Chemistry</option>
@@ -123,6 +161,11 @@
                     <option>Programming</option>
                   </select>
                 </div>
+              </div>
+              <div class="form-group">
+                <label>Target programs <span style="font-weight:400;color:var(--muted);">(who can see this content)</span></label>
+                <div class="target-checkboxes" id="resTargetPrograms"></div>
+                <small style="color:var(--muted);margin-top:6px;display:block;">“All Programs” reaches every student. Otherwise tick the specific program(s). Content attached to a course is always limited to the programs that include that course.</small>
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -198,6 +241,7 @@
           <!-- Manage resources -->
           <div class="card card-pad" style="margin-bottom:28px;">
             <h3 style="margin-bottom:14px;">Manage resources</h3>
+            <div class="program-filters" id="adminProgramFilters"></div>
             <div id="adminToolbar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;"></div>
             <div class="table-wrap" id="adminResourceTableWrap">
               <table class="table" style="width:100%;">
@@ -205,11 +249,11 @@
                   <tr>
                     <th>Title</th>
                     <th>Category</th>
-                    <th>Subject</th>
+                    <th>Course / Subject</th>
+                    <th>Target</th>
                     <th>Topic / Term</th>
                     <th>Status</th>
                     <th>Access</th>
-                    <th>Downloads</th>
                     <th>Views</th>
                     <th>Actions</th>
                   </tr>
@@ -228,7 +272,14 @@
 
           <!-- Students -->
           <div class="card card-pad">
-            <h3 style="margin-bottom:16px;">Students</h3>
+            <h3 style="margin-bottom:6px;">Students</h3>
+            <p style="margin-bottom:14px;">Students grouped by their chosen program. You can view by program and correct a student’s program if needed.</p>
+            <div style="margin-bottom:16px;max-width:320px;">
+              <label for="userProgramFilter">Filter students by program</label>
+              <select id="userProgramFilter" style="width:100%;padding:10px 14px;border-radius:10px;border:1.5px solid var(--border-strong);background:var(--card);">
+                <option value="">All programs</option>
+              </select>
+            </div>
             <div id="usersList"><p class="loading-text">Loading…</p></div>
           </div>
         </div>
@@ -242,7 +293,9 @@
     <script src="/js/auth.js"></script>
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
+    <script src="/js/programs.js"></script>
     <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/admin-programs.js"></script>
     <script src="/js/admin.js"></script>
   </body>
 </html>

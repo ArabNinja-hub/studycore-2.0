@@ -2452,3 +2452,102 @@ body.scroll-reveal-enabled [data-scroll-reveal].sc-reveal-visible {
   from { opacity: 0; transform: translateY(22px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* =============================================
+   Multi-program platform
+   ============================================= */
+.program-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--teal-50, #e6f7f4);
+  color: var(--teal-700, #0e7568);
+  font-weight: 600;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+.program-banner {
+  background: var(--bg-alt, #f5f8fa);
+  border: 1px solid var(--border, #e2e8ee);
+  border-radius: var(--radius, 16px);
+  padding: 16px 20px;
+}
+
+/* Admin program filter chips */
+.program-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.program-chip {
+  border: 1px solid var(--border, #e2e8ee);
+  background: #fff;
+  color: var(--ink, #12314e);
+  border-radius: 999px;
+  padding: 7px 15px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.program-chip:hover { border-color: var(--teal-500, #2bb8a6); }
+.program-chip.active {
+  background: var(--teal-600, #0e7568);
+  border-color: var(--teal-600, #0e7568);
+  color: #fff;
+}
+
+/* Program management cards */
+.program-mgmt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.program-mgmt-card {
+  border: 1px solid var(--border, #e2e8ee);
+  border-radius: var(--radius, 16px);
+  padding: 18px;
+  background: #fff;
+}
+.program-mgmt-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 4px;
+}
+.program-course-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--bg-alt, #f5f8fa);
+  margin-top: 8px;
+  font-size: 0.86rem;
+}
+.target-checkboxes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+.target-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.target-checkboxes input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--teal-500, #2bb8a6);
+}

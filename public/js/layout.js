@@ -83,46 +83,85 @@
   }
 
   /* ── Rich Flyout Submenus ───────────────── */
-  function coursesDropdownHtml() {
-    const subjects = [
-      { slug: 'mathematics', name: 'Mathematics', icon: 'calculator', desc: 'Calculus, algebra & problem-solving' },
-      { slug: 'physics', name: 'Physics', icon: 'atom', desc: 'Mechanics, waves & electricity' },
-      { slug: 'chemistry', name: 'Chemistry', icon: 'flask', desc: 'Atoms, bonding & reactions' },
-      { slug: 'biology', name: 'Biology', icon: 'dna', desc: 'Genetics, cells & physiology' },
-      { slug: 'programming', name: 'Programming', icon: 'code', desc: 'Algorithms, data structures & logic' },
-      { slug: 'communication', name: 'Communication Skills', icon: 'message', desc: 'Academic writing, speaking & clarity' }
-    ];
+  // Static public catalog (anonymous visitors). Logged-in students get their
+  // own program courses injected by updateCoursesDropdownForUser().
+  const PUBLIC_SUBJECTS = [
+    { slug: 'mathematics', name: 'Mathematics', icon: 'calculator', desc: 'Calculus, algebra & problem-solving', href: '/pages/subjects/mathematics.html' },
+    { slug: 'physics', name: 'Physics', icon: 'atom', desc: 'Mechanics, waves & electricity', href: '/pages/subjects/physics.html' },
+    { slug: 'chemistry', name: 'Chemistry', icon: 'flask', desc: 'Atoms, bonding & reactions', href: '/pages/subjects/chemistry.html' },
+    { slug: 'biology', name: 'Biology', icon: 'dna', desc: 'Genetics, cells & physiology', href: '/pages/subjects/biology.html' },
+    { slug: 'programming', name: 'Programming', icon: 'code', desc: 'Algorithms, data structures & logic', href: '/pages/subjects/programming.html' },
+    { slug: 'communication', name: 'Communication Skills', icon: 'message', desc: 'Academic writing, speaking & clarity', href: '/pages/subjects/communication.html' }
+  ];
 
-    const cards = subjects.map((s) => `
-      <a class="nav-dropdown-card" href="/pages/subjects/${s.slug}.html">
-        <span class="nd-icon nd-icon-${s.slug}">${SC.icon(s.icon, { size: 18 })}</span>
+  function dropdownCard(card) {
+    return `
+      <a class="nav-dropdown-card" href="${card.href}">
+        <span class="nd-icon nd-icon-${card.slug}">${SC.icon(card.icon, { size: 18 })}</span>
         <div class="nd-content">
-          <strong>${s.name}</strong>
-          <span>${s.desc}</span>
+          <strong>${card.name}</strong>
+          <span>${card.desc}</span>
         </div>
         <span class="nd-arrow">${SC.icon('chevron-right', { size: 14 })}</span>
-      </a>
-    `).join('');
+      </a>`;
+  }
 
+  function coursesDropdownHtml(cards) {
+    const list = cards || PUBLIC_SUBJECTS;
+    const items = list.map(dropdownCard).join('');
+    const headerEyebrow = cards ? `${SC.icon('library', { size: 13 })} My Program Courses` : `${SC.icon('library', { size: 13 })} University Courses`;
+    const headerCopy = cards
+      ? 'The courses available for your program — videos, notes, tutorials and past papers.'
+      : 'Structured courses with video lectures, study notes, tutorials and past papers.';
+    const footerLabel = cards ? 'View all my courses' : 'View all university course hubs';
     return `
       <div class="nav-dropdown nav-dropdown-courses" id="navDropdown_courses" role="region" aria-label="Courses submenu">
         <div class="nav-dropdown-inner">
           <div class="nav-dropdown-header">
-            <span class="eyebrow">${SC.icon('library', { size: 13 })} University Courses</span>
-            <p>Structured courses with video lectures, study notes, tutorials and past papers.</p>
+            <span class="eyebrow">${headerEyebrow}</span>
+            <p>${headerCopy}</p>
           </div>
           <div class="nav-dropdown-grid">
-            ${cards}
+            ${items}
           </div>
           <div class="nav-dropdown-footer">
             <a href="/pages/courses.html" class="nd-footer-link">
-              <span>View all 6 university course syllabus &amp; hubs</span>
+              <span>${footerLabel}</span>
               ${SC.icon('arrow-right', { size: 14 })}
             </a>
           </div>
         </div>
       </div>
     `;
+  }
+
+  // For a logged-in student, swap the public subject flyout for their actual
+  // program courses (Program → Course). Static fallback remains if the fetch
+  // fails, so navigation never breaks.
+  async function updateCoursesDropdownForUser(user) {
+    if (!user || user.role === 'ADMIN') return;
+    try {
+      const data = await StudyCoreAPI.myProgram();
+      if (!data || !data.program || !(data.courses || []).length) return;
+      const hrefFor = (c) => (window.SCPrograms ? SCPrograms.courseHref(c) : `/pages/courses.html`);
+      const cards = data.courses.map((c) => ({
+        slug: c.slug || c.code,
+        name: `${c.code} — ${c.name}`,
+        icon: c.icon || 'book-open',
+        desc: data.program.shortName || data.program.name,
+        href: hrefFor(c)
+      }));
+      const host = document.getElementById('navDropdown_courses');
+      if (host) host.outerHTML = coursesDropdownHtml(cards);
+      const mobileHost = document.getElementById('mobileSubjectLinks');
+      if (mobileHost) {
+        const hrefFor2 = (c) => (window.SCPrograms ? SCPrograms.courseHref(c) : `/pages/courses.html`);
+        mobileHost.innerHTML = data.courses.map((c) => `
+          <a href="${hrefFor2(c)}" class="mobile-sub-link">
+            ${SC.icon(c.icon || 'book-open', { size: 16 })} ${escapeHtml(c.code)} — ${escapeHtml(c.name)}
+          </a>`).join('');
+      }
+    } catch { /* keep the static catalog */ }
   }
 
   function resourcesDropdownHtml() {
@@ -478,7 +517,7 @@
             </button>
           </div>
           <div class="mobile-accordion-body">
-            <div class="mobile-accordion-content">
+            <div class="mobile-accordion-content" id="mobileSubjectLinks">
               ${subjectLinks}
             </div>
           </div>
@@ -1323,6 +1362,9 @@
     const user = await StudyCoreAuth.fetchSession();
     renderNavAuth();
     renderMobileNavAuth();
+    // Swap the public course flyout/drawer for the student's own program
+    // courses once we know who they are.
+    updateCoursesDropdownForUser(user).catch(() => {});
     NotificationManager.init(user);
     CommunityBadge.init(user);
 

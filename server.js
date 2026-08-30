@@ -12,6 +12,7 @@ const { securityHeaders, rateLimit } = require('./middleware/security');
 const authRoutes = require('./routes/auth.routes');
 const resourceRoutes = require('./routes/resources.routes');
 const coursesRoutes = require('./routes/courses.routes');
+const programsRoutes = require('./routes/programs.routes');
 const adminRoutes = require('./routes/admin.routes');
 const notificationRoutes = require('./routes/notifications.routes');
 const communityRoutes = require('./routes/community.routes');
@@ -53,6 +54,9 @@ app.get('/api/config', (req, res) => {
 });
 app.use('/api/resources', resourceRoutes);
 app.use('/api/courses', coursesRoutes);
+// Multi-program platform: program directory, student program/courses,
+// dynamic course home, and admin program/course management.
+app.use('/api/programs', programsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 
@@ -70,6 +74,14 @@ app.get(['/admin', '/admin.html'], requirePageAuth('ADMIN'), (req, res) => {
 
 app.get(['/dashboard', '/dashboard.html'], requirePageAuth('STUDENT'), (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
+});
+
+// Dynamic course home (program → course). Server-side gated like every other
+// authenticated view; the API it calls re-checks program enrollment, so even
+// a hand-typed URL never leaks another program's course.
+app.get(['/course/:key', '/course.html'], requirePageAuth(), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'views', 'course.html'));
 });
 
 // Internal document viewer. Any logged-in user may open the page itself; the

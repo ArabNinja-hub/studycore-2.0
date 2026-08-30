@@ -61,13 +61,19 @@ function isViewerCategory(category) {
 // Single source of truth for where a resource opens. Documents, tutorials,
 // past papers and materials open inside StudyCore's dedicated viewer; videos
 // (and any other content) open the lesson experience page.
+//
+// Resources belonging to a dynamic program course carry `courseCode`/
+// `courseId` — those open the lesson page with a course flag so the
+// previous/next flow stays inside the student's program course.
 function resourceHref(resource, subjectFallback) {
   if (!resource || !resource.id) return '#';
   const subject = resource.subject || subjectFallback || '';
   if (isViewerCategory(resource.category)) {
     return `/viewer/${encodeURIComponent(resource.id)}`;
   }
-  return `/pages/lesson.html?id=${encodeURIComponent(resource.id)}${subject ? `&subject=${encodeURIComponent(subject)}` : ''}`;
+  const courseKey = resource.courseCode || resource.courseSlug || '';
+  const courseParam = courseKey ? `&course=${encodeURIComponent(courseKey)}` : '';
+  return `/pages/lesson.html?id=${encodeURIComponent(resource.id)}${courseParam}${(!courseKey && subject) ? `&subject=${encodeURIComponent(subject)}` : ''}`;
 }
 SC.resourceHref = resourceHref;
 SC.isViewerCategory = isViewerCategory;

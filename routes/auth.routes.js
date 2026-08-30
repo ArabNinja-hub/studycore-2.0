@@ -5,6 +5,7 @@ const db = require('../db');
 const { createToken, setAuthCookie, clearAuthCookie, requireAuth, attachUser } = require('../middleware/auth');
 const { avatarUpload } = require('../middleware/upload');
 const storage = require('../lib/storage');
+const { VALID_PROGRAM_CODES } = require('../lib/programs');
 
 const router = express.Router();
 
@@ -12,7 +13,15 @@ function publicUser(user) {
   if (!user) return null;
   const { password, avatar_key, ...safe } = user;
   // Only expose that a picture exists - never the storage key itself.
-  return { ...safe, hasAvatar: Boolean(avatar_key) };
+  return { ...safe, hasAvatar: Boolean(avatar_key), program: user.program_code || null };
+}
+
+// Normalize/validate a program code from the client. Returns the canonical
+// code or null. Accepts the exact codes (LAW, BS, SNR, SMMS, SMNS, SICT).
+function normalizeProgramCode(value) {
+  if (!value || typeof value !== 'string') return null;
+  const code = value.trim().toUpperCase();
+  return VALID_PROGRAM_CODES.has(code) ? code : null;
 }
 
 // Single source of truth for "what plan is this student on right now".
@@ -48,10 +57,17 @@ function subscriptionStatus(user) {
 }
 
 router.post('/register', async (req, res) => {
-  const { name, email, password, school, grade, learningLevel, ref } = req.body;
+  const { name, email, password, school, grade, learningLevel, ref, program } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ message: 'Full name is required.' });
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: 'A valid email is required.' });
   if (!password || password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+
+  // Program/category is REQUIRED at registration. It decides the student's
+  // entire course and content experience and is enforced server-side.
+  const programCode = normalizeProgramCode(program);
+  if (!programCode) {
+    return res.status(400).json({ message: 'Please select your program (Law, Business Studies, SNR, School of Mines, Non-Quota or SICT).' });
+  }
 
   const normalizedEmail = email.trim().toLowerCase();
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
@@ -91,6 +107,7 @@ router.post('/register', async (req, res) => {
     school: school || null,
     grade: grade || null,
     learning_level: learningLevel === 'tertiary' ? 'tertiary' : 'secondary',
+    program_code: programCode,
     subscription: 'trial',
     trial_end: trialEnd,
     subscription_start: null,
@@ -101,8 +118,8 @@ router.post('/register', async (req, res) => {
   };
 
   db.prepare(`
-    INSERT INTO users (id, name, email, password, role, school, grade, learning_level, subscription, trial_end, subscription_start, subscription_end, referral_code, referred_by, created_at)
-    VALUES (@id, @name, @email, @password, @role, @school, @grade, @learning_level, @subscription, @trial_end, @subscription_start, @subscription_end, @referral_code, @referred_by, @created_at)
+    INSERT INTO users (id, name, email, password, role, school, grade, learning_level, program_code, subscription, trial_end, subscription_start, subscription_end, referral_code, referred_by, created_at)
+    VALUES (@id, @name, @email, @password, @role, @school, @grade, @learning_level, @program_code, @subscription, @trial_end, @subscription_start, @subscription_end, @referral_code, @referred_by, @created_at)
   `).run(user);
 
   if (referrer) {
@@ -202,6 +219,26 @@ router.put('/profile', requireAuth, (req, res) => {
   `).run(name.trim(), school || null, grade || null, learningLevel === 'tertiary' ? 'tertiary' : 'secondary', user.id);
 
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  res.json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
+});
+
+// A student's program lives in the database and drives every permission
+// check. New accounts set it at registration; this endpoint lets an older
+// account (created before programs existed) choose their program, and lets
+// anyone correct it. The value is validated against the real program table
+// and then re-read from the DB on every subsequent request — the client
+// never grants itself access.
+router.put('/program', requireAuth, (req, res) => {
+  if (req.user.role === 'ADMIN') return res.status(400).json({ message: 'Admin accounts do not have a student program.' });
+  const programCode = normalizeProgramCode(req.body && req.body.program);
+  if (!programCode) {
+    return res.status(400).json({ message: 'Choose a valid program.' });
+  }
+  const exists = db.prepare('SELECT code FROM programs WHERE code = ?').get(programCode);
+  if (!exists) return res.status(400).json({ message: 'That program does not exist.' });
+
+  db.prepare('UPDATE users SET program_code = ? WHERE id = ?').run(programCode, req.user.id);
+  const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   res.json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
 });
 
