@@ -89,6 +89,38 @@ under a private key; only the owner's own avatar is ever served
 (`GET /api/auth/avatar`). Displayed in the nav account menu, dashboard hero and profile
 section, with a professional User-icon fallback (never an emoji).
 
+## Student community (`/pages/community.html`)
+
+One shared, WhatsApp-style group room for the whole platform — students ask questions
+freely, answer each other, and the admin joins in like any other member (with moderator
+powers). It is a real conversation, not a notice board, so it is kept completely separate
+from the announcement centre and has its own unread pill on the Community nav link.
+
+| | Students | Admin |
+|---|---|---|
+| Post / reply / heart | yes | yes |
+| Edit own message (marked *edited*) | yes | yes |
+| Delete own message | yes (soft — "You deleted this message") | yes |
+| Delete somebody else's message | no (403) | yes (hard delete — spam is gone) |
+| Pin / unpin (max 3 at once) | no (403) | yes |
+
+- **Live updates**: `GET /api/community/stream` is a Server-Sent Events feed (built into
+  Node/Express — no new dependency) carrying `message`, `edit`, `delete`, `react`, `pin`,
+  `typing` and `presence`. SSE is treated as an optimisation: the client also catches up
+  with `GET /api/community?after=<seq>` every 25s, so a dropped stream costs latency, not
+  messages.
+- **Fan-out is viewer-agnostic**: `mine` and `reactions.mine` are per-viewer facts, so the
+  stream never asserts them — the client derives them from the author id.
+- **Ordering** uses SQLite's implicit `rowid` (exposed as `seq`), which is strictly
+  increasing and immune to two messages sharing a millisecond.
+- **Unread tracking** is one row per student (`community_read_state.last_read_at`), seeded
+  lazily on first touch so a brand-new student is never greeted with the whole history as
+  "unread".
+- **Moderation & abuse**: 2000-character cap, control characters stripped, 30 posts/min per
+  IP, server-side typing throttle (2s). Every member-authored string is escaped in the DOM;
+  only `http(s)` URLs are ever linkified, and profile pictures stay private to their owner,
+  so other members are shown as initials.
+
 ## Project structure
 
 ```
@@ -105,6 +137,9 @@ routes/courses.routes.js  public course directory, course home (topics/progress/
 routes/resources.routes.js  resource list/detail/view-only stream, search, bookmarks,
                             completion, video progress, quiz compatibility endpoints
 routes/admin.routes.js  resource CRUD (incl. topic + pinned), users, payments, analytics
+routes/notifications.routes.js  announcement list, unread count, per-user read tracking
+routes/community.routes.js  student community room: messages, replies, reactions, pins,
+                            moderation, unread state, members + the SSE live stream
 views/dashboard.html    student dashboard (Premium section #premium, profile #profile, community #community)
 views/admin.html        admin dashboard (uploads, topics, announcements, payments, students)
 public/js/icons.js      single SVG icon system (Lucide-style) - no emoji in the UI
@@ -112,6 +147,9 @@ public/js/layout.js     shared navbar / mobile nav / account menu / footer / glo
 public/js/player.js     StudyCore video player (custom controls, resume, progress, premium wall)
 public/js/hero.js       per-course canvas hero animations (math/physics/chem/bio/code/comm)
 public/js/video.js      Video Lessons page (/pages/videos.html) — per-course, per-term
+public/pages/community.html  the community room UI (chat column + members rail + composer)
+public/js/community.js  room logic: SSE + catch-up polling, bubbles, replies, reactions, pins
+public/css/community.css   chat layout, bubbles, day/unread dividers, typing dots (light + dark)
 public/sitemap.xml      public pages only - no dashboards, auth or admin URLs
 public/robots.txt       allows public pages + brand assets; disallows private surfaces
 ```

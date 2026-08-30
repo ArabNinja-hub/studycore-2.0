@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test scripts/test-ui.js scripts/test-notifications.js scripts/test-emails.js",
+    "test": "node --test scripts/test-ui.js scripts/test-notifications.js scripts/test-emails.js scripts/test-community.js",
     "make-admin": "node scripts/make-admin.js"
   },
   "dependencies": {

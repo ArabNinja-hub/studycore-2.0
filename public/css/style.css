@@ -475,6 +475,42 @@ body[data-theme='dark'] .notif-badge { border-color: #10202f; }
   justify-content: center;
 }
 
+/* Unread pill inside a nav link (used by the Community link). Sits inline
+   with the label rather than floating, so the pill never escapes the
+   floating nav island. */
+.nav-badge-pill {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: var(--teal-600);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+body[data-theme='dark'] .nav-badge-pill { background: var(--teal-500); }
+
+/* Community activity pills on the admin dashboard's community card. */
+.community-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 11px;
+}
+.community-stat-pill svg { color: var(--teal-600); }
+.community-stat-pill strong { color: var(--ink); font-family: var(--font-display); }
+
 .notif-panel {
   position: absolute;
   top: calc(100% + 10px);

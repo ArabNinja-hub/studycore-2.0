@@ -14,6 +14,7 @@ const resourceRoutes = require('./routes/resources.routes');
 const coursesRoutes = require('./routes/courses.routes');
 const adminRoutes = require('./routes/admin.routes');
 const notificationRoutes = require('./routes/notifications.routes');
+const communityRoutes = require('./routes/community.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -54,6 +55,11 @@ app.use('/api/resources', resourceRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+
+// The on-site student community: one shared group room (/pages/community.html)
+// where students ask questions and the admin answers. Session-gated like every
+// other /api route; the room itself is moderated server-side.
+app.use('/api/community', communityRoutes);
 
 // ---- Protected view routes (server-side gated, must be registered BEFORE
 // the static file middleware so an unauthenticated request can never receive

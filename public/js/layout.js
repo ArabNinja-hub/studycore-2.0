@@ -59,6 +59,7 @@
   const NAV_LINKS = [
     { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
     { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text' },
+    { id: 'community', label: 'Community', href: '/pages/community.html', icon: 'users', badge: 'community' },
     { id: 'announcements', label: 'Announcements', href: '/pages/announcements.html', icon: 'bell' },
     { id: 'about', label: 'About', href: '/pages/about.html', icon: 'info' }
   ];
@@ -240,10 +241,14 @@
       const hasDrop = l.id === 'courses' || l.id === 'resources';
       const dropdownHtml = l.id === 'courses' ? coursesDropdownHtml() : (l.id === 'resources' ? resourcesDropdownHtml() : '');
       const chevronHtml = hasDrop ? `<span class="nav-chevron">${SC.icon('chevron-down', { size: 13 })}</span>` : '';
+      // Unread pill (currently only the Community room carries one).
+      const badgeHtml = l.badge
+        ? `<span class="nav-badge-pill" id="navBadge_${l.badge}" style="display:none;" aria-live="polite"></span>`
+        : '';
       return `
         <li class="nav-item ${hasDrop ? 'nav-item-has-dropdown' : ''}" data-nav-id="${l.id}">
           <a href="${l.href}" class="nav-link${active ? ' active' : ''}"${active ? ' aria-current="page"' : ''}${hasDrop ? ' aria-haspopup="true" aria-expanded="false"' : ''}>
-            <span>${l.label}</span>${chevronHtml}
+            <span>${l.label}</span>${badgeHtml}${chevronHtml}
           </a>
           ${dropdownHtml}
         </li>
@@ -504,14 +509,17 @@
 
         <div class="mobile-nav-divider" style="--idx:9"></div>
         <div class="mobile-nav-label" style="--idx:10">Community</div>
-        <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:11">
+        <a href="/pages/community.html"${activeAttrs('community')} style="--idx:11" id="mobileNavCommunityLink">
+          ${SC.icon('users', { size: 20 })} <span>Student Community</span><span class="notif-badge-inline" id="mobileNavCommunityBadge" style="display:none;"></span>
+        </a>
+        <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:12">
           ${SC.icon('whatsapp', { size: 20 })} WhatsApp Academic Channel
         </a>
 
-        <div class="mobile-nav-divider" style="--idx:12"></div>
-        <div class="mobile-nav-label" style="--idx:13">Account</div>
-        <button type="button" data-theme-toggle style="--idx:14" aria-label="Switch to dark mode">${SC.icon('moon', { size: 20 })} <span>Dark Mode</span></button>
-        <div id="mobileAuthSlot" style="--idx:15"></div>
+        <div class="mobile-nav-divider" style="--idx:13"></div>
+        <div class="mobile-nav-label" style="--idx:14">Account</div>
+        <button type="button" data-theme-toggle style="--idx:15" aria-label="Switch to dark mode">${SC.icon('moon', { size: 20 })} <span>Dark Mode</span></button>
+        <div id="mobileAuthSlot" style="--idx:16"></div>
       </nav>
     `;
     const searchBtn = document.getElementById('mobileSearchBtn');
@@ -715,6 +723,7 @@
               <li><a href="/pages/resources.html">Open Resources</a></li>
               <li><a href="/pages/resources.html?type=past_paper">View Past Papers</a></li>
               <li><a href="/pages/announcements.html">Announcements</a></li>
+              <li><a href="/pages/community.html">Student Community</a></li>
               <li><a href="/pages/search.html">Search</a></li>
             </ul>
           </div>
@@ -782,15 +791,22 @@
     host.classList.add('community-panel');
     host.innerHTML = `
       <div>
-        <span class="eyebrow" style="color:#128c7e;">${SC.icon('whatsapp', { size: 14 })} Community</span>
-        <h2>Study together on WhatsApp</h2>
-        <p>Follow the official academic channel for tips, mentoring and updates — and join the student group to ask questions and revise with classmates.</p>
+        <span class="eyebrow" style="color:#128c7e;">${SC.icon('users', { size: 14 })} Community</span>
+        <h2>Ask questions, study together</h2>
+        <p>
+          The StudyCore community is a live group room right here on the site — post a question,
+          answer a classmate, and get replies from the StudyCore admin. You can also follow the
+          official academic channel on WhatsApp for tips and updates.
+        </p>
         <div class="community-actions">
+          <a class="btn btn-primary" href="/pages/community.html">
+            ${SC.icon('message-circle', { size: 18 })} Open the Student Community
+          </a>
           <a class="btn whatsapp-btn" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">
             ${SC.icon('whatsapp', { size: 18 })} Follow the Channel
           </a>
           <a class="btn btn-outline" id="communityGroupBtn" style="display:none;" target="_blank" rel="noopener">
-            ${SC.icon('users', { size: 18 })} Join the Student Group
+            ${SC.icon('users', { size: 18 })} Join the WhatsApp Group
           </a>
         </div>
       </div>
@@ -1214,6 +1230,69 @@
     }
   };
 
+  /* ── Community unread badge ────────────────
+     The Community nav link carries a small unread pill. It is deliberately
+     separate from the announcement bell: the room is a conversation, not a
+     notice board, and mixing the two counts would make both meaningless. */
+  const CommunityBadge = {
+    count: 0,
+    currentUser: null,
+    timer: null,
+
+    init(user) {
+      this.currentUser = user;
+      if (!user) {
+        this.set(0);
+        return;
+      }
+      this.refresh();
+      this.start();
+    },
+
+    set(count) {
+      this.count = Math.max(0, count || 0);
+      const label = this.count > 99 ? '99+' : String(this.count);
+      const navPill = document.getElementById('navBadge_community');
+      const mobilePill = document.getElementById('mobileNavCommunityBadge');
+
+      if (navPill) {
+        navPill.style.display = this.count > 0 ? 'inline-flex' : 'none';
+        navPill.textContent = this.count > 0 ? label : '';
+        navPill.setAttribute('aria-label', `${this.count} unread community ${this.count === 1 ? 'message' : 'messages'}`);
+      }
+      if (mobilePill) {
+        mobilePill.style.display = this.count > 0 ? 'inline-flex' : 'none';
+        mobilePill.textContent = this.count > 0 ? label : '';
+      }
+    },
+
+    async refresh() {
+      if (!this.currentUser) return;
+      try {
+        const data = await StudyCoreAPI.communityUnreadCount();
+        this.set(data.unreadCount || 0);
+      } catch {
+        // logged out mid-session, or offline - the badge simply stays put
+      }
+    },
+
+    start() {
+      if (this.timer) clearInterval(this.timer);
+      this.timer = setInterval(() => {
+        // The room page keeps its own badge at zero while it is open, so
+        // skipping hidden tabs is enough to stay polite to the server.
+        if (!document.hidden && this.currentUser) this.refresh();
+      }, 45000);
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && this.currentUser) this.refresh();
+      });
+      window.addEventListener('focus', () => {
+        if (this.currentUser) this.refresh();
+      });
+    }
+  };
+
   function ensureMobileMeta() {
     const vp = document.querySelector('meta[name="viewport"]');
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
@@ -1245,6 +1324,7 @@
     renderNavAuth();
     renderMobileNavAuth();
     NotificationManager.init(user);
+    CommunityBadge.init(user);
 
     // Footer group button (official invite link from the server)
     whatsappLinks().then((links) => {
@@ -1261,6 +1341,10 @@
     openSearchOverlay,
     openAnnouncementModal,
     refreshNotifications: (force = true) => NotificationManager.fetchStatus(force),
+    // The community room page calls these so the nav pill clears the moment a
+    // student opens (or catches up in) the room, without waiting for a poll.
+    setCommunityUnread: (count) => CommunityBadge.set(count),
+    refreshCommunityUnread: () => CommunityBadge.refresh(),
     whatsappLinks,
     renderCommunityPanel,
     bindCommunityGroupBtn,
