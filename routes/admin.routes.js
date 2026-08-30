@@ -6,6 +6,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
+const { VALID_PROGRAM_CODES } = require('../lib/programs');
+const { resolveCourse, targetingForResource } = require('../lib/program-access');
 
 const router = express.Router();
 router.use(requireAuth, requireRole('ADMIN'));
@@ -18,18 +20,50 @@ router.use(requireAuth, requireRole('ADMIN'));
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi']);
 const DOCUMENT_LIKE_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'assignment']);
 const COURSE_CONTENT_CATEGORIES = new Set(['video', 'document', 'tutorial', 'past_paper']);
-const COURSE_SUBJECTS = new Set(['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Communication Skills', 'Programming']);
 const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
 
-function validateCoursePlacement(category, subject, semester) {
+// Course content can live on a dynamic program COURSE (courseId) — the
+// primary path on the multi-program platform — or on a legacy subject
+// (subject), which keeps older uploads working. Content with neither is a
+// general/platform resource (e.g. an all-programs "Study Skills Guide"):
+// perfectly valid, it just shows up via program targeting rather than on a
+// course home. Video lessons must still declare a term.
+function validateCoursePlacement(category, subject, semester, courseId) {
   if (!COURSE_CONTENT_CATEGORIES.has(category)) return null;
-  if (!subject || !COURSE_SUBJECTS.has(subject)) {
-    return 'Choose a valid subject/course so this resource can appear on the correct course home page.';
+  if (category === 'video' && !(courseId || subject)) {
+    return 'Choose a program course (or subject) for every video lesson.';
   }
   if (category === 'video' && !VIDEO_TERMS.has(semester)) {
     return 'Choose Term 1, Term 2, or Term 3 for every video lesson.';
   }
   return null;
+}
+
+// Parse the admin's targeting selection into { targetAll, programCodes }.
+//   targetAll = 'true' / 'all' / absent-with-no-programs  -> All Programs
+//   programs  = comma/array of program codes, or 'ALL'
+function parseTargeting(body) {
+  const rawPrograms = body.programs !== undefined ? body.programs : body.targetPrograms;
+  let codes = [];
+  if (Array.isArray(rawPrograms)) codes = rawPrograms;
+  else if (typeof rawPrograms === 'string') codes = rawPrograms.split(',').map((s) => s.trim());
+  codes = codes.map((c) => String(c).toUpperCase()).filter((c) => VALID_PROGRAM_CODES.has(c));
+
+  const allFlag = body.targetAll === 'true' || body.targetAll === '1' || body.targetAll === true ||
+                  body.target === 'all' || body.target === 'ALL';
+  const targetAll = allFlag || codes.includes('ALL') || codes.length === 0;
+  // De-dupe and keep only valid codes for explicit targeting.
+  const programCodes = targetAll ? [] : [...new Set(codes)].filter((c) => c !== 'ALL');
+  return { targetAll, programCodes };
+}
+
+// Replace a resource's program targeting rows.
+function syncResourcePrograms(resourceId, targetAll, programCodes) {
+  db.prepare('DELETE FROM resource_programs WHERE resource_id = ?').run(resourceId);
+  if (!targetAll) {
+    const insert = db.prepare('INSERT OR IGNORE INTO resource_programs (resource_id, program_code) VALUES (?, ?)');
+    for (const code of programCodes) insert.run(resourceId, code);
+  }
 }
 
 function validateFileMatchesCategory(category, file) {
@@ -45,6 +79,7 @@ function validateFileMatchesCategory(category, file) {
 }
 
 function serializeResource(row) {
+  const targeting = targetingForResource(row);
   return {
     id: row.id,
     title: row.title,
@@ -52,6 +87,9 @@ function serializeResource(row) {
     category: row.category,
     subject: row.subject,
     course: row.course,
+    courseId: row.course_id || null,
+    targetAll: targeting.targetAll,
+    targetPrograms: targeting.programs,
     topic: row.topic || null,
     yearLevel: row.year_level,
     semester: row.semester,
@@ -83,13 +121,24 @@ function deleteFileIfExists(storedKey) {
 // ---- Resource CRUD -------------------------------------------------------
 
 // GET all resources for the management table (includes drafts, supports search/filter/sort)
+// Program filter: ?program=LAW shows content targeted at LAW OR all-programs;
+// ?program=LAW&scope=exact shows ONLY content specifically targeting LAW.
 router.get('/resources', (req, res) => {
-  const { category, subject, search, sort = 'newest', publishStatus } = req.query;
+  const { category, subject, search, sort = 'newest', publishStatus, program, scope } = req.query;
   const clauses = [];
   const params = {};
   if (category) { clauses.push('category = @category'); params.category = category; }
   if (subject) { clauses.push('subject = @subject'); params.subject = subject; }
   if (publishStatus) { clauses.push('publish_status = @publishStatus'); params.publishStatus = publishStatus; }
+  if (program) {
+    const code = String(program).toUpperCase();
+    if (scope === 'exact') {
+      clauses.push(`target_all = 0 AND EXISTS (SELECT 1 FROM resource_programs rp WHERE rp.resource_id = resources.id AND rp.program_code = @program)`);
+    } else {
+      clauses.push(`(target_all = 1 OR EXISTS (SELECT 1 FROM resource_programs rp WHERE rp.resource_id = resources.id AND rp.program_code = @program))`);
+    }
+    params.program = code;
+  }
   if (search) {
     clauses.push('(title LIKE @search OR description LIKE @search OR tags LIKE @search)');
     params.search = `%${search}%`;
@@ -106,11 +155,22 @@ router.get('/resources', (req, res) => {
 });
 
 router.post('/resources', upload.single('file'), (req, res) => {
-  const { title, description, category, subject, course, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
+  const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   if (!title || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
   if (!category) return res.status(400).json({ message: 'Category is required.' });
-  const placementError = validateCoursePlacement(category, subject, semester);
+
+  // Resolve a dynamic program course when one is supplied.
+  let courseRow = null;
+  if (courseId) {
+    courseRow = resolveCourse(courseId);
+    if (!courseRow) return res.status(400).json({ message: 'The selected course could not be found.' });
+  }
+  // Default the legacy subject label from the course so the content also
+  // appears correctly anywhere the subject field is still used.
+  const effectiveSubject = subject || (courseRow ? courseRow.name : null);
+
+  const placementError = validateCoursePlacement(category, effectiveSubject, semester, courseRow ? courseRow.id : null);
   if (placementError) return res.status(400).json({ message: placementError });
   if (category === 'quiz' && !quizData) return res.status(400).json({ message: 'Quiz questions (JSON) are required for quizzes.' });
   if (category === 'video' && !req.file) {
@@ -147,13 +207,18 @@ router.post('/resources', upload.single('file'), (req, res) => {
     if (existingDuplicate) duplicateOf = existingDuplicate;
   }
 
+  // Program targeting (one / multiple / all programs).
+  const targeting = parseTargeting(req.body);
+
   const row = {
     id,
     title: title.trim(),
     description: description || null,
     category,
-    subject: subject || null,
+    subject: effectiveSubject || null,
     course: course || null,
+    course_id: courseRow ? courseRow.id : null,
+    target_all: targeting.targetAll ? 1 : 0,
     topic: (topic || '').trim() || null,
     year_level: yearLevel || null,
     semester: semester || null,
@@ -175,11 +240,13 @@ router.post('/resources', upload.single('file'), (req, res) => {
   };
 
   db.prepare(`
-    INSERT INTO resources (id, title, description, category, subject, course, topic, year_level, semester, tags,
+    INSERT INTO resources (id, title, description, category, subject, course, course_id, target_all, topic, year_level, semester, tags,
       file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status, uploaded_by, created_at, updated_at)
-    VALUES (@id, @title, @description, @category, @subject, @course, @topic, @year_level, @semester, @tags,
+    VALUES (@id, @title, @description, @category, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @tags,
       @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status, @uploaded_by, @created_at, @updated_at)
   `).run(row);
+
+  syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
 
   const saved = db.prepare('SELECT * FROM resources WHERE id = ?').get(id);
   const response = { resource: serializeResource(saved) };
@@ -193,17 +260,36 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
 
-  const { title, description, category, subject, course, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
+  const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   const effectiveCategory = category ?? existing.category;
-  const effectiveSubject = subject ?? existing.subject;
+
+  // Dynamic course: resolve when supplied; keep existing when omitted.
+  let courseRow = null;
+  let effectiveCourseId = existing.course_id;
+  if (courseId !== undefined) {
+    if (courseId) {
+      courseRow = resolveCourse(courseId);
+      if (!courseRow) return res.status(400).json({ message: 'The selected course could not be found.' });
+      effectiveCourseId = courseRow.id;
+    } else {
+      effectiveCourseId = null;
+    }
+  } else if (existing.course_id) {
+    courseRow = db.prepare('SELECT * FROM courses WHERE id = ?').get(existing.course_id);
+  }
+
+  const subjectChanged = subject !== undefined;
+  const effectiveSubject = subjectChanged
+    ? (subject || (courseRow ? courseRow.name : null))
+    : (existing.subject || (courseRow ? courseRow.name : null));
   const effectiveSemester = semester ?? existing.semester;
   // Enforce placement when the admin is editing placement fields or replacing
   // the file, while still allowing a publish toggle on older legacy rows that
   // predate required video terms.
-  const placementChanged = category !== undefined || subject !== undefined || semester !== undefined || Boolean(req.file);
+  const placementChanged = category !== undefined || subject !== undefined || courseId !== undefined || semester !== undefined || Boolean(req.file);
   const placementError = placementChanged
-    ? validateCoursePlacement(effectiveCategory, effectiveSubject, effectiveSemester)
+    ? validateCoursePlacement(effectiveCategory, effectiveSubject, effectiveSemester, effectiveCourseId)
     : null;
   if (placementError) return res.status(400).json({ message: placementError });
 
@@ -238,13 +324,21 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     };
   }
 
+  // Program targeting — only re-synced when the admin sends targeting fields.
+  if (req.body.targetAll !== undefined || req.body.programs !== undefined || req.body.targetPrograms !== undefined || req.body.target !== undefined) {
+    const targeting = parseTargeting(req.body);
+    db.prepare('UPDATE resources SET target_all = ? WHERE id = ?').run(targeting.targetAll ? 1 : 0, existing.id);
+    syncResourcePrograms(existing.id, targeting.targetAll, targeting.programCodes);
+  }
+
   const updated = {
     id: existing.id,
     title: (title ?? existing.title).trim(),
     description: description ?? existing.description,
     category: category ?? existing.category,
-    subject: subject ?? existing.subject,
+    subject: effectiveSubject ?? existing.subject,
     course: course ?? existing.course,
+    course_id: effectiveCourseId ?? existing.course_id,
     topic: topic === undefined ? existing.topic : ((topic || '').trim() || null),
     year_level: yearLevel ?? existing.year_level,
     semester: semester ?? existing.semester,
@@ -261,9 +355,10 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
 
   db.prepare(`
     UPDATE resources SET title=@title, description=@description, category=@category, subject=@subject, course=@course,
-      topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url, quiz_data=@quiz_data,
-      due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status, updated_at=@updated_at,
-      file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type, content_hash=@content_hash
+      course_id=@course_id, topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url,
+      quiz_data=@quiz_data, due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status,
+      updated_at=@updated_at, file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type,
+      content_hash=@content_hash
     WHERE id=@id
   `).run(updated);
 
@@ -282,11 +377,46 @@ router.delete('/resources/:id', (req, res) => {
 // ---- Users ---------------------------------------------------------------
 
 router.get('/users', (req, res) => {
+  const { program } = req.query;
+  const clauses = [];
+  const params = {};
+  if (program) {
+    if (program === 'none') clauses.push('program_code IS NULL');
+    else { clauses.push('program_code = @program'); params.program = String(program).toUpperCase(); }
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const users = db.prepare(`
-    SELECT id, name, email, role, school, grade, learning_level, subscription, trial_end, subscription_start, subscription_end, created_at
-    FROM users ORDER BY created_at DESC
-  `).all();
-  res.json({ users });
+    SELECT id, name, email, role, school, grade, learning_level, program_code, subscription, trial_end, subscription_start, subscription_end, created_at
+    FROM users ${where}
+    ORDER BY created_at DESC
+  `).all(params);
+  // Attach program display info for the management table.
+  const programs = db.prepare('SELECT * FROM programs').all();
+  const byCode = new Map(programs.map((p) => [p.code, p]));
+  const enriched = users.map((u) => ({
+    ...u,
+    program: u.program_code || null,
+    programName: u.program_code ? (byCode.get(u.program_code)?.name || u.program_code) : null
+  }));
+  res.json({ users: enriched });
+});
+
+// Admin can change a student's program (e.g. a student who picked the wrong
+// category). Validated against the real programs table.
+router.put('/users/:id/program', (req, res) => {
+  const user = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  if (user.role === 'ADMIN') return res.status(400).json({ message: 'Admin accounts do not have a student program.' });
+  const code = String((req.body && req.body.program) || '').trim().toUpperCase();
+  if (!code) {
+    db.prepare('UPDATE users SET program_code = NULL WHERE id = ?').run(user.id);
+    return res.json({ message: 'Program cleared.' });
+  }
+  if (!VALID_PROGRAM_CODES.has(code) || !db.prepare('SELECT code FROM programs WHERE code = ?').get(code)) {
+    return res.status(400).json({ message: 'That program does not exist.' });
+  }
+  db.prepare('UPDATE users SET program_code = ? WHERE id = ?').run(code, user.id);
+  res.json({ message: `Student's program updated to ${code}.` });
 });
 
 router.delete('/users/:id', (req, res) => {
@@ -381,6 +511,20 @@ router.get('/analytics', (req, res) => {
     SELECT category, COUNT(*) as count FROM resources GROUP BY category
   `).all();
 
+  // Student counts per program/category (for the admin overview).
+  const studentsByProgram = db.prepare(`
+    SELECT COALESCE(p.name, u.program_code, 'Unassigned') AS program,
+           COALESCE(u.program_code, 'NONE') AS code,
+           COUNT(*) AS count
+    FROM users u
+    LEFT JOIN programs p ON p.code = u.program_code
+    WHERE u.role = 'STUDENT'
+    GROUP BY u.program_code
+    ORDER BY count DESC
+  `).all();
+  const totalPrograms = db.prepare('SELECT COUNT(*) c FROM programs').get().c;
+  const totalCourses = db.prepare('SELECT COUNT(*) c FROM courses').get().c;
+
   const popular = db.prepare(`
     SELECT id, title, category, download_count FROM resources ORDER BY download_count DESC LIMIT 5
   `).all();
@@ -413,6 +557,9 @@ router.get('/analytics', (req, res) => {
     totalViews,
     revenue,
     storageUsedBytes,
+    totalPrograms,
+    totalCourses,
+    studentsByProgram,
     byCategory,
     popular,
     mostViewed,

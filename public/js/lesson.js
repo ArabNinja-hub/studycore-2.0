@@ -21,6 +21,11 @@
   const params = new URLSearchParams(location.search);
   const lessonId = params.get('id');
   const subjectParam = params.get('subject') || '';
+  // When a lesson is opened from a dynamic program course (Program → Course
+  // → Topic → Lesson), the URL carries ?course=<code>. That switches the
+  // previous/next flow to the program-course endpoint so navigation stays
+  // inside the student's own course.
+  const courseParam = params.get('course') || '';
 
   let flow = null;
   let playerHandle = null;
@@ -38,14 +43,29 @@
     return chips.join('');
   }
 
+  function courseHrefFor(lesson) {
+    const code = lesson.courseCode || courseParam;
+    if (code) return SCPrograms.courseHref({ slug: code.toLowerCase(), code });
+    return null;
+  }
+
   function renderBreadcrumb(lesson) {
     const bc = $('#lessonBreadcrumb');
     const sep = '<span class="sep" aria-hidden="true"></span>';
+    const programHref = courseHrefFor(lesson);
     const slug = subjectSlug(lesson.subject || subjectParam);
     let html = `<a href="/">StudyCore</a>${sep}<a href="/pages/courses.html">Courses</a>`;
-    if (slug) html += `${sep}<a href="/pages/subjects/${slug}.html">${escapeHtml(lesson.subject || subjectParam)}</a>`;
-    if (lesson.topic && lesson.topic !== 'General') {
-      html += `${sep}<a href="/pages/subjects/${slug}.html#lesson-topic-${String(lesson.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(lesson.topic)}</a>`;
+    if (programHref) {
+      const label = lesson.courseCode ? `${lesson.courseCode} — ${lesson.subject || ''}` : (lesson.subject || 'Course');
+      html += `${sep}<a href="${programHref}">${escapeHtml(label.trim())}</a>`;
+      if (lesson.topic && lesson.topic !== 'General') {
+        html += `${sep}<a href="${programHref}#lesson-topic-${String(lesson.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(lesson.topic)}</a>`;
+      }
+    } else if (slug) {
+      html += `${sep}<a href="/pages/subjects/${slug}.html">${escapeHtml(lesson.subject || subjectParam)}</a>`;
+      if (lesson.topic && lesson.topic !== 'General') {
+        html += `${sep}<a href="/pages/subjects/${slug}.html#lesson-topic-${String(lesson.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(lesson.topic)}</a>`;
+      }
     }
     html += `${sep}<span class="current">${escapeHtml(lesson.title)}</span>`;
     bc.innerHTML = html;
@@ -250,12 +270,18 @@
     renderNavCard(flow);
   }
 
+  function lessonLink(item, lesson) {
+    const courseKey = (item && (item.courseCode)) || (lesson && (lesson.courseCode || courseParam)) || '';
+    if (courseKey) return `/pages/lesson.html?id=${item.id}&course=${encodeURIComponent(courseKey)}`;
+    return `/pages/lesson.html?id=${item.id}&subject=${encodeURIComponent(item.subject || (lesson && lesson.subject) || '')}`;
+  }
+
   function renderNavCard(flowData) {
     const card = $('#navCard');
     const lesson = flowData.lesson;
     const prev = flowData.previous, next = flowData.next;
     const slot = (label, item) => item ? `
-      <a class="nav-slot" href="/pages/lesson.html?id=${item.id}&subject=${encodeURIComponent(item.subject || lesson.subject)}">
+      <a class="nav-slot" href="${lessonLink(item, lesson)}">
         <span>${SC.icon(label === 'Previous' ? 'arrow-left' : 'arrow-right', { size: 16 })}</span>
         <span style="min-width:0;">
           <span class="dir">${label} lesson</span>
@@ -272,7 +298,7 @@
     card.innerHTML = `
       ${slot('Previous', prev)}
       <div class="nav-slot" style="justify-content:center;cursor:default;">
-        <span class="slot-title">Lesson ${flowData.index + 1} of ${flowData.total} in ${escapeHtml(lesson.subject || 'this course')}</span>
+        <span class="slot-title">Lesson ${flowData.index + 1} of ${flowData.total} in ${escapeHtml(lesson.courseCode ? `${lesson.courseCode} — ${lesson.subject || ''}` : (lesson.subject || 'this course'))}</span>
       </div>
       ${slot('Next', next)}`;
   }
@@ -280,7 +306,10 @@
   async function renderTopicProgress(lesson) {
     if (!lesson.topic || lesson.topic === 'General') return;
     try {
-      const data = await StudyCoreAPI.courseHome(lesson.subject || subjectParam);
+      const key = lesson.courseCode || courseParam;
+      const data = key
+        ? await StudyCoreAPI.programCourseHome(key)
+        : await StudyCoreAPI.courseHome(lesson.subject || subjectParam);
       const t = (data.topics || []).find((x) => x.name === lesson.topic);
       if (!t) return;
       const card = $('#topicProgressCard');
@@ -305,7 +334,12 @@
     }
 
     try {
-      flow = await StudyCoreAPI.lessonFlow(lessonId);
+      // Program-course lessons use the program-aware flow (keeps prev/next
+      // inside the student's own course); legacy subject lessons fall back to
+      // the subject flow.
+      flow = courseParam
+        ? await StudyCoreAPI.programLessonFlow(lessonId)
+        : await StudyCoreAPI.lessonFlow(lessonId);
     } catch (err) {
       $('#lessonContent').hidden = false;
       $('#lessonLoading').hidden = true;

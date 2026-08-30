@@ -54,10 +54,29 @@
     },
     removeAvatar: () => request('/api/auth/avatar', { method: 'DELETE' }),
 
-    // Courses
+    // Courses (legacy subject model - still served)
     listCourses: () => request('/api/courses'),
     courseHome: (subject) => request(`/api/courses/${encodeURIComponent(subject)}`),
     lessonFlow: (id) => request(`/api/courses/lesson/${encodeURIComponent(id)}`),
+
+    // Programs (multi-program platform)
+    listPrograms: (counts) => request(`/api/programs${counts ? '?counts=1' : ''}`),
+    myProgram: () => request('/api/programs/mine'),
+    programCourseHome: (key) => request(`/api/programs/course/${encodeURIComponent(key)}`),
+    programLessonFlow: (id) => request(`/api/programs/lesson/${encodeURIComponent(id)}`),
+    setMyProgram: (program) => request('/api/auth/program', { method: 'PUT', body: JSON.stringify({ program }) }),
+
+    // Admin: programs & courses
+    adminPrograms: () => request('/api/programs/admin'),
+    adminCreateProgram: (payload) => request('/api/programs/admin', { method: 'POST', body: JSON.stringify(payload) }),
+    adminUpdateProgram: (code, payload) => request(`/api/programs/admin/${encodeURIComponent(code)}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    adminDeleteProgram: (code) => request(`/api/programs/admin/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+    adminCreateCourse: (payload) => request('/api/programs/admin/courses', { method: 'POST', body: JSON.stringify(payload) }),
+    adminUpdateCourse: (id, payload) => request(`/api/programs/admin/courses/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    adminDeleteCourse: (id) => request(`/api/programs/admin/courses/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    adminAttachCourse: (code, courseId) => request(`/api/programs/admin/${encodeURIComponent(code)}/courses`, { method: 'POST', body: JSON.stringify({ courseId }) }),
+    adminDetachCourse: (code, courseId) => request(`/api/programs/admin/${encodeURIComponent(code)}/courses/${encodeURIComponent(courseId)}`, { method: 'DELETE' }),
+    adminSetStudentProgram: (userId, program) => request(`/api/admin/users/${encodeURIComponent(userId)}/program`, { method: 'PUT', body: JSON.stringify({ program }) }),
 
     // Progress
     markComplete: (id) => request(`/api/resources/${id}/complete`, { method: 'POST' }),

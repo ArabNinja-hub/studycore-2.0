@@ -15,9 +15,9 @@
   'use strict';
 
   const $ = (sel) => document.querySelector(sel);
-  const COURSES = ['mathematics', 'physics', 'chemistry', 'biology', 'programming', 'communication'];
 
   let user = null;
+  let myProgramData = null; // { program, courses }
 
   function renderAvatar(slot, lg) {
     if (!slot) return;
@@ -36,10 +36,16 @@
     const s = user.subscriptionStatus || {};
     let sub = label.label;
     if (s.state === 'premium_active' && s.subscriptionEnd) sub += ` · until ${new Date(s.subscriptionEnd).toLocaleDateString()}`;
-    $('#dashSub').textContent = `${user.email} · ${sub}`;
+    const programName = (myProgramData && myProgramData.program)
+      ? myProgramData.program.name
+      : (SCPrograms.programName(user.program) !== 'Unassigned' ? SCPrograms.programName(user.program) : null);
+    const programPill = programName
+      ? ` · <span class="program-pill">${SC.icon((myProgramData && myProgramData.program && myProgramData.program.icon) || SCPrograms.programIcon(user.program), { size: 13 })} ${escapeHtml(programName)}</span>`
+      : '';
+    $('#dashSub').innerHTML = `${escapeHtml(user.email)} · ${escapeHtml(sub)}${programPill}`;
     $('#dashHeroActions').innerHTML = `
       <a class="btn btn-amber btn-sm" href="#premium">${SC.icon('crown', { size: 15 })} Premium</a>
-      <a class="btn btn-on-dark btn-sm" href="/pages/courses.html">Browse Courses</a>`;
+      <a class="btn btn-on-dark btn-sm" href="/pages/courses.html">My Courses</a>`;
   }
 
   /* ── Status banner ──────────────────────── */
@@ -92,6 +98,10 @@
       return;
     }
     const it = best.item;
+    const courseLabel = best.course.code ? `${best.course.code} — ${best.course.name || ''}` : best.course.subject;
+    const resourceRef = it.courseCode
+      ? { id: it.id, category: it.category, courseCode: it.courseCode }
+      : { id: it.id, category: it.category, subject: best.course.subject };
     const resume = it.videoPosition && it.videoDuration
       ? `<div class="progress progress-thin" style="margin-top:10px;"><span style="width:${Math.round((it.videoPosition / Math.max(1, it.videoDuration)) * 100)}%"></span></div>`
       : '';
@@ -99,30 +109,40 @@
       <div class="continue-card">
         <span class="cc-icon">${SC.icon(it.category === 'video' ? 'play' : 'file-text', { size: 24 })}</span>
         <span class="cc-body">
-          <span class="cc-eyebrow">Continue learning · ${escapeHtml(best.course.subject)}</span>
+          <span class="cc-eyebrow">Continue learning · ${escapeHtml(courseLabel)}</span>
           <h4>${escapeHtml(it.title)}${it.topic ? ` <span style="font-weight:500;color:var(--muted);font-size:0.88rem;">— ${escapeHtml(it.topic)}</span>` : ''}</h4>
           ${resume}
         </span>
-        <a class="btn btn-primary" href="${SC.resourceHref({ id: it.id, category: it.category, subject: best.course.subject })}">Continue Lesson ${SC.icon('arrow-right', { size: 16 })}</a>
+        <a class="btn btn-primary" href="${SC.resourceHref(resourceRef)}">Continue Lesson ${SC.icon('arrow-right', { size: 16 })}</a>
       </div>`;
   }
 
-  /* ── My courses ─────────────────────────── */
-  function renderMyCourses(courseData) {
+  /* ── My courses (driven by the student's program) ── */
+  function renderMyCourses() {
     const list = $('#myCoursesList');
-    if (!courseData.length) {
-      list.innerHTML = emptyState({ icon: 'library', title: 'No content yet', body: 'Courses will appear here once lessons are published.' });
+    if (!myProgramData) return;
+    if (!myProgramData.program) {
+      list.innerHTML = `
+        <div style="padding:8px 4px;">
+          <strong>Select your program</strong>
+          <p style="color:var(--muted);font-size:0.9rem;margin:6px 0 12px;">Pick your program to see your courses, notes, videos and announcements.</p>
+          <button class="btn btn-primary btn-sm" onclick="document.getElementById('programSelectCard').scrollIntoView({behavior:'smooth'})">Choose program</button>
+        </div>`;
       return;
     }
-    list.innerHTML = courseData.map((c) => {
-      const slug = c.course.slug;
-      const p = c.data.progress;
+    const courses = myProgramData.courses || [];
+    if (!courses.length) {
+      list.innerHTML = emptyState({ icon: 'library', title: 'No courses yet', body: 'Courses for your program will appear here once the admin adds them.' });
+      return;
+    }
+    list.innerHTML = courses.map((c) => {
+      const p = c.progress || { total: 0, completed: 0, percent: 0 };
       return `
-        <a class="course-mini" href="/pages/subjects/${slug}.html">
-          <span class="cm-icon">${SC.icon(SC.courseIcon(slug), { size: 21 })}</span>
+        <a class="course-mini" href="${SCPrograms.courseHref(c)}">
+          <span class="cm-icon">${SC.icon(c.icon || 'book-open', { size: 21 })}</span>
           <span class="cm-body">
-            <strong>${escapeHtml(c.course.subject)}</strong>
-            <span>${p.totalCount} lessons · ${p.completedCount} complete</span>
+            <strong>${escapeHtml(c.code)} — ${escapeHtml(c.name)}</strong>
+            <span>${p.total} lessons · ${p.completed} complete</span>
           </span>
           <span style="width:120px;flex-shrink:0;">
             <div class="progress-labels"><span></span><strong style="font-size:0.78rem;">${p.percent}%</strong></div>
@@ -536,11 +556,48 @@
         showToast(err.message, 'error');
       }
     });
+
+    // Program change (persisted server-side — the backend enforces it).
+    const programSaveBtn = document.getElementById('programSaveBtn');
+    if (programSaveBtn) {
+      programSaveBtn.addEventListener('click', async () => {
+        const sel = document.getElementById('programSelect');
+        const code = sel && sel.value;
+        if (!code) { showToast('Please choose a program.', 'error'); return; }
+        programSaveBtn.disabled = true;
+        // chooseProgram reloads on success.
+        await chooseProgram(code);
+        programSaveBtn.disabled = false;
+      });
+    }
   }
 
   /* ── Community ──────────────────────────── */
   function renderCommunity() {
     SCLayout.renderCommunityPanel($('#communityPanel'));
+  }
+
+  /* ── Program selection (for older accounts / changes) ── */
+  async function loadProgramPicker() {
+    try {
+      const { programs } = await StudyCoreAPI.listPrograms();
+      const sel = document.getElementById('programSelect');
+      if (sel) {
+        sel.innerHTML = '<option value="">Choose your program…</option>' +
+          programs.map((p) => `<option value="${p.code}" ${user.program === p.code ? 'selected' : ''}>${escapeHtml(p.groupName ? `${p.name} (${p.groupName})` : p.name)}</option>`).join('');
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  async function chooseProgram(code) {
+    try {
+      const data = await StudyCoreAPI.setMyProgram(code);
+      user = data.user;
+      showToast('Program updated.', 'success');
+      location.reload();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
   }
 
   /* ── Boot ──────────────────────────────── */
@@ -552,6 +609,14 @@
     const welcomeInfo = StudyCoreAuth.consumeWelcomeFlag();
     if (welcomeInfo !== null) StudyCoreAuth.showWelcomeTransition(welcomeInfo.name || user.name, welcomeInfo.type);
 
+    // Fetch this student's program + courses (the platform now filters
+    // everything by program).
+    try {
+      myProgramData = await StudyCoreAPI.myProgram();
+    } catch {
+      myProgramData = null;
+    }
+
     renderHero();
     renderStatusBanner();
     renderPremiumPanel();
@@ -561,6 +626,7 @@
     loadAnnouncements();
     loadBookmarks();
     loadReferral();
+    loadProgramPicker();
 
     // Live refresh: smooth real-time updates across the entire dashboard
     setInterval(async () => {
@@ -579,30 +645,30 @@
     document.getElementById('profileGrade').value = user.grade || '';
     document.getElementById('profileLevel').value = user.learning_level || 'secondary';
 
-    // Load all six courses (progress, continue, activity, achievements)
+    // Program courses: load each program-course home for progress, continue
+    // learning, recent activity and recommendations. Everything is already
+    // filtered to the student's program server-side.
+    const courseKeys = (myProgramData && myProgramData.courses ? myProgramData.courses : []).map((c) => c.slug || c.code);
     const results = await Promise.allSettled(
-      COURSES.map(async (slug) => {
-        const course = await StudyCoreAPI.courseHome(slug);
-        return { course, data: course };
+      courseKeys.map(async (slug) => {
+        const data = await StudyCoreAPI.programCourseHome(slug);
+        return { course: data.course, data };
       })
     );
     const courseData = results.filter((r) => r.status === 'fulfilled').map((r) => r.value).filter(Boolean);
 
-    renderMyCourses(courseData);
+    renderMyCourses();
 
     // Aggregate stats
-    let totalLessons = 0, maxStreak = 0, achievements = null;
+    let totalLessons = 0, maxStreak = 0;
     for (const c of courseData) {
-      totalLessons += c.data.achievements ? c.data.achievements.totalLessons : 0;
+      totalLessons += c.data.progress ? c.data.progress.completedCount : 0;
       maxStreak = Math.max(maxStreak, c.data.streak || 0);
-      if (!achievements && c.data.achievements) achievements = c.data.achievements.achievements;
     }
     renderStats(totalLessons, maxStreak);
-    renderAchievements(achievements);
 
-    // Continue learning: prefer a course where the student has a real
-    // "recent" lesson (video position or fresh completion); otherwise fall
-    // back to the next uncompleted lesson in the most-advanced course.
+    // Continue learning: prefer a course with a recently-touched lesson,
+    // otherwise the next uncompleted lesson in the most-advanced course.
     let best = null;
     for (const c of courseData) {
       const cont = c.data.continueLearning;
@@ -622,22 +688,22 @@
     }
     renderContinue(best);
 
-    // Recent activity: most recently completed lessons across courses
+    // Recent activity: most recently completed lessons across program courses
     const activity = [];
     for (const c of courseData) {
-      for (const l of c.data.lessons) {
-        if (l.completed && l.completedAt) activity.push(l);
+      for (const l of (c.data.lessons || [])) {
+        if (l.completed && l.completedAt) activity.push({ ...l, courseCode: c.course.code });
       }
     }
     activity.sort((a, b) => String(b.completedAt).localeCompare(String(a.completedAt)));
     renderActivity(activity.slice(0, 6));
 
-    // Recommended: collect each course's recommendations, dedupe, take 5
+    // Recommended: next uncompleted lessons across the program courses.
     const recs = [];
     for (const c of courseData) {
-      for (const r of (c.data.recommended || [])) {
-        if (r && r.id && !recs.find((x) => x.id === r.id)) recs.push(r);
-      }
+      const lessons = c.data.lessons || [];
+      const next = lessons.find((l) => !l.completed);
+      if (next) recs.push({ ...next, reason: `${c.course.code} — next lesson`, courseCode: c.course.code });
     }
     renderRecommended(recs.slice(0, 5));
   }

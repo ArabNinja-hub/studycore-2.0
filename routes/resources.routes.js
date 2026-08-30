@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, COOKIE_NAME } = require('../middleware/auth');
 const storage = require('../lib/storage');
+const { programCanSeeResource, resourceVisibilityClause } = require('../lib/program-access');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'studycore-dev-secret-change-me';
 
@@ -19,6 +20,7 @@ function serializeResource(row) {
     category: row.category,
     subject: row.subject,
     course: row.course,
+    courseId: row.course_id || null,
     topic: row.topic || null,
     yearLevel: row.year_level,
     semester: row.semester,
@@ -442,6 +444,13 @@ router.get('/', requireAuth, gate, (req, res) => {
     params.search = `%${search}%`;
   }
 
+  // Program-based visibility: students only ever receive resources targeted
+  // at (a) all programs or (b) their own program / courses. Enforced in SQL
+  // so unauthorized rows never leave the database.
+  const vis = resourceVisibilityClause(req.user, 'resources');
+  if (vis.clause) clauses.push(vis.clause);
+  Object.assign(params, vis.params);
+
   const sortMap = {
     newest: 'created_at DESC',
     oldest: 'created_at ASC',
@@ -474,6 +483,10 @@ router.get('/', requireAuth, gate, (req, res) => {
 async function handleStream(req, res) {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
+  // Program permission (Student → Program → Course → Resource) is checked
+  // before any subscription gating — a Law student streaming a Mines
+  // resource id is refused outright.
+  if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   if (!row.stored_name && !row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
   if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
@@ -496,6 +509,7 @@ router.get('/:id/stream', requireAuth, gate, handleStream);
 router.post('/:id/video-progress', requireAuth, gate, (req, res) => {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row || row.category !== 'video') return res.status(404).json({ message: 'Video lesson not found.' });
+  if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, 'video');
 
   const { position, duration } = req.body || {};
@@ -533,6 +547,7 @@ router.post('/:id/video-progress', requireAuth, gate, (req, res) => {
 router.get('/:id/video-progress', requireAuth, gate, (req, res) => {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row || row.category !== 'video') return res.status(404).json({ message: 'Video lesson not found.' });
+  if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, 'video');
 
   const saved = db.prepare('SELECT position, duration, updated_at FROM video_progress WHERE user_id = ? AND resource_id = ?').get(req.user.id, row.id);
@@ -540,12 +555,14 @@ router.get('/:id/video-progress', requireAuth, gate, (req, res) => {
 });
 
 router.get('/bookmarks/mine', requireAuth, gate, (req, res) => {
+  const vis = resourceVisibilityClause(req.user, 'r', 'bmProgram');
   const rows = db.prepare(`
     SELECT r.* FROM bookmarks b
     JOIN resources r ON r.id = b.resource_id
-    WHERE b.user_id = ? AND r.publish_status = 'published'
+    WHERE b.user_id = @userId AND r.publish_status = 'published'
+    ${vis.clause ? `AND ${vis.clause}` : ''}
     ORDER BY b.created_at DESC
-  `).all(req.user.id);
+  `).all({ userId: req.user.id, ...vis.params });
   res.json({ resources: rows.map((r) => ({ ...serializeResource(r), locked: canAccess(r, req.access) ? null : lockReason(r, req.access) })) });
 });
 
@@ -566,17 +583,37 @@ router.get('/search', (req, res) => {
   const access = user ? accessFor(user) : { premium: false, trial: false };
   const ql = `%${q}%`;
 
-  // 1) Courses (always public - they are the site's core navigation).
-  const courses = COURSE_SUBJECTS.filter((c) => c.subject.toLowerCase().includes(q.toLowerCase()))
-    .map((c) => ({ slug: c.slug, subject: c.subject }));
+  // 1) Courses. Logged-in students get the dynamic catalog for their
+  // program; anonymous visitors get the legacy public subject directory.
+  let courses;
+  if (user && user.role !== 'ADMIN' && user.program_code) {
+    const programCourses = db.prepare(`
+      SELECT c.code, c.name, c.slug
+      FROM program_courses pc
+      JOIN courses c ON c.id = pc.course_id
+      WHERE pc.program_code = ?
+      ORDER BY pc.sort_order ASC, c.code ASC
+    `).all(user.program_code);
+    courses = programCourses
+      .filter((c) => c.name.toLowerCase().includes(q.toLowerCase()) || c.code.toLowerCase().includes(q.toLowerCase()))
+      .map((c) => ({ slug: c.slug, subject: `${c.code} — ${c.name}`, code: c.code, programCourse: true }));
+  } else {
+    courses = COURSE_SUBJECTS.filter((c) => c.subject.toLowerCase().includes(q.toLowerCase()))
+      .map((c) => ({ slug: c.slug, subject: c.subject }));
+  }
 
-  // 2) Topics (names only - public structure of each course).
+  // 2) Topics (names only - public structure). Program students only get
+  // topics from content they can see.
+  const vis = user
+    ? resourceVisibilityClause(user, 'resources', 'searchProgram')
+    : { clause: "target_all = 1", params: {} };
   const topicRows = db.prepare(`
-    SELECT DISTINCT topic, LOWER(subject) AS subject_key, subject
+    SELECT DISTINCT topic, subject
     FROM resources
     WHERE publish_status = 'published' AND topic IS NOT NULL AND topic != ''
+      ${vis.clause ? `AND ${vis.clause}` : ''}
     ORDER BY topic ASC
-  `).all();
+  `).all({ ...vis.params });
   const topics = topicRows
     .filter((t) => t.topic.toLowerCase().includes(q.toLowerCase()) || (t.subject || '').toLowerCase().includes(q.toLowerCase()))
     .slice(0, limit)
@@ -585,16 +622,18 @@ router.get('/search', (req, res) => {
   // 3) Content (only for logged-in students, permission-flagged).
   let results = [];
   if (user) {
+    const contentVis = resourceVisibilityClause(user, 'resources', 'searchProgram');
     const rows = db.prepare(`
       SELECT * FROM resources
       WHERE publish_status = 'published'
         AND category NOT IN ('announcement', 'quiz', 'assignment')
-        AND (title LIKE ? OR description LIKE ? OR topic LIKE ? OR tags LIKE ? OR subject LIKE ?)
+        ${contentVis.clause ? `AND ${contentVis.clause}` : ''}
+        AND (title LIKE @q OR description LIKE @q OR topic LIKE @q OR tags LIKE @q OR subject LIKE @q)
       ORDER BY
         CASE category WHEN 'video' THEN 0 WHEN 'document' THEN 1 WHEN 'tutorial' THEN 2 ELSE 3 END,
         created_at DESC
-      LIMIT ?
-    `).all(ql, ql, ql, ql, ql, limit);
+      LIMIT @limit
+    `).all({ q: ql, limit, ...contentVis.params });
 
     const completed = new Set(
       db.prepare('SELECT resource_id FROM lesson_progress WHERE user_id = ?').all(user.id).map((r) => r.resource_id)
@@ -623,6 +662,7 @@ router.get('/search', (req, res) => {
 router.get('/:id', requireAuth, gate, (req, res) => {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
+  if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   db.prepare('UPDATE resources SET view_count = view_count + 1 WHERE id = ?').run(row.id);
 

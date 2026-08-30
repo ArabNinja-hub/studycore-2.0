@@ -14,7 +14,9 @@
   let selectedFile = null;
   let editingResourceId = null;
   let editingAnnouncementId = null;
-  let currentFilters = { search: '', category: '', sort: 'newest' };
+  let currentFilters = { search: '', category: '', sort: 'newest', program: '' };
+  let resourceFormControls = null;
+  let announcementTargetControls = null;
 
   const $ = (sel) => document.querySelector(sel);
   const CATEGORY_LABELS = { document: 'Notes', video: 'Video', tutorial: 'Tutorial', past_paper: 'Past paper', quiz: 'Quiz', assignment: 'Assignment', announcement: 'Announcement' };
@@ -27,11 +29,8 @@
     document.getElementById('resQuizData').required = category === 'quiz';
     document.getElementById('resPinned').parentElement.style.display = category === 'announcement' ? 'flex' : 'none';
 
-    const isCourseContent = ['video', 'document', 'tutorial', 'past_paper'].includes(category);
     const isVideo = category === 'video';
-    const subjectSelect = document.getElementById('resSubject');
     const termSelect = document.getElementById('resSemester');
-    subjectSelect.required = isCourseContent;
     termSelect.required = isVideo;
     document.getElementById('resSemesterRequired').textContent = isVideo ? '*' : '';
     document.getElementById('resSemesterHelp').style.display = isVideo ? 'block' : 'none';
@@ -51,6 +50,16 @@
     document.getElementById('uploadFormTitle').textContent = 'Upload a new resource';
     document.getElementById('resourceSubmitBtn').textContent = 'Publish Resource';
     document.getElementById('resourceCancelEditBtn').style.display = 'none';
+    // Reset program/course selects and targeting to "All Programs".
+    if (resourceFormControls) {
+      resourceFormControls.setProgram('');
+      resourceFormControls.setCourse('');
+    }
+    const targetingSlot = document.getElementById('resTargetPrograms');
+    if (targetingSlot && window.SCAdminPrograms) {
+      targetingSlot.innerHTML = SCAdminPrograms.targetingCheckboxesHtml('resTargetChecks', [], true);
+      SCAdminPrograms.wireTargetingBehavior(targetingSlot);
+    }
     categoryFieldVisibility();
   }
 
@@ -81,6 +90,9 @@
     document.getElementById('annTitle').value = r.title;
     document.getElementById('annMessage').value = r.description || '';
     document.getElementById('annPinned').checked = Boolean(r.pinned);
+    if (announcementTargetControls && window.SCAdminPrograms) {
+      announcementTargetControls.set(r.targetAll, r.targetPrograms || []);
+    }
     document.getElementById('announcementSubmitBtn').textContent = 'Save Changes';
     document.getElementById('announcementForm').scrollIntoView({ behavior: 'smooth' });
   }
@@ -99,6 +111,15 @@
     fd.append('publishStatus', 'published');
     fd.append('isPremium', 'false');
     fd.append('pinned', pinned ? 'true' : 'false');
+    // Program targeting: All Students or specific program(s).
+    const annSlot = document.getElementById('annTargetPrograms');
+    if (annSlot && window.SCAdminPrograms) {
+      const t = SCAdminPrograms.readTargeting(annSlot);
+      fd.append('targetAll', t.targetAll ? 'true' : 'false');
+      fd.append('programs', t.programs.join(','));
+    } else {
+      fd.append('targetAll', 'true');
+    }
 
     const btn = document.getElementById('announcementSubmitBtn');
     btn.disabled = true;
@@ -154,7 +175,21 @@
     fd.append('description', document.getElementById('resDescription').value.trim());
     fd.append('category', document.getElementById('resCategory').value);
     fd.append('subject', document.getElementById('resSubject').value);
-    fd.append('course', document.getElementById('resCourse').value.trim());
+    const courseEl = document.getElementById('resCourse');
+    if (courseEl) fd.append('course', courseEl.value.trim());
+    // Dynamic program course (Program → Course content targeting).
+    if (resourceFormControls) {
+      fd.append('courseId', resourceFormControls.getCourseId() || '');
+    }
+    // Program targeting (one / several / all programs).
+    const targetingSlot = document.getElementById('resTargetPrograms');
+    if (targetingSlot && window.SCAdminPrograms) {
+      const t = SCAdminPrograms.readTargeting(targetingSlot);
+      fd.append('targetAll', t.targetAll ? 'true' : 'false');
+      fd.append('programs', t.programs.join(','));
+    } else {
+      fd.append('targetAll', 'true');
+    }
     fd.append('topic', document.getElementById('resTopic').value.trim());
     fd.append('yearLevel', document.getElementById('resYear').value.trim());
     fd.append('semester', document.getElementById('resSemester').value.trim());
@@ -202,6 +237,7 @@
       loadResourceTable();
       loadAnalytics();
       loadTopicSuggest();
+      if (window.SCAdminPrograms) SCAdminPrograms.loadPrograms();
       notifyAnnouncementChange();
     } catch (err) {
       showToast(err.message, 'error');
@@ -230,6 +266,25 @@
     document.getElementById('resIsFree').checked = !r.isPremium;
     document.getElementById('resPinned').checked = Boolean(r.pinned);
     document.getElementById('fileChosenLabel').textContent = r.hasFile ? `Current file: ${r.fileName} (${formatFileSize(r.fileSize)}) — choose a new file to replace it` : '';
+
+    // Program/course placement + targeting.
+    if (window.SCAdminPrograms && resourceFormControls) {
+      // Find the course's owning program from the flattened catalog.
+      if (r.courseId) {
+        const owner = SCAdminPrograms.globalCourses.find((c) => c.id === r.courseId);
+        if (owner) resourceFormControls.setProgram(owner.programCode || '');
+        resourceFormControls.setCourse(r.courseId);
+      } else {
+        resourceFormControls.setProgram('');
+        resourceFormControls.setCourse('');
+      }
+      const targetingSlot = document.getElementById('resTargetPrograms');
+      if (targetingSlot) {
+        targetingSlot.innerHTML = SCAdminPrograms.targetingCheckboxesHtml('resTargetChecks', r.targetPrograms || [], r.targetAll);
+        SCAdminPrograms.wireTargetingBehavior(targetingSlot);
+      }
+    }
+
     document.getElementById('uploadFormTitle').textContent = 'Edit resource';
     document.getElementById('resourceSubmitBtn').textContent = 'Save Changes';
     document.getElementById('resourceCancelEditBtn').style.display = '';
@@ -336,6 +391,17 @@
     }
   }
 
+  /* ── Program filter chips (ALL | LAW | BUSINESS | SNR | MINES | NON-QUOTA | SICT) ── */
+  function renderProgramFilterChips() {
+    if (!window.SCAdminPrograms) return;
+    SCAdminPrograms.renderFilterChips(currentFilters.program || '', (code) => {
+      currentFilters.program = code;
+      renderProgramFilterChips();
+      loadResourceTable();
+      loadUsers();
+    });
+  }
+
   /* ── Resource table ─────────────────────── */
   function renderAdminToolbar() {
     const t = document.getElementById('adminToolbar');
@@ -354,7 +420,7 @@
       <select id="adminSort" style="padding:10px 14px;border-radius:10px;border:1.5px solid var(--border-strong);background:var(--card);">
         <option value="newest">Newest</option>
         <option value="oldest">Oldest</option>
-        <option value="popular">Most downloaded</option>
+        <option value="popular">Most viewed</option>
         <option value="title">Title A-Z</option>
       </select>`;
     let debounce;
@@ -366,6 +432,15 @@
     document.getElementById('adminSort').addEventListener('change', (e) => { currentFilters.sort = e.target.value; loadResourceTable(); });
   }
 
+  function courseCellLabel(r) {
+    // Prefer the dynamic program course; fall back to legacy subject.
+    if (window.SCAdminPrograms && r.courseId) {
+      const c = SCAdminPrograms.globalCourses.find((x) => x.id === r.courseId);
+      if (c) return { text: `${c.code} — ${c.name}`, title: c.name };
+    }
+    return { text: r.subject || '—', title: r.subject || '' };
+  }
+
   async function loadResourceTable() {
     const tbody = document.getElementById('adminResourceTbody');
     tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted);">Loading…</td></tr>';
@@ -373,13 +448,16 @@
       const { resources } = await StudyCoreAPI.adminListResources({
         search: currentFilters.search || undefined,
         category: currentFilters.category || undefined,
+        program: currentFilters.program || undefined,
         sort: currentFilters.sort
       });
       if (!resources.length) {
         tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted);padding:24px;text-align:center;">No resources match.</td></tr>';
         return;
       }
-      tbody.innerHTML = resources.map((r) => `
+      tbody.innerHTML = resources.map((r) => {
+        const cc = courseCellLabel(r);
+        return `
         <tr>
           <td>
             <div style="display:flex;align-items:center;gap:10px;">
@@ -391,7 +469,8 @@
             </div>
           </td>
           <td>${CATEGORY_LABELS[r.category] || r.category}</td>
-          <td>${escapeHtml(r.subject || '—')}</td>
+          <td>${escapeHtml(cc.text)}</td>
+          <td>${window.SCAdminPrograms ? SCAdminPrograms.targetBadge(r) : ''}</td>
           <td>${escapeHtml(r.topic || '—')}${r.semester ? `<br><span style="font-size:0.72rem;color:var(--muted);">${escapeHtml(r.semester)}</span>` : ''}</td>
           <td>
             <button class="btn btn-ghost btn-sm" data-toggle-publish="${r.id}" data-current-status="${r.publishStatus}" style="color:${r.publishStatus === 'published' ? 'var(--green-600)' : 'var(--amber-600)'};">
@@ -399,7 +478,6 @@
             </button>
           </td>
           <td>${r.isPremium ? '<span class="badge badge-amber">Premium</span>' : '<span class="badge badge-green">Free</span>'}${r.pinned ? ' <span class="badge badge-neutral">Pinned</span>' : ''}</td>
-          <td>${r.downloadCount}</td>
           <td>${r.viewCount}</td>
           <td>
             <div class="table-actions">
@@ -408,7 +486,8 @@
               <button class="btn btn-ghost btn-sm" data-delete="${r.id}" style="color:var(--red-600);">${SC.icon('trash', { size: 13 })}</button>
             </div>
           </td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
 
       tbody.querySelectorAll('[data-toggle-publish]').forEach((btn) => btn.addEventListener('click', () => togglePublish(btn)));
       tbody.querySelectorAll('[data-edit]').forEach((btn) => btn.addEventListener('click', () => editResource(resources.find((r) => r.id === btn.getAttribute('data-edit')))));
@@ -486,26 +565,66 @@
   }
 
   /* ── Students ───────────────────────────── */
+  function renderUserProgramFilter() {
+    const sel = document.getElementById('userProgramFilter');
+    if (!sel || !window.SCAdminPrograms) return;
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All programs</option>' +
+      SCAdminPrograms.programs.map((p) => `<option value="${p.code}">${escapeHtml(p.name)}</option>`).join('') +
+      '<option value="none">Unassigned</option>';
+    sel.value = current;
+    sel.onchange = () => loadUsers();
+  }
+
   async function loadUsers() {
     const target = document.getElementById('usersList');
+    const filterSel = document.getElementById('userProgramFilter');
+    const programFilter = filterSel ? filterSel.value : '';
     try {
-      const { users } = await StudyCoreAPI.adminListUsers();
+      const { users } = await StudyCoreAPI.adminListUsers(programFilter ? { program: programFilter } : {});
       const students = users.filter((u) => u.role === 'STUDENT');
-      if (!students.length) { target.innerHTML = '<p style="color:var(--muted);">No students have signed up yet.</p>'; return; }
+      renderUserProgramFilter();
+      if (!students.length) { target.innerHTML = '<p style="color:var(--muted);">No students match.</p>'; return; }
+
+      const programChoices = window.SCAdminPrograms
+        ? SCAdminPrograms.programs.map((p) => `<option value="${p.code}">${escapeHtml(p.name)}</option>`).join('')
+        : '';
+
       target.innerHTML = students.map((u) => `
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;font-size:0.88rem;">
-          <span>
+          <span style="min-width:0;">
             <strong style="color:var(--ink);">${escapeHtml(u.name)}</strong> · ${escapeHtml(u.email)}
             <span class="badge ${u.subscription === 'premium' ? 'badge-amber' : 'badge-neutral'}" style="margin-left:8px;">${u.subscription === 'premium' ? 'Premium' : 'Trial'}</span>
-            ${u.trial_end ? ` · trial ends ${formatDate(u.trial_end)}` : ''}
+            <span class="program-pill" style="margin-left:6px;background:var(--teal-50,#e6f7f4);">${SC.icon(SCPrograms.programIcon(u.program), { size: 12 })} ${escapeHtml(u.programName || 'Unassigned')}</span>
+            ${u.trial_end ? `<br><span style="color:var(--muted);font-size:0.78rem;">Trial ends ${formatDate(u.trial_end)}</span>` : ''}
           </span>
-          <button class="btn btn-outline btn-sm" data-remove-user="${u.id}" style="color:var(--red-600);">Remove</button>
+          <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select data-set-program="${u.id}" style="padding:6px 10px;border-radius:8px;border:1.5px solid var(--border-strong);background:var(--card);font-size:0.82rem;">
+              <option value="">Change program…</option>
+              ${programChoices}
+            </select>
+            <button class="btn btn-outline btn-sm" data-remove-user="${u.id}" style="color:var(--red-600);">Remove</button>
+          </span>
         </div>`).join('');
+
       target.querySelectorAll('[data-remove-user]').forEach((btn) => btn.addEventListener('click', async () => {
         if (!confirm('Remove this student account?')) return;
         try {
           await StudyCoreAPI.adminDeleteUser(btn.getAttribute('data-remove-user'));
           showToast('Student account removed.', 'success');
+          loadUsers();
+          loadAnalytics();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      }));
+      target.querySelectorAll('[data-set-program]').forEach((sel2) => sel2.addEventListener('change', async () => {
+        const userId = sel2.getAttribute('data-set-program');
+        const code = sel2.value;
+        if (!code) return;
+        try {
+          const data = await StudyCoreAPI.adminSetStudentProgram(userId, code);
+          showToast(data.message || 'Program updated.', 'success');
           loadUsers();
           loadAnalytics();
         } catch (err) {
@@ -526,6 +645,35 @@
     const welcomeInfo = StudyCoreAuth.consumeWelcomeFlag();
     if (welcomeInfo !== null) StudyCoreAuth.showWelcomeTransition(welcomeInfo.name || user.name, welcomeInfo.type);
 
+    // Multi-program platform: load programs, set up the program/course
+    // selectors and content targeting controls.
+    try {
+      await SCAdminPrograms.loadPrograms();
+      resourceFormControls = SCAdminPrograms.setupResourceForm();
+      const resTargetSlot = document.getElementById('resTargetPrograms');
+      if (resTargetSlot) {
+        resTargetSlot.innerHTML = SCAdminPrograms.targetingCheckboxesHtml('resTargetChecks', [], true);
+        SCAdminPrograms.wireTargetingBehavior(resTargetSlot);
+      }
+      announcementTargetControls = SCAdminPrograms.setupAnnouncementForm();
+      const programsHeadingIcon = document.getElementById('programsHeadingIcon');
+      if (programsHeadingIcon) programsHeadingIcon.innerHTML = SC.icon('library', { size: 19 });
+      await SCAdminPrograms.renderProgramCards();
+      document.getElementById('addProgramBtn').addEventListener('click', SCAdminPrograms.promptCreateProgram);
+      document.getElementById('addCourseBtn').addEventListener('click', () => {
+        const code = prompt('Which program code do you want to add a course to? (LAW, BS, SNR, SMMS, SMNS, SICT)');
+        if (code) SCAdminPrograms.promptAddCourse(code.trim().toUpperCase());
+      });
+      // Refresh dependent UI when programs/courses change.
+      window.__adminProgramsChanged = () => {
+        resourceFormControls = SCAdminPrograms.setupResourceForm();
+        renderProgramFilterChips();
+        renderUserProgramFilter();
+      };
+    } catch (err) {
+      console.warn('Program controls failed to load:', err);
+    }
+
     document.getElementById('resCategory').addEventListener('change', categoryFieldVisibility);
     document.getElementById('resourceCancelEditBtn').addEventListener('click', resetResourceForm);
     document.getElementById('resourceForm').addEventListener('submit', submitResourceForm);
@@ -540,7 +688,6 @@
       if (label) label.textContent = `PDF, Word, PowerPoint, Excel, images, ZIP, video or audio — up to ${maxUploadMB}MB`;
     }).catch(() => {});
 
-    renderAdminToolbar();
     document.querySelectorAll('[data-quick-category]').forEach((btn) => btn.addEventListener('click', () => {
       resetResourceForm();
       document.getElementById('resCategory').value = btn.getAttribute('data-quick-category');
@@ -554,6 +701,8 @@
     const communityOpenBtn = document.getElementById('communityOpenBtn');
     if (communityOpenBtn) communityOpenBtn.innerHTML = `${SC.icon('message-circle', { size: 15 })} Open the community room`;
 
+    renderAdminToolbar();
+    renderProgramFilterChips();
     loadAnalytics();
     loadCommunityStats();
     loadResourceTable();

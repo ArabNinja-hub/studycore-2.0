@@ -123,13 +123,27 @@
                     <div class="form-group">
                       <label for="profileLevel">Learning level</label>
                       <select id="profileLevel">
-                        <option value="secondary">Secondary school</option>
                         <option value="tertiary">University / Tertiary</option>
+                        <option value="secondary">Secondary school</option>
                       </select>
                     </div>
                   </div>
                   <button class="btn btn-primary" type="submit">Save changes</button>
                 </form>
+
+                <!-- Program (comes from the backend/database) -->
+                <div id="programSelectCard" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+                  <h3 style="font-size:1rem;margin-bottom:6px;">My Program</h3>
+                  <p style="font-size:0.86rem;color:var(--muted);margin-bottom:10px;">
+                    Your program determines the courses, notes, videos, past papers and announcements you can access.
+                    Changing it switches you to that program’s platform.
+                  </p>
+                  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                    <select id="programSelect" style="min-width:240px;"></select>
+                    <button class="btn btn-outline btn-sm" id="programSaveBtn" type="button">Update program</button>
+                  </div>
+                  <div id="myCoursesSummary" style="margin-top:12px;font-size:0.86rem;color:var(--muted);"></div>
+                </div>
               </div>
 
               <div class="card dash-section span-6">
@@ -197,6 +211,7 @@
     <script src="/js/auth.js"></script>
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
+    <script src="/js/programs.js"></script>
     <script src="/js/scroll-reveal.js"></script>
     <script src="/js/dashboard.js"></script>
   </body>

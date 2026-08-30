@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { DatabaseSync } = require('node:sqlite');
+const { seedProgramCatalog } = require('../lib/programs');
 
 // On Render, set DATA_DIR to the mounted persistent disk's path (e.g.
 // /var/data) in the Environment tab - this is what makes the database
@@ -33,6 +34,42 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL
 );
 
+-- University programs / student categories (Law, Business, SNR, Mines,
+-- Non-Quota, SICT). A student picks exactly one at registration; that
+-- program decides which courses and content they ever see.
+CREATE TABLE IF NOT EXISTS programs (
+  code TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  short_name TEXT,
+  group_name TEXT,
+  icon TEXT DEFAULT 'book-open',
+  description TEXT,
+  created_at TEXT NOT NULL
+);
+
+-- Global course catalog. One row per course CODE (CH110, MA110, ...); the
+-- same code is attached to several programs through program_courses below.
+CREATE TABLE IF NOT EXISTS courses (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  slug TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  icon TEXT DEFAULT 'book-open',
+  subject TEXT,
+  created_at TEXT NOT NULL
+);
+
+-- Program → Course (many-to-many). Mines and Non-Quota share CH110/MA110/
+-- PH110/CS110/LA111, but E.D links only to SMMS and BI110 only to SMNS.
+CREATE TABLE IF NOT EXISTS program_courses (
+  program_code TEXT NOT NULL REFERENCES programs(code) ON DELETE CASCADE,
+  course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (program_code, course_id)
+);
+CREATE INDEX IF NOT EXISTS idx_program_courses_program ON program_courses(program_code);
+CREATE INDEX IF NOT EXISTS idx_program_courses_course ON program_courses(course_id);
+
 CREATE TABLE IF NOT EXISTS resources (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
@@ -40,6 +77,7 @@ CREATE TABLE IF NOT EXISTS resources (
   category TEXT NOT NULL,
   subject TEXT,
   course TEXT,
+  course_id TEXT REFERENCES courses(id) ON DELETE SET NULL,
   year_level TEXT,
   semester TEXT,
   tags TEXT,
@@ -52,6 +90,7 @@ CREATE TABLE IF NOT EXISTS resources (
   quiz_data TEXT,
   due_date TEXT,
   is_premium INTEGER NOT NULL DEFAULT 1,
+  target_all INTEGER NOT NULL DEFAULT 1,
   publish_status TEXT NOT NULL DEFAULT 'published',
   uploaded_by TEXT REFERENCES users(id) ON DELETE SET NULL,
   download_count INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +98,16 @@ CREATE TABLE IF NOT EXISTS resources (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- Many-to-many targeting: which programs a resource/announcement reaches
+-- when target_all = 0 (one or several specific programs).
+CREATE TABLE IF NOT EXISTS resource_programs (
+  resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+  program_code TEXT NOT NULL REFERENCES programs(code) ON DELETE CASCADE,
+  PRIMARY KEY (resource_id, program_code)
+);
+CREATE INDEX IF NOT EXISTS idx_resource_programs_resource ON resource_programs(resource_id);
+CREATE INDEX IF NOT EXISTS idx_resource_programs_program ON resource_programs(program_code);
 
 CREATE TABLE IF NOT EXISTS lesson_progress (
   id TEXT PRIMARY KEY,
@@ -179,6 +228,47 @@ try {
 // Announcements can be pinned to the top of the announcement centre.
 try {
   db.exec('ALTER TABLE resources ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // column already exists - fine
+}
+
+// ── Multi-program platform ──────────────────────────────────────────────
+//
+// Every piece of content (notes, videos, past papers, resources AND
+// announcements) carries program targeting:
+//   target_all = 1  -> visible to every program ("All Programs")
+//   target_all = 0  -> visible only to the programs listed in
+//                      resource_programs ("multiple programs").
+// Course-bound content (course_id set) is additionally restricted to the
+// programs that include that course — enforced server-side.
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN course_id TEXT REFERENCES courses(id) ON DELETE SET NULL');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN target_all INTEGER NOT NULL DEFAULT 1');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS resource_programs (
+      resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      program_code TEXT NOT NULL REFERENCES programs(code) ON DELETE CASCADE,
+      PRIMARY KEY (resource_id, program_code)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_resource_programs_resource ON resource_programs(resource_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_resource_programs_program ON resource_programs(program_code)');
+} catch {
+  // already exists - fine
+}
+
+// The student's program/category. Required at registration; enforced
+// server-side on every content request. Never trusted from the client.
+try {
+  db.exec("ALTER TABLE users ADD COLUMN program_code TEXT REFERENCES programs(code) ON DELETE SET NULL");
 } catch {
   // column already exists - fine
 }
@@ -392,6 +482,12 @@ function migrateBareUuidDocuments() {
 }
 
 migrateBareUuidDocuments();
+
+// Seed the six university programs, the global course catalog and the
+// program→course assignments (Law, Business, SNR, Mines, Non-Quota, SICT).
+// Idempotent — only inserts rows that do not yet exist, so admin-managed
+// programs/courses survive every restart.
+seedProgramCatalog(db);
 
 function seedAdmin() {
   const existingAdmin = db.prepare(`SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1`).get();
