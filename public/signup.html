@@ -50,7 +50,7 @@
             <div class="form-group" id="refGroup" style="display:none;">
               <label for="ref">Friend's invite code (optional)</label>
               <input id="ref" name="ref" type="text" placeholder="6 characters" />
-              <div class="hint">You'll both get 7 bonus trial days.</div>
+              <div class="hint">Your friend earns 7 bonus days when you sign up with their code.</div>
             </div>
             <div class="checkbox-row" style="margin:4px 0 14px;">
               <input type="checkbox" id="agreeTerms" />
@@ -79,7 +79,7 @@
         if (refCode) {
           const banner = document.getElementById('referralBanner');
           banner.style.display = 'flex';
-          banner.innerHTML = `${SC.icon('sparkles', { size: 18 })}<span>You were invited by a friend — enter the invite code below to get 7 bonus trial days.</span>`;
+          banner.innerHTML = `${SC.icon('sparkles', { size: 18 })}<span>You were invited by a friend — enter their invite code below so they get their 7 bonus days.</span>`;
           document.getElementById('refGroup').style.display = '';
           document.getElementById('ref').value = refCode;
         }
