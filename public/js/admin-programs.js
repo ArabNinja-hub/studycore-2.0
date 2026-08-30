@@ -7,7 +7,7 @@
 // the resource/announcement forms.
 // =============================================
 
-(function () {
+(function (global) {
   'use strict';
 
   let programs = []; // admin overview programs (with courses)
@@ -271,4 +271,4 @@
     promptCreateProgram,
     renderFilterChips
   };
-})();
+})(window);
