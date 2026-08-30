@@ -1343,12 +1343,72 @@
     }
   }
 
+  /* ── Cross-page transitions ───────────────
+     Same-origin <a> clicks fade the current page out, then the next page
+     fades in. Chromium also gets the native View Transition cross-fade.
+     Hash-only jumps, new tabs, downloads and modifier-clicks stay instant. */
+  const PAGE_LEAVE_MS = 240;
+
+  function sameOriginInternal(url) {
+    if (!url) return false;
+    if (url.origin !== window.location.origin) return false;
+    if (url.pathname === window.location.pathname && url.search === window.location.search) return false;
+    return true;
+  }
+
+  function goTo(href) {
+    try { sessionStorage.setItem('sc_page_transition', '1'); } catch { /* private mode */ }
+    window.location.href = href;
+  }
+
+  function leaveThenGo(href) {
+    if (document.body.classList.contains('sc-page-leave')) {
+      goTo(href);
+      return;
+    }
+    document.body.classList.add('sc-page-leave');
+    window.setTimeout(() => goTo(href), PAGE_LEAVE_MS);
+  }
+
+  function bindPageTransitions() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    document.addEventListener('click', (event) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target.closest && event.target.closest('a[href]');
+      if (!anchor) return;
+      if (anchor.target && anchor.target !== '_self') return;
+      if (anchor.hasAttribute('download')) return;
+      const href = anchor.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('tel:') || href.startsWith('javascript:')) return;
+      let url;
+      try { url = new URL(anchor.href, window.location.href); } catch { return; }
+      if (!sameOriginInternal(url)) return;
+      event.preventDefault();
+      leaveThenGo(url.href);
+    }, true);
+
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) document.body.classList.remove('sc-page-leave');
+    });
+
+    try {
+      if (sessionStorage.getItem('sc_page_transition') === '1') {
+        sessionStorage.removeItem('sc_page_transition');
+        document.body.classList.add('sc-page-enter');
+        window.setTimeout(() => document.body.classList.remove('sc-page-enter'), 700);
+      }
+    } catch { /* ignore */ }
+  }
+
   /* ── Boot ──────────────────────────────── */
   async function init() {
     // Apply the saved theme preference BEFORE rendering any chrome so the
     // first paint is already in the correct mode (no flash of wrong theme).
     applyTheme();
     ensureMobileMeta();
+    bindPageTransitions();
     renderNav();
     renderMobileNav();
     renderFooter();

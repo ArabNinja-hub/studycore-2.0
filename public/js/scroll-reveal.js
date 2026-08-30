@@ -11,7 +11,8 @@
 //   · Only whole content GROUPS reveal (card grids, big
 //     panels) — never utility surfaces like the dashboard,
 //     lesson rows, images or legal text.
-//   · One gentle fade-up, one shared speed, small stagger.
+//   · Cards fly in from the sides as the student scrolls;
+//     other groups fade up. One shared speed, small stagger.
 // =============================================
 
 (function () {
@@ -42,8 +43,8 @@
   ].join(',');
 
   const HIDDEN_PARENT_SELECTOR = '[hidden], [aria-hidden="true"]';
-  const MAX_STAGGER = 240;
-  const STAGGER_STEP = 56;
+  const MAX_STAGGER = 180;
+  const STAGGER_STEP = 70;
 
   function prefersReducedMotion() {
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -51,9 +52,6 @@
 
   function isCandidateVisible(element) {
     if (!(element instanceof HTMLElement)) return false;
-    // Some API-rendered regions (notably the personalised home catalog) must
-    // swap skeletons for live content immediately, without cards appearing to
-    // "fly in" after the request completes.
     if (element.closest('[data-no-scroll-reveal]')) return false;
     if (element.matches(HIDDEN_PARENT_SELECTOR) || element.closest(HIDDEN_PARENT_SELECTOR)) return false;
     // offsetParent is null for display:none elements, while fixed elements
@@ -97,8 +95,16 @@
 
   function directionFor(element) {
     const direction = element.getAttribute('data-scroll-reveal');
-    if (direction === 'fade-left' || direction === 'fade-right') return direction;
+    if (direction === 'fade-left' || direction === 'fade-right' || direction === 'fly-in') return direction;
     if (element.matches('img') || element.hasAttribute('data-scroll-reveal-image')) return 'fade-right';
+    if (element.matches('.course-card, .resource-card, .topic-card, .video-term-card, .announcement-card, .premium-card, .feature-grid > .card, .community-panel')) {
+      const group = element.closest(STAGGER_SELECTORS);
+      const siblings = group
+        ? candidatesIn(group).filter((candidate) => candidate !== group && isCandidateVisible(candidate))
+        : [];
+      const index = Math.max(0, siblings.indexOf(element));
+      return index % 2 === 0 ? 'fade-left' : 'fade-right';
+    }
     return 'fade-up';
   }
 
@@ -109,6 +115,7 @@
       const direction = directionFor(element);
       element.setAttribute('data-scroll-reveal', direction);
       setStaggerDelay(element);
+      element.style.willChange = 'opacity, transform';
       observer.observe(element);
     });
   }
@@ -125,14 +132,28 @@
         if (!entry.isIntersecting) return;
         const element = entry.target;
         observer.unobserve(element);
-        element.classList.add('sc-reveal-visible');
+        // Double-rAF so the hidden transform is painted before we fly in —
+        // otherwise some browsers skip the first transition.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            element.classList.add('sc-reveal-visible');
+          });
+        });
+        const settle = () => {
+          element.classList.add('sc-reveal-done');
+          element.style.removeProperty('will-change');
+        };
+        element.addEventListener('transitionend', (event) => {
+          if (event.target === element && (event.propertyName === 'transform' || event.propertyName === 'opacity')) {
+            settle();
+          }
+        }, { once: true });
+        window.setTimeout(settle, 1100);
       });
     }, {
       root: null,
-      // Start just before the element reaches the visible reading area so the
-      // motion feels connected to the scroll rather than late or distracting.
-      rootMargin: '0px 0px -8% 0px',
-      threshold: 0.08
+      rootMargin: '0px 0px -10% 0px',
+      threshold: 0.12
     });
 
     const body = document.body;
