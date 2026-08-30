@@ -57,17 +57,18 @@ router.post('/register', async (req, res) => {
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
   if (existing) return res.status(409).json({ message: 'An account with this email already exists.' });
 
-  // A friend's invite link adds a few bonus trial days for both people -
-  // the new student gets a longer trial for joining through a friend, and
-  // whoever invited them gets extra time added to their own access as a
-  // thank-you. The code is looked up case-insensitively since students will
-  // often retype it by hand off a WhatsApp message.
+  // A friend's invite link rewards ONLY the person who shared the code (the
+  // referrer): when someone signs up through their link, +7 days are added to
+  // the referrer's own access as a thank-you. The newly referred student gets
+  // the standard 30-day trial - no bonus on their side. The code is looked up
+  // case-insensitively since students will often retype it by hand off a
+  // WhatsApp message.
   //
   // The referrer's reward is strictly one-time: only their very first
-  // successful referral earns them a bonus, ever. Every friend they bring
-  // in after that still gets their OWN signup bonus and still counts
-  // toward the referrer's visible "friends joined" total - the referrer
-  // just doesn't earn any further free days beyond that first one.
+  // successful referral earns them the bonus, ever. Every friend they bring
+  // in after that still counts toward the referrer's visible "friends joined"
+  // total - the referrer just doesn't earn any further free days beyond that
+  // first one.
   const REFERRAL_BONUS_DAYS = 7;
   const REFERRAL_REWARD_CAP = 1;
   let referrer = null;
@@ -77,7 +78,9 @@ router.post('/register', async (req, res) => {
 
   const hashed = await bcrypt.hash(password, 10);
   const now = new Date().toISOString();
-  const trialDays = referrer ? 30 + REFERRAL_BONUS_DAYS : 30;
+  // The referred student gets the standard trial length - the 7-day bonus
+  // goes only to the friend who shared the invite code, never the new signup.
+  const trialDays = 30;
   const trialEnd = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000).toISOString();
   const user = {
     id: `user-${uuidv4()}`,

@@ -118,7 +118,7 @@ async function testDesktop(path) {
   check('navbar host rendered with .navbar class', nav && nav.classList.contains('navbar'));
   check('brand present', !!nav?.querySelector('.nav-brand'));
   const items = [...nav?.querySelectorAll('.nav-item') || []];
-  check('4 nav links rendered', items.length === 4, `got ${items.length}`);
+  check('5 nav links rendered', items.length === 5, `got ${items.length}`);
   check('2 flyout dropdowns rendered', nav?.querySelectorAll('.nav-dropdown').length === 2, `got ${nav?.querySelectorAll('.nav-dropdown').length}`);
   const isCourseHome = document.body.dataset.page === 'course';
   check(
@@ -228,14 +228,16 @@ async function testMobile() {
       await testDesktop(p);
     } catch (err) {
       failures++;
-      console.log(`  FAIL  ${p} crashed: ${err.message}`);
+      const reason = err?.message || err?.cause?.message || String(err);
+      console.log(`  FAIL  ${p} crashed: ${reason}`);
     }
   }
   try {
     await testMobile();
   } catch (err) {
     failures++;
-    console.log(`  FAIL  mobile crashed: ${err.message}`);
+    const reason = err?.message || err?.cause?.message || String(err);
+    console.log(`  FAIL  mobile crashed: ${reason}`);
   }
 
   console.log(`\n${passes} passed, ${failures} failed`);

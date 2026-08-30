@@ -391,7 +391,7 @@
             <span style="width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,0.12);display:inline-flex;align-items:center;justify-content:center;">${SC.icon('gift', { size: 22 })}</span>
             <div>
               <h3 style="margin:0;color:#fff;font-size:1.1rem;letter-spacing:0.2px;">Invite a Friend</h3>
-              <p style="margin:0;color:rgba(255,255,255,0.75);font-size:0.82rem;">Both get <strong style="color:#ffd080;">${bonusDaysPerReferral} bonus days</strong></p>
+              <p style="margin:0;color:rgba(255,255,255,0.75);font-size:0.82rem;">Your first friend to join earns <strong style="color:#ffd080;">you ${bonusDaysPerReferral} bonus days</strong></p>
             </div>
           </div>
 
@@ -425,8 +425,8 @@
               <div style="height:100%;width:${progressPercent}%;background:linear-gradient(90deg,#ffd080,#0e7568);border-radius:10px;transition:width 0.4s ease;"></div>
             </div>
             <p style="margin-top:10px;font-size:0.78rem;color:rgba(255,255,255,0.55);">
-              First friend earns you both <strong style="color:#ffd080;">+${bonusDaysPerReferral} days</strong>.
-              ${capReached ? '<span style="color:#4ade80;">Cap reached!</span>' : ''}
+              Your first friend to join earns <strong style="color:#ffd080;">you +${bonusDaysPerReferral} days</strong> (one-time reward).
+              ${capReached ? '<span style="color:#4ade80;">Reward claimed!</span>' : ''}
             </p>
           </div>
         </div>`;
