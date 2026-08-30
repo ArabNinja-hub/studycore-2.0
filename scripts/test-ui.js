@@ -142,7 +142,9 @@ test('homepage is program-aware and never ships the obsolete subject cards', () 
   const indexHtml = read('public/index.html');
   const revealJs = read('public/js/scroll-reveal.js');
 
-  assert.match(indexHtml, /id="homeCatalog"[^>]*data-no-scroll-reveal/);
+  // The homepage program/course cards participate in the same shared scroll
+  // reveal as every other card grid, so they fly in as the student scrolls.
+  assert.doesNotMatch(indexHtml, /id="homeCatalog"[^>]*data-no-scroll-reveal/);
   assert.match(indexHtml, /StudyCoreAPI\.myProgram\(\)/);
   assert.match(indexHtml, /StudyCoreAPI\.listPrograms\(true\)/);
   assert.match(indexHtml, /data\.courses\.map\(\(course\) => courseCard/);

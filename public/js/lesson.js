@@ -198,7 +198,9 @@
     const grid = $('#relatedGrid');
     let items = [];
     try {
-      // Same topic first, then same subject of the same type
+      // Same topic first, then same subject of the same type. Program-course
+      // lessons stay inside their own course: any related resource keeps the
+      // course code/slug so a video opens the correct prev/next flow.
       const byTopic = await StudyCoreAPI.listResources({ subject: lesson.subject, topic: lesson.topic, pageSize: 12 });
       items = (byTopic.resources || []).filter((r) => r.id !== lesson.id && r.category !== 'announcement');
       if (items.length < 3) {
@@ -210,6 +212,13 @@
     } catch { return; }
     items = items.slice(0, 4);
     if (!items.length) { card.style.display = 'none'; return; }
+
+    const courseCode = lesson.courseCode || courseParam || null;
+    const courseSlug = (flow && flow.course && flow.course.slug) || (courseParam && String(courseParam).toLowerCase()) || null;
+    if (courseCode || courseSlug) {
+      items = items.map((r) => ({ ...r, courseCode: courseCode || r.courseCode, courseSlug: courseSlug || r.courseSlug }));
+    }
+
     try {
       const bm = await StudyCoreAPI.myBookmarks();
       renderRelatedItems(items, new Set(bm.resources.map((r) => r.id)));
@@ -240,7 +249,7 @@
           ${SC.icon(lesson.completed ? 'check-circle' : 'check', { size: 17 })}
           ${lesson.completed ? 'Mark as not complete' : 'Mark as Complete'}
         </button>
-        ${flow.next ? `<a class="btn btn-primary" href="/pages/lesson.html?id=${flow.next.id}&subject=${encodeURIComponent(flow.next.subject || lesson.subject)}">Next Lesson ${SC.icon('arrow-right', { size: 16 })}</a>` : ''}
+        ${flow.next ? `<a class="btn btn-primary" href="${lessonLink(flow.next, lesson)}">Next Lesson ${SC.icon('arrow-right', { size: 16 })}</a>` : ''}
       </div>`;
     document.getElementById('toggleCompleteBtn').addEventListener('click', async (e) => {
       const btn = e.currentTarget;

@@ -67,7 +67,7 @@
 
     document.title = `${course.code} — ${course.name} | StudyCore`;
     $('#courseTitle').textContent = `${course.code} — ${course.name}`;
-    $('#courseHeroIcon').innerHTML = SC.icon(course.icon || SC.programIcon || 'book-open', { size: 30 });
+    $('#courseHeroIcon').innerHTML = SC.icon(course.icon || 'book-open', { size: 30 });
     $('#courseProgramLine').textContent = program
       ? `${program.name}${program.groupName ? ' · ' + program.groupName : ''} — lessons, video learning, notes, tutorials and past papers for ${course.code}.`
       : `Lessons, video learning, notes, tutorials and past papers for ${course.code}.`;

@@ -151,8 +151,14 @@
 
   /* ── Back navigation ─────────────────────── */
   function goBack() {
+    // Program-course resources belong to /course/:key, not the legacy six
+    // subject pages. A direct URL (no referrer) must therefore land students
+    // back in the program course instead of a subject page that may not even
+    // contain the resource.
     let fallback = '/dashboard.html';
-    if (resource && resource.subject) {
+    if (resource && resource.courseId) {
+      fallback = `/course/${encodeURIComponent(String(resource.courseId).replace(/^course-/i, ''))}`;
+    } else if (resource && resource.subject) {
       const slug = subjectSlug(resource.subject);
       if (slug) fallback = `/pages/subjects/${slug}.html`;
     }
@@ -317,10 +323,13 @@
     resource = data.resource;
     if (!resource) { notFound(); return; }
 
-    // Videos always play in the lesson player, never here.
+    // Videos always play in the lesson player, never here. When the video is
+    // course-bound it keeps the course key so prev/next stays in the program
+    // course.
     if (resource.category === 'video') {
+      const course = resource.courseId ? `&course=${encodeURIComponent(String(resource.courseId).replace(/^course-/i, ''))}` : '';
       const subject = resource.subject ? `&subject=${encodeURIComponent(resource.subject)}` : '';
-      location.replace(`/pages/lesson.html?id=${encodeURIComponent(resource.id)}${subject}`);
+      location.replace(`/pages/lesson.html?id=${encodeURIComponent(resource.id)}${course}${subject}`);
       return;
     }
 
