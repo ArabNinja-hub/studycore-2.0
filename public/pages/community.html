@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Community | StudyCore</title>
+    <meta name="description" content="The StudyCore student community — one live group room where students ask questions, share answers and study together, with the StudyCore admin joining in." />
+    <link rel="canonical" href="https://studycore.academy/pages/community.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="Community | StudyCore" />
+    <meta property="og:description" content="Ask questions, share answers and study together in the StudyCore student community." />
+    <meta property="og:url" content="https://studycore.academy/pages/community.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/community.css" />
+  </head>
+  <body data-page="community">
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main class="community-main">
+      <div class="container community-container">
+
+        <!-- ── Logged-out state ─────────────────────────────────────────── -->
+        <section class="community-guest" id="communityGuest" hidden>
+          <div class="card card-pad community-guest-card">
+            <span class="eyebrow"><span id="guestIcon"></span> Student Community</span>
+            <h1>Ask anything. Answer together.</h1>
+            <p>
+              The StudyCore community is one live group room for every student on the platform —
+              post a question at midnight, share how you solved a past-paper problem, or ask the
+              StudyCore admin directly. It works like a WhatsApp group, but it lives here, next to
+              your lessons.
+            </p>
+            <ul class="community-guest-list" id="communityGuestList"></ul>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:24px;">
+              <a class="btn btn-primary" href="/signup.html">Create a free account</a>
+              <a class="btn btn-outline" href="/login.html">Log in to join</a>
+            </div>
+          </div>
+          <div id="communityPanel" class="community-guest-panel"></div>
+        </section>
+
+        <!-- ── The room ─────────────────────────────────────────────────── -->
+        <div class="community-shell" id="communityShell" hidden>
+
+          <!-- Sidebar: who is in the room + house rules -->
+          <aside class="community-side" id="communitySide" aria-label="Community members">
+            <div class="side-card">
+              <div class="side-head">
+                <h3 id="sideMembersTitle">In this room</h3>
+                <span class="side-online" id="sideOnlineCount">—</span>
+              </div>
+              <div class="member-list" id="memberList">
+                <div class="skeleton skeleton-row" style="height:44px;"></div>
+                <div class="skeleton skeleton-row" style="height:44px;"></div>
+              </div>
+            </div>
+
+            <div class="side-card">
+              <h3>Room rules</h3>
+              <ol class="rules-list">
+                <li>Ask clearly — include the course, topic and what you already tried.</li>
+                <li>Answer kindly. A short explanation helps more than just the answer.</li>
+                <li>No spam, ads, or sharing of paid StudyCore files.</li>
+                <li>The StudyCore admin reads this room and can remove anything out of line.</li>
+              </ol>
+            </div>
+
+            <div class="side-card" id="sideWhatsAppCard"></div>
+          </aside>
+
+          <!-- Chat column -->
+          <section class="chat-panel" aria-label="Community conversation">
+            <header class="chat-head">
+              <div class="chat-head-main">
+                <span class="chat-head-avatar" id="chatHeadAvatar"></span>
+                <div class="chat-head-text">
+                  <h1>StudyCore Community</h1>
+                  <p id="chatHeadMeta">Loading the room…</p>
+                </div>
+              </div>
+              <div class="chat-head-actions">
+                <button type="button" class="icon-btn" id="chatMembersToggle" aria-label="Show members" aria-expanded="false"></button>
+                <button type="button" class="icon-btn" id="chatToBottom" aria-label="Jump to latest messages" title="Jump to latest"></button>
+              </div>
+            </header>
+
+            <div class="chat-pinned" id="chatPinned" hidden></div>
+
+            <div class="chat-scroll" id="chatScroll" tabindex="0" aria-live="polite">
+              <div class="chat-list" id="chatList">
+                <div class="skeleton skeleton-row" style="height:64px;"></div>
+                <div class="skeleton skeleton-row" style="height:64px;"></div>
+                <div class="skeleton skeleton-row" style="height:64px;"></div>
+              </div>
+            </div>
+
+            <div class="chat-status" id="chatStatus" hidden></div>
+            <div class="chat-typing" id="chatTyping" hidden></div>
+
+            <form class="chat-composer" id="chatComposer" autocomplete="off">
+              <div class="composer-reply" id="composerReply" hidden></div>
+              <div class="composer-row">
+                <label class="visually-hidden" for="composerInput">Write a message to the community</label>
+                <textarea
+                  id="composerInput"
+                  rows="1"
+                  maxlength="2000"
+                  placeholder="Ask a question, share an answer…"
+                  aria-describedby="composerHint"></textarea>
+                <button type="submit" class="btn btn-primary composer-send" id="composerSend" aria-label="Send message"></button>
+              </div>
+              <div class="composer-foot">
+                <span id="composerHint">Enter to send · Shift + Enter for a new line</span>
+                <span id="composerCount">0 / 2000</span>
+              </div>
+            </form>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/community.js"></script>
+  </body>
+</html>

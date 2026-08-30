@@ -271,6 +271,37 @@
   }
 
   /* ── Analytics ──────────────────────────── */
+  /* ── Student community ────────────────────
+     The room itself lives at /pages/community.html (the admin is a normal
+     member there, with pin + delete powers). This card just shows how active
+     it is so the admin knows whether questions are waiting. */
+  async function loadCommunityStats() {
+    const target = document.getElementById('communityStats');
+    if (!target) return;
+    try {
+      const data = await StudyCoreAPI.communityRoom({ limit: 1 });
+      const stats = data.stats || {};
+      const online = data.onlineCount || 0;
+      const latest = (data.messages && data.messages[0]) || null;
+      const pill = (icon, label, value) => `
+        <span class="community-stat-pill">${SC.icon(icon, { size: 15 })} <strong>${value}</strong> ${label}</span>`;
+      target.innerHTML = `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+          ${pill('message-circle', 'messages total', stats.totalMessages || 0)}
+          ${pill('zap', 'today', stats.messagesToday || 0)}
+          ${pill('users', 'students posting', stats.participants || 0)}
+          ${pill('activity', 'online now', online)}
+        </div>
+        <p style="font-size:0.83rem;color:var(--muted);">
+          ${latest
+            ? `Latest from <strong>${escapeHtml(latest.author.name)}</strong> ${timeAgo(latest.createdAt)}: “${escapeHtml(latest.body.length > 90 ? `${latest.body.slice(0, 87)}…` : latest.body)}”`
+            : 'No messages yet — be the first to say hello.'}
+        </p>`;
+    } catch (err) {
+      target.innerHTML = `<p style="color:var(--red-600);font-size:0.85rem;">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
   async function loadAnalytics() {
     const target = document.getElementById('adminAnalytics');
     try {
@@ -518,7 +549,13 @@
       document.getElementById('resourceForm').scrollIntoView({ behavior: 'smooth' });
     }));
 
+    const communityIcon = document.querySelector('[data-community-icon]');
+    if (communityIcon) communityIcon.innerHTML = SC.icon('users', { size: 19 });
+    const communityOpenBtn = document.getElementById('communityOpenBtn');
+    if (communityOpenBtn) communityOpenBtn.innerHTML = `${SC.icon('message-circle', { size: 15 })} Open the community room`;
+
     loadAnalytics();
+    loadCommunityStats();
     loadResourceTable();
     loadPayments();
     loadUsers();
