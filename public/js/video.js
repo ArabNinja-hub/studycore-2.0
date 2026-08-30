@@ -6,6 +6,10 @@
 //
 //   ?course=<slug>   required (e.g. mathematics)
 //   ?term=<Term N>   Term 1 / Term 2 / Term 3
+//   ?program=1       program-course mode: <slug> is a
+//                    dynamic program course (e.g. ma110)
+//                    and every figure comes from
+//                    GET /api/programs/course/:key.
 //
 // Students reach this page from a course home
 // term card. Switching terms stays inside the
@@ -21,13 +25,30 @@
 
   let courseSlug = (params.get('course') || '').toLowerCase();
   let focusTerm = TERMS.includes(params.get('term')) ? params.get('term') : 'Term 1';
+  // Program-course pages carry ?program=1 (added by the dynamic course home).
+  // A course key that has no legacy subject meta is also treated as a program
+  // course so a directly typed /ma110 video URL still works instead of
+  // bouncing the student back to the courses page.
+  let isProgram = params.get('program') === '1' || !SC.COURSE_META[courseSlug];
+  let courseInfo = null; // { code, name, slug, icon, subject } for program courses
 
   function courseSubject() {
+    if (courseInfo) return courseInfo.name;
     return (SC.COURSE_META[courseSlug] || {}).name || courseSlug;
   }
 
+  function courseLabel() {
+    if (courseInfo) return `${courseInfo.code} — ${courseInfo.name}`;
+    return courseSubject();
+  }
+
+  function courseHomeHref() {
+    return isProgram ? `/course/${encodeURIComponent(courseSlug)}` : `/pages/subjects/${encodeURIComponent(courseSlug)}.html`;
+  }
+
   function termHref(term) {
-    return `/pages/videos.html?course=${encodeURIComponent(courseSlug)}&term=${encodeURIComponent(term)}`;
+    const flag = isProgram ? '&program=1' : '';
+    return `/pages/videos.html?course=${encodeURIComponent(courseSlug)}&term=${encodeURIComponent(term)}${flag}`;
   }
 
   function renderTermNav() {
@@ -38,25 +59,31 @@
     ).join('');
   }
 
-  function setPageChrome() {
+  function setPageChrome(data) {
+    if (isProgram && data && data.course) {
+      courseInfo = data.course;
+      // Refresh the breadcrumb/nav now that we know the real program course.
+      const crumb = $('#courseCrumb');
+      crumb.href = `/course/${encodeURIComponent(courseInfo.slug || courseSlug)}`;
+      crumb.textContent = `${courseInfo.code} — ${courseInfo.name}`;
+      const back = $('#courseHomeLink');
+      back.href = `/course/${encodeURIComponent(courseInfo.slug || courseSlug)}#video-lessons`;
+      back.querySelector('span').textContent = `Back to ${courseInfo.code} — ${courseInfo.name}`;
+    }
     const subject = courseSubject();
-    document.title = `${subject} · ${focusTerm} | StudyCore`;
-    $('#videosTitle').textContent = `${subject} · ${focusTerm}`;
+    const label = courseLabel();
+    document.title = `${label} · ${focusTerm} | StudyCore`;
+    $('#videosTitle').textContent = `${label} · ${focusTerm}`;
     $('#videosSub').textContent = `Video lessons for ${subject} in ${focusTerm} only.`;
     $('#termCrumb').textContent = focusTerm;
-    const courseUrl = `/pages/subjects/${courseSlug}.html`;
-    const crumb = $('#courseCrumb');
-    crumb.href = courseUrl;
-    crumb.textContent = subject;
-    const back = $('#courseHomeLink');
-    back.href = `${courseUrl}#video-lessons`;
-    back.querySelector('span').textContent = `Back to ${subject}`;
   }
 
   function renderContinue(cont) {
     if (!cont || cont.category !== 'video') return;
     const section = $('#continueSection');
     section.style.display = '';
+    const courseKey = (isProgram && courseInfo && (courseInfo.slug || courseInfo.code)) || null;
+    const item = courseKey ? { ...cont, courseCode: courseInfo.code, courseSlug: courseInfo.slug } : cont;
     $('#continueCard').innerHTML = `
       <span class="cc-icon">${SC.icon('play', { size: 24 })}</span>
       <span class="cc-body">
@@ -65,9 +92,14 @@
         ${cont.term ? `<span class="lesson-type">${SC.icon('layers', { size: 12 })} ${escapeHtml(cont.term)}</span>` : ''}
         ${cont.videoPosition ? `<div class="progress progress-thin" style="max-width:260px;margin-top:8px;"><span style="width:${Math.round((cont.videoPosition / Math.max(1, cont.videoDuration)) * 100)}%"></span></div>` : ''}
       </span>
-      <a class="btn btn-primary" href="/pages/lesson.html?id=${cont.id}&subject=${encodeURIComponent(cont.subject || courseSubject())}">
+      <a class="btn btn-primary" href="${SC.resourceHref(item, courseSubject())}">
         ${cont.completed ? 'Review lesson' : 'Continue lesson'} ${SC.icon('arrow-right', { size: 16 })}
       </a>`;
+  }
+
+  function enrichForProgram(lessons) {
+    if (!isProgram || !courseInfo) return lessons;
+    return lessons.map((lesson) => ({ ...lesson, courseCode: courseInfo.code, courseSlug: courseInfo.slug }));
   }
 
   function renderLessons(lessons, { anonymous = false } = {}) {
@@ -88,7 +120,7 @@
       : `${n} ${courseSubject()} video ${n === 1 ? 'lesson' : 'lessons'} in ${focusTerm}.`;
 
     list.innerHTML = n
-      ? lessons.map((lesson) => lessonRowHtml(lesson, courseSubject())).join('')
+      ? enrichForProgram(lessons).map((lesson) => lessonRowHtml(lesson, courseLabel())).join('')
       : emptyState({
           icon: 'video',
           title: `Nothing in ${escapeHtml(focusTerm)} yet`,
@@ -97,7 +129,6 @@
   }
 
   async function loadTerm() {
-    setPageChrome();
     renderTermNav();
     $('#videoList').innerHTML = '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div>';
 
@@ -108,7 +139,11 @@
     }
 
     try {
-      const data = await StudyCoreAPI.courseHome(courseSubject());
+      const data = isProgram
+        ? await StudyCoreAPI.programCourseHome(courseSlug)
+        : await StudyCoreAPI.courseHome(courseSubject());
+      setPageChrome(data);
+      renderTermNav();
       const group = (data.videoTerms || []).find((item) => item.term === focusTerm);
       const lessons = group
         ? (group.lessons || [])
@@ -125,13 +160,14 @@
   }
 
   function boot() {
-    if (!SC.COURSE_META[courseSlug]) {
+    if (!courseSlug) {
       location.replace('/pages/courses.html');
       return;
     }
     if (!TERMS.includes(params.get('term'))) {
       history.replaceState(null, '', termHref(focusTerm));
     }
+    setPageChrome(null);
     loadTerm();
   }
 

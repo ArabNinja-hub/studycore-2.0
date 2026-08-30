@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, COOKIE_NAME } = require('../middleware/auth');
 const storage = require('../lib/storage');
-const { programCanSeeResource, resourceVisibilityClause } = require('../lib/program-access');
+const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'studycore-dev-secret-change-me';
 
@@ -421,7 +421,7 @@ function lockedResponse(res, reason) {
 // Locked items are listed so the UI can show an honest "Premium" upgrade
 // card - but their files are still only served after the checks above.
 router.get('/', requireAuth, gate, (req, res) => {
-  const { category, excludeCategory, subject, course, topic, year, semester, search, sort = 'newest', page = 1, pageSize = 24 } = req.query;
+  const { category, excludeCategory, subject, course, courseId, topic, year, semester, search, sort = 'newest', page = 1, pageSize = 24 } = req.query;
 
   // category / excludeCategory accept comma-separated lists
   // (e.g. excludeCategory=video,quiz,assignment)
@@ -436,6 +436,15 @@ router.get('/', requireAuth, gate, (req, res) => {
   else if (excluded.length > 1) { clauses.push(`category NOT IN (${excluded.map((_, i) => `@exc${i}`).join(',')})`); excluded.forEach((c, i) => { params[`exc${i}`] = c; }); }
   if (subject) { clauses.push('LOWER(subject) = LOWER(@subject)'); params.subject = subject; }
   if (course) { clauses.push('course = @course'); params.course = course; }
+  // Program-course filter: courseId accepts the course id, code or slug so the
+  // resources page can narrow to a real program course even when its `course`
+  // text field is empty.
+  if (courseId) {
+    const courseRow = resolveCourse(courseId);
+    if (!courseRow) return res.status(404).json({ message: 'Course not found.' });
+    clauses.push('course_id = @courseId');
+    params.courseId = courseRow.id;
+  }
   if (topic) { clauses.push('LOWER(topic) = LOWER(@topic)'); params.topic = topic; }
   if (year) { clauses.push('year_level = @year'); params.year = year; }
   if (semester) { clauses.push('semester = @semester'); params.semester = semester; }
@@ -608,30 +617,40 @@ router.get('/search', (req, res) => {
     ? resourceVisibilityClause(user, 'resources', 'searchProgram')
     : { clause: "target_all = 1", params: {} };
   const topicRows = db.prepare(`
-    SELECT DISTINCT topic, subject
+    SELECT DISTINCT resources.topic, resources.subject, c.code AS course_code, c.slug AS course_slug
     FROM resources
-    WHERE publish_status = 'published' AND topic IS NOT NULL AND topic != ''
+    LEFT JOIN courses c ON c.id = resources.course_id
+    WHERE resources.publish_status = 'published' AND resources.topic IS NOT NULL AND resources.topic != ''
       ${vis.clause ? `AND ${vis.clause}` : ''}
-    ORDER BY topic ASC
+    ORDER BY resources.topic ASC
   `).all({ ...vis.params });
   const topics = topicRows
     .filter((t) => t.topic.toLowerCase().includes(q.toLowerCase()) || (t.subject || '').toLowerCase().includes(q.toLowerCase()))
     .slice(0, limit)
-    .map((t) => ({ topic: t.topic, subject: t.subject, slug: COURSE_SUBJECTS.find((c) => c.subject === t.subject)?.slug || '' }));
+    .map((t) => ({
+      topic: t.topic,
+      subject: t.subject,
+      slug: t.course_slug || COURSE_SUBJECTS.find((c) => c.subject === t.subject)?.slug || '',
+      courseCode: t.course_code || null,
+      courseSlug: t.course_slug || null,
+      programCourse: Boolean(t.course_slug)
+    }));
 
   // 3) Content (only for logged-in students, permission-flagged).
   let results = [];
   if (user) {
     const contentVis = resourceVisibilityClause(user, 'resources', 'searchProgram');
     const rows = db.prepare(`
-      SELECT * FROM resources
-      WHERE publish_status = 'published'
-        AND category NOT IN ('announcement', 'quiz', 'assignment')
+      SELECT resources.*, c.code AS course_code, c.slug AS course_slug
+      FROM resources
+      LEFT JOIN courses c ON c.id = resources.course_id
+      WHERE resources.publish_status = 'published'
+        AND resources.category NOT IN ('announcement', 'quiz', 'assignment')
         ${contentVis.clause ? `AND ${contentVis.clause}` : ''}
-        AND (title LIKE @q OR description LIKE @q OR topic LIKE @q OR tags LIKE @q OR subject LIKE @q)
+        AND (resources.title LIKE @q OR resources.description LIKE @q OR resources.topic LIKE @q OR resources.tags LIKE @q OR resources.subject LIKE @q)
       ORDER BY
-        CASE category WHEN 'video' THEN 0 WHEN 'document' THEN 1 WHEN 'tutorial' THEN 2 ELSE 3 END,
-        created_at DESC
+        CASE resources.category WHEN 'video' THEN 0 WHEN 'document' THEN 1 WHEN 'tutorial' THEN 2 ELSE 3 END,
+        resources.created_at DESC
       LIMIT @limit
     `).all({ q: ql, limit, ...contentVis.params });
 
@@ -645,6 +664,9 @@ router.get('/search', (req, res) => {
       category: row.category,
       subject: row.subject,
       topic: row.topic || null,
+      courseId: row.course_id || null,
+      courseCode: row.course_code || null,
+      courseSlug: row.course_slug || null,
       completed: completed.has(row.id),
       locked: canAccess(row, access) ? null : lockReason(row, access)
     }));

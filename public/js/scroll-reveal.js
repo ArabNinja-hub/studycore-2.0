@@ -23,11 +23,13 @@
     '.section-heading',
     '.steps > .step',
     '.course-grid > .course-card',
+    '.course-mini',
     '.feature-grid > .card:not(.skeleton)',
     '.resource-grid > .resource-card',
     '.topic-grid > .topic-card',
     '.video-term-grid > .video-term-card',
     '.announcement-list > .announcement-card',
+    '.achievement',
     '.premium-card',
     '.community-panel'
   ].join(',');
@@ -39,7 +41,9 @@
     '.resource-grid',
     '.topic-grid',
     '.video-term-grid',
-    '.announcement-list'
+    '.announcement-list',
+    '#myCoursesList',
+    '.achievement-grid'
   ].join(',');
 
   const HIDDEN_PARENT_SELECTOR = '[hidden], [aria-hidden="true"]';
@@ -97,7 +101,7 @@
     const direction = element.getAttribute('data-scroll-reveal');
     if (direction === 'fade-left' || direction === 'fade-right' || direction === 'fly-in') return direction;
     if (element.matches('img') || element.hasAttribute('data-scroll-reveal-image')) return 'fade-right';
-    if (element.matches('.course-card, .resource-card, .topic-card, .video-term-card, .announcement-card, .premium-card, .feature-grid > .card, .community-panel')) {
+    if (element.matches('.course-card, .course-mini, .resource-card, .topic-card, .video-term-card, .announcement-card, .achievement, .premium-card, .feature-grid > .card, .community-panel')) {
       const group = element.closest(STAGGER_SELECTORS);
       const siblings = group
         ? candidatesIn(group).filter((candidate) => candidate !== group && isCandidateVisible(candidate))

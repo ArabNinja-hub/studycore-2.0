@@ -700,16 +700,25 @@
     if (!body) return;
     const parts = [];
 
+    const courseHref = (c) => {
+      if (c.programCourse || (window.SCPrograms && c.code)) return `/course/${encodeURIComponent(c.slug || c.code || '')}`;
+      return `/pages/subjects/${c.slug}.html`;
+    };
     const courseRows = (data.courses || []).map((c) => `
-      <a class="search-result" href="/pages/subjects/${c.slug}.html">
+      <a class="search-result" href="${courseHref(c)}">
         <span class="sr-icon">${SC.icon(SC.courseIcon(c.slug), { size: 18 })}</span>
         <span class="sr-body"><strong>${escapeHtml(c.subject)}</strong><span>Course</span></span>
         <span class="sr-type">Course</span>
       </a>`).join('');
     if (courseRows) parts.push(`<div class="search-result-group"><h4>Courses</h4>${courseRows}</div>`);
 
+    const topicHref = (t) => {
+      const anchor = `#lesson-topic-${String(t.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+      if (t.programCourse || t.courseSlug) return `/course/${encodeURIComponent(t.courseSlug || t.courseCode || '')}${anchor}`;
+      return `/pages/subjects/${t.slug}.html${anchor}`;
+    };
     const topicRows = (data.topics || []).map((t) => `
-      <a class="search-result" href="/pages/subjects/${t.slug}.html#lesson-topic-${String(t.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">
+      <a class="search-result" href="${topicHref(t)}">
         <span class="sr-icon">${SC.icon('layers', { size: 18 })}</span>
         <span class="sr-body"><strong>${escapeHtml(t.topic)}</strong><span>${escapeHtml(t.subject || '')} topic</span></span>
         <span class="sr-type">Topic</span>

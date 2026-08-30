@@ -74,7 +74,11 @@
         let total = 0;
         let bookmarked = new Set();
 
-        const COURSES = [
+        // Legacy subject chips by default. For a logged-in program student the
+        // list is replaced with their actual program courses so course-bound
+        // content (including past papers) is filterable by course, not just by
+        // the six legacy subject labels.
+        let COURSES = [
           { value: '', label: 'All courses', icon: 'library' },
           { value: 'Mathematics', label: 'Mathematics', icon: 'calculator' },
           { value: 'Physics', label: 'Physics', icon: 'atom' },
@@ -92,6 +96,21 @@
 
         if (user) {
           try { bookmarked = new Set((await StudyCoreAPI.myBookmarks()).resources.map((r) => r.id)); } catch {}
+          // Program-aware course filter for students.
+          if (user.role === 'STUDENT' && user.program) {
+            try {
+              const mine = await StudyCoreAPI.myProgram();
+              if (mine.program && mine.courses && mine.courses.length) {
+                const programCourses = mine.courses.map((c) => ({
+                  value: c.id || c.slug || c.code,
+                  label: `${c.code} — ${c.name}`,
+                  icon: c.icon || 'book-open',
+                  courseId: c.id || c.slug || c.code
+                }));
+                COURSES = [{ value: '', label: 'All courses', icon: 'library' }, ...programCourses];
+              }
+            } catch { /* keep legacy subject chips */ }
+          }
         } else {
           document.getElementById('resourceNotice').innerHTML = `
             <div class="status-banner trial">
@@ -110,21 +129,24 @@
           else {
             document.getElementById('loadMoreBtn').disabled = true;
           }
+          const courseFilter = COURSES.find((c) => c.courseId && c.value === activeCourse);
           const query = {
             excludeCategory: 'announcement,video,quiz,assignment',
-            subject: activeCourse || undefined,
+            subject: courseFilter ? undefined : (activeCourse || undefined),
             sort: 'newest',
             page,
             pageSize: 12
           };
+          if (courseFilter) query.courseId = courseFilter.courseId;
           if (activeType) query.category = activeType;
           try {
             const data = await StudyCoreAPI.listResources(query);
             total = data.total;
             const cards = data.resources.map((r) => resourceCard(r, bookmarked)).join('');
+            const activeLabel = (COURSES.find((c) => c.value === activeCourse) || {}).label || activeCourse;
             if (page === 1) grid.innerHTML = cards || emptyState({
               icon: 'library', title: 'No resources yet',
-              body: activeCourse ? `New ${activeCourse} resources will appear here soon.` : 'New resources will appear here soon.'
+              body: activeCourse ? `New ${activeLabel} resources will appear here soon.` : 'New resources will appear here soon.'
             });
             else grid.insertAdjacentHTML('beforeend', cards);
             const wrap = document.getElementById('loadMoreWrap');
