@@ -6,9 +6,7 @@ const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const {
   serializeProgram,
   serializeCourse,
-  courseCodeToSlug,
-  VALID_PROGRAM_CODES,
-  PROGRAM_CATALOG
+  courseCodeToSlug
 } = require('../lib/programs');
 const {
   resourceVisibilityClause,

@@ -6,7 +6,7 @@ const db = require('../db');
 const { createToken, setAuthCookie, clearAuthCookie, requireAuth, requireRole, attachUser } = require('../middleware/auth');
 const { avatarUpload } = require('../middleware/upload');
 const storage = require('../lib/storage');
-const { VALID_PROGRAM_CODES } = require('../lib/programs');
+const { validProgramCode } = require('../lib/program-access');
 const {
   ROLES,
   normalizeRole,
@@ -35,11 +35,12 @@ function publicUser(user) {
 }
 
 // Normalize/validate a program code from the client. Returns the canonical
-// code or null. Accepts the exact codes (LAW, BS, SNR, SMMS, SMNS, SICT).
+// code or null. Programs are dynamic (Main Admin can create new ones), so
+// this checks the live programs table — a static seed list would reject
+// perfectly valid admin-created programs at signup.
 function normalizeProgramCode(value) {
   if (!value || typeof value !== 'string') return null;
-  const code = value.trim().toUpperCase();
-  return VALID_PROGRAM_CODES.has(code) ? code : null;
+  return validProgramCode(value);
 }
 
 // The authorization code is intentionally server-only. Deployments may set
@@ -114,7 +115,7 @@ router.post('/register', async (req, res) => {
   // entire course and content experience and is enforced server-side.
   const programCode = normalizeProgramCode(program);
   if (!programCode) {
-    return res.status(400).json({ message: 'Please select your program (Law, Business Studies, SNR, School of Mines, Non-Quota or SICT).' });
+    return res.status(400).json({ message: 'Please select your program.' });
   }
 
   const normalizedEmail = email.trim().toLowerCase();

@@ -6,8 +6,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
-const { VALID_PROGRAM_CODES } = require('../lib/programs');
-const { resolveCourse, targetingForResource } = require('../lib/program-access');
+const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
 const { resourceTypeForCategory, resourceTypeLabel } = require('../lib/resource-types');
 
@@ -43,22 +42,33 @@ function validateCoursePlacement(category, subject, semester, courseId) {
   return null;
 }
 
-// Parse the admin's targeting selection into { targetAll, programCodes }.
+// Parse the admin's targeting selection into { targetAll, programCodes, error }.
 //   targetAll = 'true' / 'all' / absent-with-no-programs  -> All Programs
 //   programs  = comma/array of program codes, or 'ALL'
+// Codes are validated against the live programs table (seed catalog PLUS any
+// program Main Admin has created). A static list of the six seeded codes
+// would silently drop admin-created programs — and when an entire explicit
+// selection is dropped, targeting would wrongly widen to EVERY program,
+// leaking program-specific content to students who should not see it.
 function parseTargeting(body) {
   const rawPrograms = body.programs !== undefined ? body.programs : body.targetPrograms;
-  let codes = [];
-  if (Array.isArray(rawPrograms)) codes = rawPrograms;
-  else if (typeof rawPrograms === 'string') codes = rawPrograms.split(',').map((s) => s.trim());
-  codes = codes.map((c) => String(c).toUpperCase()).filter((c) => VALID_PROGRAM_CODES.has(c));
+  let provided = [];
+  if (Array.isArray(rawPrograms)) provided = rawPrograms;
+  else if (typeof rawPrograms === 'string') provided = rawPrograms.split(',').map((s) => s.trim());
+  provided = provided.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
 
   const allFlag = body.targetAll === 'true' || body.targetAll === '1' || body.targetAll === true ||
-                  body.target === 'all' || body.target === 'ALL';
-  const targetAll = allFlag || codes.includes('ALL') || codes.length === 0;
-  // De-dupe and keep only valid codes for explicit targeting.
-  const programCodes = targetAll ? [] : [...new Set(codes)].filter((c) => c !== 'ALL');
-  return { targetAll, programCodes };
+                  body.target === 'all' || body.target === 'ALL' || provided.includes('ALL');
+  const codes = [...new Set(provided.map((c) => validProgramCode(c)).filter(Boolean))];
+  const targetAll = allFlag || codes.length === 0;
+  // De-dupe handled above; keep only real program codes for explicit targeting.
+  const programCodes = targetAll ? [] : codes;
+  // An explicit selection that matches no real program is a client error —
+  // refuse it rather than broadcasting the content to all programs.
+  const error = provided.length > 0 && !allFlag && codes.length === 0
+    ? 'None of the selected programs exist. Check the program codes and try again.'
+    : null;
+  return { targetAll, programCodes, error };
 }
 
 // Replace a resource's program targeting rows.
@@ -240,6 +250,7 @@ router.post('/resources', upload.single('file'), (req, res) => {
 
   // Program targeting (one / multiple / all programs).
   const targeting = parseTargeting(req.body);
+  if (targeting.error) return res.status(400).json({ message: targeting.error });
 
   const row = {
     id,
@@ -365,6 +376,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   // Program targeting — only re-synced when the admin sends targeting fields.
   if (req.body.targetAll !== undefined || req.body.programs !== undefined || req.body.targetPrograms !== undefined || req.body.target !== undefined) {
     const targeting = parseTargeting(req.body);
+    if (targeting.error) return res.status(400).json({ message: targeting.error });
     db.prepare('UPDATE resources SET target_all = ? WHERE id = ?').run(targeting.targetAll ? 1 : 0, existing.id);
     syncResourcePrograms(existing.id, targeting.targetAll, targeting.programCodes);
   }
@@ -527,7 +539,7 @@ router.put('/users/:id/program', (req, res) => {
     db.prepare('UPDATE users SET program_code = NULL WHERE id = ?').run(user.id);
     return res.json({ message: 'Program cleared.' });
   }
-  if (!VALID_PROGRAM_CODES.has(code) || !db.prepare('SELECT code FROM programs WHERE code = ?').get(code)) {
+  if (!validProgramCode(code)) {
     return res.status(400).json({ message: 'That program does not exist.' });
   }
   db.prepare('UPDATE users SET program_code = ? WHERE id = ?').run(code, user.id);
@@ -563,10 +575,13 @@ router.post('/payments/:id/approve', async (req, res) => {
   if (!payment) return res.status(404).json({ message: 'Payment request not found.' });
   if (payment.status !== 'PENDING') return res.status(400).json({ message: 'This payment has already been reviewed.' });
 
-  const student = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(payment.user_id);
+  const student = db.prepare('SELECT id, name, email, subscription_end FROM users WHERE id = ?').get(payment.user_id);
 
   const now = new Date().toISOString();
-  const subEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  // Extend from the student's current premium end date when it is still in
+  // the future — a repeat payment must never shorten an active subscription.
+  const currentEnd = student && student.subscription_end ? new Date(student.subscription_end).getTime() : 0;
+  const subEnd = new Date(Math.max(Date.now(), currentEnd) + 30 * 24 * 60 * 60 * 1000).toISOString();
 
   db.prepare(`UPDATE payments SET status = 'SUCCESS', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
     .run(now, req.user.id, payment.id);
