@@ -8,12 +8,14 @@ const multer = require('multer');
 require('./db'); // initializes the database and seeds the admin account
 
 const { requirePageAuth, attachUser } = require('./middleware/auth');
+const { ROLES, dashboardPathForRole, isContentAdmin } = require('./lib/roles');
 const { securityHeaders, rateLimit } = require('./middleware/security');
 const authRoutes = require('./routes/auth.routes');
 const resourceRoutes = require('./routes/resources.routes');
 const coursesRoutes = require('./routes/courses.routes');
 const programsRoutes = require('./routes/programs.routes');
 const adminRoutes = require('./routes/admin.routes');
+const contentAdminRoutes = require('./routes/content-admin.routes');
 const notificationRoutes = require('./routes/notifications.routes');
 const communityRoutes = require('./routes/community.routes');
 
@@ -34,6 +36,10 @@ const authRateLimit = rateLimit({ windowMs: 60 * 1000, max: 20 });
 // ---- API routes -----------------------------------------------------------
 app.use('/api/auth/login', authRateLimit);
 app.use('/api/auth/register', authRateLimit);
+// Content Admin creation validates a server-only authorization code, so give
+// it a tighter independent limit in addition to the normal auth limiter.
+const contentAdminRegistrationLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+app.use(['/api/auth/register-content-admin', '/api/auth/content-admin/register'], authRateLimit, contentAdminRegistrationLimit);
 // Password change is equally worth brute-force protection (the current
 // password is still verified server-side; this just stops credential
 // guessing by IP).
@@ -58,6 +64,7 @@ app.use('/api/courses', coursesRoutes);
 // dynamic course home, and admin program/course management.
 app.use('/api/programs', programsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/content-admin', contentAdminRoutes);
 app.use('/api/notifications', notificationRoutes);
 
 // The on-site student community: one shared group room (/pages/community.html)
@@ -68,39 +75,74 @@ app.use('/api/community', communityRoutes);
 // ---- Protected view routes (server-side gated, must be registered BEFORE
 // the static file middleware so an unauthenticated request can never receive
 // admin.html or dashboard.html directly) -----------------------------------
-app.get(['/admin', '/admin.html'], requirePageAuth('ADMIN'), (req, res) => {
+app.get(['/admin', '/admin.html'], requirePageAuth(ROLES.ADMIN), (req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'views', 'admin.html'));
 });
 
-app.get(['/dashboard', '/dashboard.html'], requirePageAuth('STUDENT'), (req, res) => {
+app.get(['/content-admin', '/content-admin.html'], requirePageAuth(ROLES.CONTENT_ADMIN), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'views', 'content-admin.html'));
+});
+
+app.get(['/dashboard', '/dashboard.html'], requirePageAuth(ROLES.STUDENT), (req, res) => {
+  res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
 });
 
 // Dynamic course home (program → course). Server-side gated like every other
 // authenticated view; the API it calls re-checks program enrollment, so even
 // a hand-typed URL never leaks another program's course.
-app.get(['/course/:key', '/course.html'], requirePageAuth(), (req, res) => {
+app.get(['/course/:key', '/course.html'], requirePageAuth(ROLES.STUDENT, ROLES.ADMIN), (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'views', 'course.html'));
 });
 
-// Internal document viewer. Any logged-in user may open the page itself; the
-// document metadata and bytes are fetched afterwards from the existing
+// Internal document viewer. Student and Main Admin sessions may open the page
+// itself; the document metadata and bytes are fetched afterwards from the
 // session-gated /api/resources/:id and /:id/stream endpoints, which enforce
 // the real access rules (Premium vs. trial, per-resource is_premium, etc.).
 // Registering this route BEFORE the static middleware means an unauthenticated
 // request is redirected to /login.html rather than ever receiving the viewer.
-app.get('/viewer/:documentId', requirePageAuth(), (req, res) => {
+app.get('/viewer/:documentId', requirePageAuth(ROLES.STUDENT, ROLES.ADMIN), (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'views', 'viewer.html'));
 });
 
+// These pages are publicly viewable marketing/student-library shells, so they
+// must remain available to visitors and students. An authenticated Content
+// Admin is nevertheless sent to their dedicated workspace before the static
+// file is served. This complements (rather than replaces) the API-level role
+// checks that deny the underlying student library, community, and course data.
+const contentAdminStudentPagePaths = [
+  '/pages/announcements.html',
+  '/pages/community.html',
+  '/pages/courses.html',
+  '/pages/lesson.html',
+  '/pages/resources.html',
+  '/pages/search.html',
+  '/pages/videos.html',
+  '/pages/subjects/biology.html',
+  '/pages/subjects/chemistry.html',
+  '/pages/subjects/communication.html',
+  '/pages/subjects/mathematics.html',
+  '/pages/subjects/physics.html',
+  '/pages/subjects/programming.html'
+];
+app.get(contentAdminStudentPagePaths, (req, res, next) => {
+  attachUser(req, res, () => {
+    if (!isContentAdmin(req.user)) return next();
+    res.set('Cache-Control', 'no-store');
+    return res.redirect('/content-admin.html');
+  });
+});
+
 // Logged-in users shouldn't see the marketing login/signup pages again -
 // bounce them straight to their dashboard.
-app.get(['/login.html', '/signup.html'], (req, res, next) => {
+app.get(['/login.html', '/signup.html', '/content-admin-signup.html'], (req, res, next) => {
   attachUser(req, res, () => {
     if (!req.user) return next();
-    return res.redirect(req.user.role === 'ADMIN' ? '/admin.html' : '/dashboard.html');
+    return res.redirect(dashboardPathForRole(req.user.role));
   });
 });
 
@@ -151,6 +193,13 @@ app.use((err, req, res, next) => {
   next();
 });
 
-app.listen(PORT, () => {
-  console.log(`StudyCore server running on http://localhost:${PORT}`);
-});
+// Exporting the configured app keeps the production server unchanged while
+// allowing integration tests to exercise the exact same routes and page gates
+// on an ephemeral listener.
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`StudyCore server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+module.exports = app;

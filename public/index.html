@@ -256,7 +256,7 @@
 
         try {
           const user = await StudyCoreAuth.fetchSession();
-          if (user && user.role === 'STUDENT') {
+          if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
             const data = await StudyCoreAPI.myProgram();
             if (data.program) {
               const programName = data.program.shortName || data.program.name;
@@ -285,7 +285,7 @@
               });
               links.innerHTML = '';
             }
-          } else if (user && user.role === 'ADMIN') {
+          } else if (user && StudyCoreAuth.isAdmin(user)) {
             eyebrow.textContent = 'Administration';
             heading.textContent = 'Manage programs and courses';
             intro.textContent = 'Create programs, assign courses and publish resources from the admin dashboard.';
@@ -294,6 +294,17 @@
               title: 'Program management',
               body: 'Open the admin dashboard to manage the live course catalog.',
               cta: '<a class="btn btn-primary" href="/admin.html">Open admin dashboard</a>'
+            });
+            links.innerHTML = '';
+          } else if (user && StudyCoreAuth.isContentAdmin(user)) {
+            eyebrow.textContent = 'Content Admin';
+            heading.textContent = 'Your publishing workspace is ready';
+            intro.textContent = 'Upload educational resources, keep your own library organised, and manage only the resources you created.';
+            catalog.innerHTML = emptyState({
+              icon: 'upload',
+              title: 'Content Admin workspace',
+              body: 'Open your dedicated dashboard to publish and manage your own resources.',
+              cta: '<a class="btn btn-primary" href="/content-admin.html">Open Content Admin dashboard</a>'
             });
             links.innerHTML = '';
           } else {

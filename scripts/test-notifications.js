@@ -37,17 +37,17 @@ test('announcement notification read/unread flow and persistence across users', 
 
   db.prepare(`
     INSERT INTO users (id, name, email, password, role, created_at)
-    VALUES (?, ?, ?, 'pass123', 'STUDENT', ?)
+    VALUES (?, ?, ?, 'pass123', 'student', ?)
   `).run(user1Id, 'Student One', `student1.${Date.now()}@test.com`, now);
 
   db.prepare(`
     INSERT INTO users (id, name, email, password, role, created_at)
-    VALUES (?, ?, ?, 'pass123', 'STUDENT', ?)
+    VALUES (?, ?, ?, 'pass123', 'student', ?)
   `).run(user2Id, 'Student Two', `student2.${Date.now()}@test.com`, now);
 
   db.prepare(`
     INSERT INTO users (id, name, email, password, role, created_at)
-    VALUES (?, ?, ?, 'pass123', 'ADMIN', ?)
+    VALUES (?, ?, ?, 'pass123', 'admin', ?)
   `).run(adminId, 'Admin Test', `admin.${Date.now()}@test.com`, now);
 
   // Mark all existing published announcements as read for these fresh test users
@@ -212,7 +212,7 @@ test('HTTP API: /api/notifications endpoints and session auth', async () => {
     name: 'HTTP Student',
     email: `student.http.${Date.now()}@test.com`,
     password: 'pass',
-    role: 'STUDENT',
+    role: 'student',
     created_at: new Date().toISOString()
   };
   db.prepare(`

@@ -1,11 +1,22 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const {
+  normalizeRole,
+  dashboardPathForRole
+} = require('../lib/roles');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'studycore-dev-secret-change-me';
 const COOKIE_NAME = 'sc_token';
 
 function createToken(user) {
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({
+    id: user.id,
+    email: user.email,
+    // A token is only a convenience; every protected request re-reads this
+    // role from SQLite below. Keeping the claim canonical avoids old uppercase
+    // values leaking back to the browser during a rolling upgrade.
+    role: normalizeRole(user.role) || 'student'
+  }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 function setAuthCookie(res, token) {
@@ -28,22 +39,34 @@ function getTokenFromRequest(req) {
   return null;
 }
 
-// Populates req.user if a valid token is present, but never blocks the request.
+function freshSessionUser(id) {
+  return db.prepare('SELECT id, email, role, is_active FROM users WHERE id = ?').get(id);
+}
+
+function isActive(user) {
+  return Boolean(user) && Number(user.is_active) !== 0;
+}
+
+function attachFreshUser(payload, freshUser) {
+  return {
+    ...payload,
+    email: freshUser.email || payload.email,
+    role: normalizeRole(freshUser.role) || 'student'
+  };
+}
+
+// Populates req.user if a valid, active token is present, but never blocks the
+// request. A disabled/deleted account is deliberately treated as logged out
+// here so public pages do not keep presenting an old session as usable.
 function attachUser(req, res, next) {
   const token = getTokenFromRequest(req);
   if (token) {
     try {
       const payload = jwt.verify(token, JWT_SECRET);
-      const freshUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(payload.id);
-      if (freshUser) {
-        req.user = { ...payload, role: freshUser.role };
+      const freshUser = freshSessionUser(payload.id);
+      if (isActive(freshUser)) {
+        req.user = attachFreshUser(payload, freshUser);
       } else {
-        // Token is validly signed but points at a user that no longer
-        // exists (e.g. the database was reset). Treat as logged out and
-        // clear the stale cookie so the browser stops sending it - without
-        // this, a page like /login.html that redirects "logged in" users
-        // away can loop forever against a page that redirects "logged out"
-        // users back.
         req.user = null;
         clearAuthCookie(res);
       }
@@ -54,44 +77,70 @@ function attachUser(req, res, next) {
   next();
 }
 
-// Blocks the request unless a valid token is present.
+// Blocks the request unless a valid token belongs to a current, active user.
+// Role and account state always come from the database, never from the JWT.
 function requireAuth(req, res, next) {
   const token = getTokenFromRequest(req);
   if (!token) return res.status(401).json({ message: 'Please log in to continue.' });
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    const freshUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.user.id);
-    if (!freshUser) return res.status(401).json({ message: 'Account no longer exists.' });
-    req.user.role = freshUser.role; // always trust the DB role, never the token alone
-    next();
+    const payload = jwt.verify(token, JWT_SECRET);
+    const freshUser = freshSessionUser(payload.id);
+    if (!freshUser) {
+      clearAuthCookie(res);
+      return res.status(401).json({ message: 'Account no longer exists.' });
+    }
+    if (!isActive(freshUser)) {
+      clearAuthCookie(res);
+      return res.status(403).json({ message: 'This account has been disabled. Please contact StudyCore support.' });
+    }
+    req.user = attachFreshUser(payload, freshUser);
+    return next();
   } catch {
     return res.status(401).json({ message: 'Your session has expired. Please log in again.' });
   }
 }
 
-function requireRole(role) {
+// Accepts one role, multiple roles, or an array. The comparison normalizes
+// legacy values such as ADMIN/STUDENT, while all new application roles are
+// persisted as lower-case admin, content_admin and student.
+function requireRole(...requestedRoles) {
+  const flattened = requestedRoles.flat();
+  const allowed = new Set(flattened.map(normalizeRole).filter(Boolean));
   return (req, res, next) => {
-    if (!req.user || req.user.role !== role) {
+    const actual = req.user && normalizeRole(req.user.role);
+    if (!actual || !allowed.has(actual)) {
       return res.status(403).json({ message: 'You do not have permission to perform this action.' });
     }
-    next();
+    return next();
   };
 }
 
-// For protecting full HTML page routes server-side (redirects instead of JSON errors).
-function requirePageAuth(role) {
+// For protecting full HTML page routes server-side (redirects instead of JSON
+// errors). A Content Admin who hand-types a Main Admin URL is sent back to the
+// Content Admin dashboard; the protected API routes independently reject it.
+function requirePageAuth(...requestedRoles) {
+  const flattened = requestedRoles.flat().filter((role) => role !== undefined && role !== null);
+  const allowed = flattened.length ? new Set(flattened.map(normalizeRole).filter(Boolean)) : null;
   return (req, res, next) => {
     const token = getTokenFromRequest(req);
     if (!token) return res.redirect('/login.html');
     try {
       const payload = jwt.verify(token, JWT_SECRET);
-      const freshUser = db.prepare('SELECT id, role FROM users WHERE id = ?').get(payload.id);
-      if (!freshUser) return res.redirect('/login.html');
-      if (role && freshUser.role !== role) {
-        return res.redirect(freshUser.role === 'ADMIN' ? '/admin.html' : '/dashboard.html');
+      const freshUser = freshSessionUser(payload.id);
+      if (!freshUser || !isActive(freshUser)) {
+        clearAuthCookie(res);
+        return res.redirect('/login.html?disabled=1');
       }
-      req.user = { ...payload, role: freshUser.role };
-      next();
+      const role = normalizeRole(freshUser.role);
+      if (!role) {
+        clearAuthCookie(res);
+        return res.redirect('/login.html');
+      }
+      if (allowed && !allowed.has(role)) {
+        return res.redirect(dashboardPathForRole(role));
+      }
+      req.user = attachFreshUser(payload, freshUser);
+      return next();
     } catch {
       return res.redirect('/login.html');
     }

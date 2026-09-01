@@ -1,19 +1,37 @@
+const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { createToken, setAuthCookie, clearAuthCookie, requireAuth, attachUser } = require('../middleware/auth');
+const { createToken, setAuthCookie, clearAuthCookie, requireAuth, requireRole, attachUser } = require('../middleware/auth');
 const { avatarUpload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const { VALID_PROGRAM_CODES } = require('../lib/programs');
+const {
+  ROLES,
+  normalizeRole,
+  isAdmin,
+  isStudent,
+  isContentAdmin,
+  roleLabel
+} = require('../lib/roles');
 
 const router = express.Router();
 
 function publicUser(user) {
   if (!user) return null;
-  const { password, avatar_key, ...safe } = user;
-  // Only expose that a picture exists - never the storage key itself.
-  return { ...safe, hasAvatar: Boolean(avatar_key), program: user.program_code || null };
+  const { password, avatar_key, is_active, ...safe } = user;
+  const role = normalizeRole(user.role) || ROLES.STUDENT;
+  // Only expose that a picture exists - never the storage key itself, and do
+  // not expose account-enable state as something a browser could treat as an
+  // authority signal. Role permissions are still enforced on every request.
+  return {
+    ...safe,
+    role,
+    accountType: roleLabel(role),
+    hasAvatar: Boolean(avatar_key),
+    program: user.program_code || null
+  };
 }
 
 // Normalize/validate a program code from the client. Returns the canonical
@@ -24,21 +42,51 @@ function normalizeProgramCode(value) {
   return VALID_PROGRAM_CODES.has(code) ? code : null;
 }
 
+// The authorization code is intentionally server-only. Deployments may set
+// CONTENT_ADMIN_ACCESS_CODE as an environment secret; the required platform
+// value remains the fallback so an existing installation works without any
+// frontend configuration. It is never returned, stored, logged or embedded
+// in a browser asset.
+const CONTENT_ADMIN_ACCESS_CODE = process.env.CONTENT_ADMIN_ACCESS_CODE || 'Studycore2026#';
+
+function validContentAdminAccessCode(value) {
+  const expected = Buffer.from(CONTENT_ADMIN_ACCESS_CODE, 'utf8');
+  const supplied = Buffer.from(typeof value === 'string' ? value : '', 'utf8');
+  return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+}
+
 // Single source of truth for "what plan is this student on right now".
 // Everything is computed from the server clock + the users table on each
 // call, so clients can neither reset nor fake any of these states.
 function subscriptionStatus(user) {
+  const role = normalizeRole(user.role);
+  // Content Admin accounts never participate in student subscriptions or
+  // payments. Returning a clear non-applicable state keeps profile/session
+  // data truthful without exposing student billing features to that role.
+  if (role === ROLES.CONTENT_ADMIN) {
+    return {
+      active: false,
+      inTrial: false,
+      paymentPending: false,
+      state: 'not_applicable',
+      trialEnd: null,
+      subscriptionEnd: null,
+      trialDaysLeft: 0,
+      subscriptionDaysLeft: 0
+    };
+  }
+
   const now = Date.now();
   const trialEnd = new Date(user.trial_end || 0).getTime();
   const subEnd = new Date(user.subscription_end || 0).getTime();
-  const active = user.role === 'ADMIN' || (user.subscription === 'premium' && now < subEnd);
-  const inTrial = user.role !== 'ADMIN' && !active && now < trialEnd;
+  const active = isAdmin(user) || (user.subscription === 'premium' && now < subEnd);
+  const inTrial = isStudent(user) && !active && now < trialEnd;
   const paymentPending = Boolean(
     db.prepare(`SELECT 1 x FROM payments WHERE user_id = ? AND status = 'PENDING'`).get(user.id)
   );
 
   let state;
-  if (user.role === 'ADMIN') state = 'premium_active';
+  if (isAdmin(user)) state = 'premium_active';
   else if (active) state = 'premium_active';
   else if (user.subscription === 'premium') state = paymentPending ? 'payment_pending' : 'premium_expired';
   else if (inTrial) state = 'trial_active';
@@ -52,7 +100,7 @@ function subscriptionStatus(user) {
     trialEnd: user.trial_end,
     subscriptionEnd: user.subscription_end,
     trialDaysLeft: inTrial ? Math.max(0, Math.ceil((trialEnd - now) / 86400000)) : 0,
-    subscriptionDaysLeft: active && user.role !== 'ADMIN' ? Math.max(0, Math.ceil((subEnd - now) / 86400000)) : 0
+    subscriptionDaysLeft: active && !isAdmin(user) ? Math.max(0, Math.ceil((subEnd - now) / 86400000)) : 0
   };
 }
 
@@ -103,7 +151,7 @@ router.post('/register', async (req, res) => {
     name: name.trim(),
     email: normalizedEmail,
     password: hashed,
-    role: 'STUDENT', // role can never be set by the client - always STUDENT on public signup
+    role: ROLES.STUDENT, // role can never be set by the client - always student on public signup
     school: school || null,
     grade: grade || null,
     learning_level: learningLevel === 'tertiary' ? 'tertiary' : 'secondary',
@@ -152,6 +200,58 @@ router.post('/register', async (req, res) => {
   res.status(201).json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
 });
 
+// Content Admin registration is deliberately separate from public student
+// signup. The role is set here on the server — it is never accepted from the
+// browser — and the one-time access code is compared server-side only.
+router.post(['/register-content-admin', '/content-admin/register'], async (req, res) => {
+  const { name, email, password, confirmPassword } = req.body || {};
+  const adminAccessCode = req.body && (req.body.adminAccessCode ?? req.body.accessCode);
+
+  if (!name || !String(name).trim()) return res.status(400).json({ message: 'Full name is required.' });
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
+    return res.status(400).json({ message: 'A valid email is required.' });
+  }
+  if (!password || String(password).length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+  }
+  if (typeof confirmPassword !== 'string' || confirmPassword !== String(password)) {
+    return res.status(400).json({ message: 'Passwords do not match.' });
+  }
+  if (!validContentAdminAccessCode(adminAccessCode)) {
+    // Do not distinguish a missing, malformed or incorrect code. In
+    // particular, never echo the submitted value in an API response.
+    return res.status(403).json({ message: 'The admin access code is invalid.' });
+  }
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
+  if (existing) return res.status(409).json({ message: 'An account with this email already exists.' });
+
+  const now = new Date().toISOString();
+  const user = {
+    id: `content-admin-${uuidv4()}`,
+    name: String(name).trim(),
+    email: normalizedEmail,
+    password: await bcrypt.hash(String(password), 10),
+    role: ROLES.CONTENT_ADMIN,
+    // Content Admins are not student subscribers and cannot create payments.
+    subscription: 'none',
+    created_at: now
+  };
+
+  db.prepare(`
+    INSERT INTO users (id, name, email, password, role, subscription, created_at)
+    VALUES (@id, @name, @email, @password, @role, @subscription, @created_at)
+  `).run(user);
+
+  const token = createToken(user);
+  setAuthCookie(res, token);
+  res.status(201).json({
+    token,
+    user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) }
+  });
+});
+
 router.post('/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
@@ -161,6 +261,10 @@ router.post('/login', async (req, res) => {
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) return res.status(401).json({ message: 'Invalid email or password.' });
+  if (Number(user.is_active) === 0) {
+    clearAuthCookie(res);
+    return res.status(403).json({ message: 'This account has been disabled. Please contact StudyCore support.' });
+  }
 
   const token = createToken(user);
   setAuthCookie(res, token);
@@ -185,7 +289,7 @@ router.get('/me', attachUser, (req, res) => {
   res.json({ user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
 });
 
-router.get('/referral', requireAuth, (req, res) => {
+router.get('/referral', requireAuth, requireRole(ROLES.STUDENT), (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
   if (!user.referral_code) {
@@ -209,14 +313,38 @@ router.get('/referral', requireAuth, (req, res) => {
 });
 
 router.put('/profile', requireAuth, (req, res) => {
-  const { name, school, grade, learningLevel } = req.body;
+  const { name, email, school, grade, learningLevel } = req.body || {};
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
-  if (!name || !name.trim()) return res.status(400).json({ message: 'Name cannot be empty.' });
+  if (!name || !String(name).trim()) return res.status(400).json({ message: 'Name cannot be empty.' });
 
-  db.prepare(`
-    UPDATE users SET name = ?, school = ?, grade = ?, learning_level = ? WHERE id = ?
-  `).run(name.trim(), school || null, grade || null, learningLevel === 'tertiary' ? 'tertiary' : 'secondary', user.id);
+  // A Content Admin has an individual profile but no student academic fields.
+  // Their name and email are kept on their own user row, so the dashboard
+  // greeting and every fresh session reflect profile changes immediately.
+  // Crafted student-only fields are intentionally ignored for this role.
+  if (isContentAdmin(user)) {
+    let nextEmail = user.email;
+    if (email !== undefined) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return res.status(400).json({ message: 'A valid email is required.' });
+      }
+      const duplicate = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(normalizedEmail, user.id);
+      if (duplicate) return res.status(409).json({ message: 'An account with this email already exists.' });
+      nextEmail = normalizedEmail;
+    }
+    const nextName = String(name).trim();
+    db.prepare('UPDATE users SET name = ?, email = ? WHERE id = ?').run(nextName, nextEmail, user.id);
+    // Preserve the most current attribution if this account is later deleted.
+    // Live Main Admin lists also join the user row, but these snapshots are the
+    // durable provenance record for resources whose uploader no longer exists.
+    db.prepare('UPDATE resources SET uploader_name = ?, uploader_email = ? WHERE uploaded_by = ?')
+      .run(nextName, nextEmail, user.id);
+  } else {
+    db.prepare(`
+      UPDATE users SET name = ?, school = ?, grade = ?, learning_level = ? WHERE id = ?
+    `).run(String(name).trim(), school || null, grade || null, learningLevel === 'tertiary' ? 'tertiary' : 'secondary', user.id);
+  }
 
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   res.json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
@@ -229,7 +357,7 @@ router.put('/profile', requireAuth, (req, res) => {
 // and then re-read from the DB on every subsequent request — the client
 // never grants itself access.
 router.put('/program', requireAuth, (req, res) => {
-  if (req.user.role === 'ADMIN') return res.status(400).json({ message: 'Admin accounts do not have a student program.' });
+  if (!isStudent(req.user)) return res.status(403).json({ message: 'Only student accounts can select a student program.' });
   const programCode = normalizeProgramCode(req.body && req.body.program);
   if (!programCode) {
     return res.status(400).json({ message: 'Choose a valid program.' });
@@ -254,7 +382,7 @@ router.put('/password', requireAuth, async (req, res) => {
   res.json({ message: 'Password updated.' });
 });
 
-router.post('/subscribe', requireAuth, (req, res) => {
+router.post('/subscribe', requireAuth, requireRole(ROLES.STUDENT), (req, res) => {
   const { phone, method, reference } = req.body;
   if (!phone || !method) return res.status(400).json({ message: 'Phone number and payment method are required.' });
 
@@ -352,8 +480,8 @@ router.delete('/avatar', requireAuth, async (req, res) => {
   res.json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
 });
 
-// Serves the student's own picture for display (nav, dashboard, profile).
-// Authenticated and scoped to the caller's own row - there is no route that
+// Serves the authenticated user's own picture for display (nav, dashboard,
+// profile). It is scoped to the caller's own row - there is no route that
 // accepts another user's id.
 router.get('/avatar', requireAuth, async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
@@ -382,7 +510,7 @@ router.get('/avatar', requireAuth, async (req, res) => {
   }
 });
 
-router.get('/payment-info', requireAuth, (req, res) => {
+router.get('/payment-info', requireAuth, requireRole(ROLES.STUDENT), (req, res) => {
   res.json({
     payTo: {
       numbers: [

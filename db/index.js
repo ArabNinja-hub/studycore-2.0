@@ -3,6 +3,7 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { DatabaseSync } = require('node:sqlite');
 const { seedProgramCatalog } = require('../lib/programs');
+const { ROLES } = require('../lib/roles');
 
 // On Render, set DATA_DIR to the mounted persistent disk's path (e.g.
 // /var/data) in the Environment tab - this is what makes the database
@@ -21,7 +22,10 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL,
   password TEXT NOT NULL,
-  role TEXT NOT NULL CHECK(role IN ('ADMIN','STUDENT')) DEFAULT 'STUDENT',
+  -- Roles are stored and enforced in their canonical lower-case form.
+  -- Legacy uppercase rows are normalized by upgradeUsersRoleSchema() below.
+  role TEXT NOT NULL CHECK(role IN ('admin','student','content_admin')) DEFAULT 'student',
+  is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
   school TEXT,
   grade TEXT,
   learning_level TEXT DEFAULT 'secondary',
@@ -92,7 +96,17 @@ CREATE TABLE IF NOT EXISTS resources (
   is_premium INTEGER NOT NULL DEFAULT 1,
   target_all INTEGER NOT NULL DEFAULT 1,
   publish_status TEXT NOT NULL DEFAULT 'published',
+  -- Content Admin uploads stay in the same resource system as Main Admin
+  -- uploads. These fields retain the individual uploader and the friendly
+  -- resource-type choice without changing how students receive the content.
   uploaded_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+  uploader_role TEXT,
+  -- Snapshots retain attribution even if a Content Admin account is deleted;
+  -- live views still join the active user row so profile-name changes show up.
+  uploader_name TEXT,
+  uploader_email TEXT,
+  uploaded_at TEXT,
+  resource_type TEXT,
   download_count INTEGER NOT NULL DEFAULT 0,
   view_count INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
@@ -171,6 +185,7 @@ CREATE INDEX IF NOT EXISTS idx_announcement_reads_announcement ON announcement_r
 
 CREATE INDEX IF NOT EXISTS idx_resources_category ON resources(category);
 CREATE INDEX IF NOT EXISTS idx_resources_publish ON resources(publish_status);
+CREATE INDEX IF NOT EXISTS idx_resources_uploaded_by ON resources(uploaded_by);
 CREATE INDEX IF NOT EXISTS idx_downloads_resource ON downloads(resource_id);
 `);
 
@@ -188,6 +203,13 @@ try {
 }
 try {
   db.exec('ALTER TABLE users ADD COLUMN referred_by TEXT');
+} catch {
+  // column already exists - fine
+}
+// Content Admin accounts can be revoked without deleting their upload
+// history. Every auth middleware checks this database-backed flag.
+try {
+  db.exec('ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1');
 } catch {
   // column already exists - fine
 }
@@ -228,6 +250,35 @@ try {
 // Announcements can be pinned to the top of the announcement centre.
 try {
   db.exec('ALTER TABLE resources ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0');
+} catch {
+  // column already exists - fine
+}
+
+// Content attribution fields. `uploaded_by` already existed; these additions
+// make the uploader's identity, role, date and chosen resource type explicit
+// for both Content Admin "My Uploads" and Main Admin oversight.
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN uploader_role TEXT');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN uploader_name TEXT');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN uploader_email TEXT');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN uploaded_at TEXT');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN resource_type TEXT');
 } catch {
   // column already exists - fine
 }
@@ -296,6 +347,142 @@ try {
   db.exec('ALTER TABLE users ADD COLUMN avatar_key TEXT');
 } catch {
   // column already exists - fine
+}
+
+// SQLite cannot alter a CHECK constraint in place. Older StudyCore databases
+// only allow ADMIN/STUDENT in users.role, or a previous lower()-based
+// compatibility check, which would not strictly enforce the canonical values.
+// Rebuild just the users table when either schema is detected, preserving every known user field and every child-table
+// foreign-key relationship. New installations already have this schema and
+// skip the migration entirely.
+function upgradeUsersRoleSchema() {
+  const current = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'").get();
+  const sql = String((current && current.sql) || '').toLowerCase().replace(/\s+/g, '');
+  const hasCanonicalRoleCheck = sql.includes("check(rolein('admin','student','content_admin'))");
+  if (hasCanonicalRoleCheck) return;
+
+  let inTransaction = false;
+  try {
+    // This migration only runs during startup before requests are accepted.
+    // Disabling FK enforcement while swapping the parent table keeps child
+    // table definitions pointed at the final `users` table (SQLite updates
+    // the self-reference when users_role_upgrade is renamed).
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec('BEGIN IMMEDIATE');
+    inTransaction = true;
+    db.exec('DROP TABLE IF EXISTS users_role_upgrade');
+    db.exec(`
+      CREATE TABLE users_role_upgrade (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('admin','student','content_admin')) DEFAULT 'student',
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0, 1)),
+        school TEXT,
+        grade TEXT,
+        learning_level TEXT DEFAULT 'secondary',
+        program_code TEXT REFERENCES programs(code) ON DELETE SET NULL,
+        subscription TEXT NOT NULL DEFAULT 'trial',
+        trial_end TEXT,
+        subscription_start TEXT,
+        subscription_end TEXT,
+        referral_code TEXT UNIQUE,
+        referred_by TEXT REFERENCES users_role_upgrade(id) ON DELETE SET NULL,
+        avatar_key TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+    db.exec(`
+      INSERT INTO users_role_upgrade (
+        id, name, email, password, role, is_active, school, grade,
+        learning_level, program_code, subscription, trial_end,
+        subscription_start, subscription_end, referral_code, referred_by,
+        avatar_key, created_at
+      )
+      SELECT
+        id, name, email, password,
+        CASE lower(role)
+          WHEN 'admin' THEN 'admin'
+          WHEN 'content_admin' THEN 'content_admin'
+          ELSE 'student'
+        END,
+        CASE WHEN COALESCE(is_active, 1) = 0 THEN 0 ELSE 1 END,
+        school, grade, learning_level, program_code, subscription, trial_end,
+        subscription_start, subscription_end, referral_code, referred_by,
+        avatar_key, created_at
+      FROM users
+    `);
+    db.exec('DROP TABLE users');
+    db.exec('ALTER TABLE users_role_upgrade RENAME TO users');
+    db.exec('COMMIT');
+    inTransaction = false;
+    console.log('StudyCore: upgraded users.role for Content Admin accounts.');
+  } catch (err) {
+    if (inTransaction) {
+      try { db.exec('ROLLBACK'); } catch { /* preserve the original error */ }
+    }
+    console.error('StudyCore: could not upgrade the users role schema:', err.message);
+    throw err;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+upgradeUsersRoleSchema();
+
+// Backfill attribution for uploads created before the Content Admin system.
+// Existing timestamps remain the source of truth, and legacy categories get a
+// useful human label without moving any resource or changing student access.
+try {
+  db.exec(`
+    UPDATE resources
+    SET uploaded_at = COALESCE(uploaded_at, created_at)
+    WHERE uploaded_at IS NULL OR trim(uploaded_at) = ''
+  `);
+  db.exec(`
+    UPDATE resources
+    SET uploader_role = (
+      SELECT lower(u.role) FROM users u WHERE u.id = resources.uploaded_by
+    )
+    WHERE (uploader_role IS NULL OR trim(uploader_role) = '')
+      AND uploaded_by IS NOT NULL
+  `);
+  db.exec(`
+    UPDATE resources
+    SET uploader_name = (
+      SELECT u.name FROM users u WHERE u.id = resources.uploaded_by
+    )
+    WHERE (uploader_name IS NULL OR trim(uploader_name) = '')
+      AND uploaded_by IS NOT NULL
+  `);
+  db.exec(`
+    UPDATE resources
+    SET uploader_email = (
+      SELECT u.email FROM users u WHERE u.id = resources.uploaded_by
+    )
+    WHERE (uploader_email IS NULL OR trim(uploader_email) = '')
+      AND uploaded_by IS NOT NULL
+  `);
+  db.exec(`
+    UPDATE resources
+    SET resource_type = CASE category
+      WHEN 'video' THEN 'Video'
+      WHEN 'past_paper' THEN 'Past Paper'
+      WHEN 'tutorial' THEN 'Study Guide'
+      WHEN 'announcement' THEN 'Announcement'
+      WHEN 'quiz' THEN 'Quiz'
+      WHEN 'assignment' THEN 'Assignment'
+      ELSE 'Document'
+    END
+    WHERE resource_type IS NULL OR trim(resource_type) = ''
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_resources_uploaded_by ON resources(uploaded_by)');
+} catch (err) {
+  // A pre-migration deployment may be starting for the first time with an
+  // interrupted old schema. Keep startup explicit instead of silently losing
+  // attribution data.
+  console.warn('StudyCore: resource attribution migration failed:', err.message);
 }
 
 // Video playback position, per student per lesson - powers "resume where you
@@ -490,7 +677,7 @@ migrateBareUuidDocuments();
 seedProgramCatalog(db);
 
 function seedAdmin() {
-  const existingAdmin = db.prepare(`SELECT id FROM users WHERE role = 'ADMIN' LIMIT 1`).get();
+  const existingAdmin = db.prepare(`SELECT id FROM users WHERE role = '${ROLES.ADMIN}' LIMIT 1`).get();
   if (existingAdmin) return;
 
   const email = process.env.ADMIN_EMAIL ? process.env.ADMIN_EMAIL.toLowerCase().trim() : null;
@@ -514,7 +701,7 @@ function seedAdmin() {
 
   db.prepare(`
     INSERT INTO users (id, name, email, password, role, subscription, subscription_start, subscription_end, created_at)
-    VALUES (@id, @name, @email, @password, 'ADMIN', 'premium', @now, @far, @now)
+    VALUES (@id, @name, @email, @password, 'admin', 'premium', @now, @far, @now)
   `).run({
     id: `admin-${Date.now()}`,
     name,
