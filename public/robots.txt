@@ -23,6 +23,10 @@ Disallow: /login.html
 Disallow: /signup.html
 Disallow: /dashboard.html
 Disallow: /admin.html
+Disallow: /upload
+Disallow: /upload.html
+Disallow: /upload-portal
+Disallow: /upload-portal.html
 Disallow: /api/
 
 Sitemap: https://studycore.academy/sitemap.xml

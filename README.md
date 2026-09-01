@@ -137,11 +137,15 @@ routes/courses.routes.js  public course directory, course home (topics/progress/
 routes/resources.routes.js  resource list/detail/view-only stream, search, bookmarks,
                             completion, video progress, quiz compatibility endpoints
 routes/admin.routes.js  resource CRUD (incl. topic + pinned), users, payments, analytics
+routes/upload-portal.routes.js  code-gated, upload-ONLY portal (unlock/session + create resource)
+lib/resource-intake.js  shared "upload becomes a resource" logic used by both admin surfaces
 routes/notifications.routes.js  announcement list, unread count, per-user read tracking
 routes/community.routes.js  student community room: messages, replies, reactions, pins,
                             moderation, unread state, members + the SSE live stream
 views/dashboard.html    student dashboard (Premium section #premium, profile #profile, community #community)
 views/admin.html        admin dashboard (uploads, topics, announcements, payments, students)
+views/upload-portal.html  /upload — access-code lock screen + the upload form, nothing else
+public/js/upload-portal.js  upload portal logic (standalone: no nav, no session user)
 public/js/icons.js      single SVG icon system (Lucide-style) - no emoji in the UI
 public/js/layout.js     shared navbar / mobile nav / account menu / footer / global search overlay
 public/js/player.js     StudyCore video player (custom controls, resume, progress, premium wall)
@@ -170,6 +174,8 @@ npm start
 | `JWT_SECRET` | **Change this** - signs session tokens |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Seeded admin, created once on first boot |
 | `MAX_UPLOAD_MB` | Max upload size (default 2000MB) |
+| `UPLOAD_PORTAL_CODE` | Access code for the upload-only portal at `/upload` (default `Studycore2026#`) |
+| `UPLOAD_PORTAL_HOURS` | How long one unlock lasts before the code is asked for again (default 12) |
 | `DATA_DIR` | Persistent disk path for the SQLite file (Render etc.) |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage. If these are unset, uploads stream to `DATA_DIR/uploads` instead so local development still works. |
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
@@ -179,6 +185,23 @@ npm start
 | `WHATSAPP_GROUP_URL` | Official WhatsApp group invite link ("Join the WhatsApp Group" buttons) |
 
 Promote another admin later: `npm run make-admin -- someone@example.com "Full Name"`.
+
+### Upload portal (`/upload`)
+
+A second, deliberately minimal admin surface for adding content fast — or for letting a
+trusted helper upload without handing over the real dashboard.
+
+* Open **`/upload`** (also `/upload-portal`), enter the access code — default **`Studycore2026#`**,
+  overridable with `UPLOAD_PORTAL_CODE`.
+* The code is verified server-side in constant time, never sent to the browser, and unlock
+  attempts share the same brute-force rate limit as login. A successful unlock sets a short-lived
+  httpOnly cookie (`sc_upload`, `UPLOAD_PORTAL_HOURS`, default 12h); a logged-in ADMIN is let
+  straight through without typing it.
+* The portal can do exactly **one** thing: publish a resource (file, category, course, program
+  targeting, topic, term, status, free-preview). No analytics, students, payments, announcements,
+  program management, editing or deleting — those stay on `/admin.html` behind a real login.
+* Uploads go through the same validation and the same storage pipeline as the main dashboard
+  (`lib/resource-intake.js`), so content added here appears to students exactly as usual.
 
 ## Deploying
 

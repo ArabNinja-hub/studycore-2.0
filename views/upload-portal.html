@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload Portal | StudyCore</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <style>
+      /* This page is deliberately standalone: no site nav, no footer, no
+         dashboard widgets. One job — put a file on StudyCore. */
+      .portal-shell { max-width: 900px; margin: 0 auto; padding: 34px 18px 70px; }
+      .portal-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+      .portal-brand { display: flex; align-items: center; gap: 12px; }
+      .portal-brand img { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; }
+      .portal-brand h1 { font-size: 1.35rem; margin: 0; }
+      .portal-brand p { margin: 2px 0 0; font-size: 0.85rem; color: var(--muted); }
+      .lock-card { max-width: 430px; margin: 8vh auto; }
+      .lock-card .form-group { margin-bottom: 14px; }
+      .portal-hidden { display: none !important; }
+      .recent-item { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.88rem; }
+      .recent-item:last-child { border-bottom: 0; }
+      .recent-item span { color: var(--muted); white-space: nowrap; }
+      .portal-note { font-size: 0.82rem; color: var(--muted); }
+      .portal-msg { margin-top: 12px; font-size: 0.9rem; font-weight: 600; }
+      .portal-msg.ok { color: var(--teal-700, #0f766e); }
+      .portal-msg.err { color: #b91c1c; }
+      @media (max-width: 720px) { .admin-four-col { grid-template-columns: 1fr !important; } }
+    </style>
+  </head>
+  <body data-page="upload-portal">
+    <main class="portal-shell">
+      <!-- ---------------- Lock screen ---------------- -->
+      <section id="lockScreen" class="card card-pad lock-card">
+        <h2 style="margin:0 0 6px;">Upload Portal</h2>
+        <p class="portal-note" style="margin:0 0 18px;">
+          Enter the access code to unlock uploads. This portal can only add content —
+          nothing else on StudyCore can be changed from here.
+        </p>
+        <form id="unlockForm" autocomplete="off">
+          <div class="form-group">
+            <label for="accessCode">Access code</label>
+            <input id="accessCode" type="password" placeholder="Enter access code" required autocomplete="off" />
+          </div>
+          <button class="btn btn-primary" type="submit" id="unlockBtn" style="width:100%;">Unlock</button>
+          <div id="lockMsg" class="portal-msg err" role="alert"></div>
+        </form>
+      </section>
+
+      <!-- ---------------- Upload screen ---------------- -->
+      <div id="portalContent" class="portal-hidden">
+        <header class="portal-head">
+          <div class="portal-brand">
+            <img src="/assets/logo-icon.jpg" alt="StudyCore" />
+            <div>
+              <h1>Upload Portal</h1>
+              <p>Upload-only access — no dashboard, no student data.</p>
+            </div>
+          </div>
+          <button class="btn btn-outline btn-sm" type="button" id="lockBtn">Lock portal</button>
+        </header>
+
+        <section class="card card-pad" style="margin-bottom:24px;">
+          <h3 id="uploadFormTitle" style="margin-top:0;">Upload a resource</h3>
+          <p style="margin:6px 0 18px;" class="portal-note">
+            Choose a file, say where it belongs, and publish. Files stream straight to secure cloud storage.
+          </p>
+
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
+            <button class="btn btn-outline btn-sm" type="button" data-quick-category="document">New Document</button>
+            <button class="btn btn-outline btn-sm" type="button" data-quick-category="video">New Video</button>
+            <button class="btn btn-outline btn-sm" type="button" data-quick-category="tutorial">New Tutorial</button>
+            <button class="btn btn-outline btn-sm" type="button" data-quick-category="past_paper">New Past Paper</button>
+          </div>
+
+          <div style="background:var(--bg-alt);border:2px dashed var(--border-strong);border-radius:var(--radius);padding:26px;text-align:center;">
+            <div id="dropZone" style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:10px;">
+              <strong id="dropZoneLabel" style="color:var(--ink);">Drag &amp; drop a file here, or click to browse</strong>
+              <span id="uploadSizeLabel" style="font-size:0.82rem;color:var(--muted);">PDF, Word, PowerPoint, Excel, images, ZIP, video or audio</span>
+              <input type="file" id="fileInput" style="display:none;" />
+            </div>
+            <div id="fileChosenLabel" style="margin-top:10px;font-size:0.88rem;color:var(--teal-700);font-weight:600;"></div>
+            <div id="uploadProgressWrap" style="display:none;margin-top:10px;max-width:420px;margin-left:auto;margin-right:auto;">
+              <div style="background:var(--border);border-radius:20px;height:10px;overflow:hidden;">
+                <div id="uploadProgressBar" style="background:var(--teal-500);height:100%;width:0%;transition:width 0.2s;"></div>
+              </div>
+              <span id="uploadProgressText" style="font-size:0.8rem;color:var(--muted);display:block;margin-top:5px;"></span>
+            </div>
+          </div>
+
+          <form id="uploadForm" class="upload-form" style="margin-top:22px;" enctype="multipart/form-data">
+            <div class="form-row">
+              <div class="form-group">
+                <label for="resCategory">Category</label>
+                <select id="resCategory" required>
+                  <option value="document">Document / Notes</option>
+                  <option value="video">Video Lesson</option>
+                  <option value="tutorial">Tutorial Sheet</option>
+                  <option value="past_paper">Past Paper</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="resCourseSelect">Course (attach to a program course)</label>
+                <select id="resCourseSelect">
+                  <option value="">No specific course (general resource)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Target programs <span style="font-weight:400;color:var(--muted);">(who can see this)</span></label>
+              <div class="target-checkboxes" id="resTargetPrograms"></div>
+              <small class="portal-note" style="margin-top:6px;display:block;">
+                “All Programs” reaches every student. Otherwise tick the specific program(s).
+              </small>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="resTitle">Title</label>
+                <input id="resTitle" type="text" placeholder="Centripetal Force" required />
+              </div>
+              <div class="form-group">
+                <label for="resTopic">Topic (groups lessons in the course)</label>
+                <input id="resTopic" type="text" placeholder="e.g. Circular Motion" list="topicSuggest" />
+                <datalist id="topicSuggest"></datalist>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="resDescription">Description</label>
+              <textarea id="resDescription" rows="3" placeholder="Short summary students will see on the lesson page"></textarea>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;" class="admin-four-col">
+              <div class="form-group">
+                <label for="resSubject">Subject (optional)</label>
+                <select id="resSubject">
+                  <option value="">None</option>
+                  <option>Mathematics</option>
+                  <option>Physics</option>
+                  <option>Chemistry</option>
+                  <option>Biology</option>
+                  <option>Communication Skills</option>
+                  <option>Programming</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="resYear">Year / Exam</label>
+                <input id="resYear" type="text" placeholder="e.g. 2025, Year 1" />
+              </div>
+              <div class="form-group">
+                <label for="resSemester">Term <span id="resSemesterRequired" aria-hidden="true"></span></label>
+                <select id="resSemester">
+                  <option value="">No specific term</option>
+                  <option value="Term 1">Term 1</option>
+                  <option value="Term 2">Term 2</option>
+                  <option value="Term 3">Term 3</option>
+                </select>
+                <small id="resSemesterHelp" class="portal-note" style="display:block;margin-top:5px;">Required for video lessons.</small>
+              </div>
+              <div class="form-group">
+                <label for="resTags">Tags (comma separated)</label>
+                <input id="resTags" type="text" placeholder="revision, exam-pack" />
+              </div>
+            </div>
+
+            <div class="admin-two-col">
+              <div class="form-group" style="margin:0;">
+                <label for="resPublishStatus">Status</label>
+                <select id="resPublishStatus">
+                  <option value="published">Published (visible to students)</option>
+                  <option value="draft">Draft (hidden from students)</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+                  <input type="checkbox" id="resIsFree" style="width:18px;height:18px;accent-color:var(--teal-500);" /> Free preview (visible without an active plan)
+                </label>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;">
+              <button class="btn btn-primary" type="submit" id="uploadSubmitBtn">Publish Resource</button>
+              <button class="btn btn-outline" type="button" id="uploadResetBtn">Clear form</button>
+            </div>
+            <div id="uploadMsg" class="portal-msg" role="status"></div>
+          </form>
+        </section>
+
+        <section class="card card-pad">
+          <h3 style="margin:0 0 4px;">Recently uploaded</h3>
+          <p class="portal-note" style="margin:0 0 12px;">The latest files on StudyCore, so you can confirm yours landed.</p>
+          <div id="recentList"><p class="loading-text">Loading…</p></div>
+        </section>
+      </div>
+    </main>
+
+    <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/upload-portal.js"></script>
+  </body>
+</html>

@@ -14,6 +14,7 @@ const resourceRoutes = require('./routes/resources.routes');
 const coursesRoutes = require('./routes/courses.routes');
 const programsRoutes = require('./routes/programs.routes');
 const adminRoutes = require('./routes/admin.routes');
+const uploadPortalRoutes = require('./routes/upload-portal.routes');
 const notificationRoutes = require('./routes/notifications.routes');
 const communityRoutes = require('./routes/community.routes');
 
@@ -58,6 +59,12 @@ app.use('/api/courses', coursesRoutes);
 // dynamic course home, and admin program/course management.
 app.use('/api/programs', programsRoutes);
 app.use('/api/admin', adminRoutes);
+
+// Code-gated upload portal: a second, upload-only admin surface unlocked by
+// a single access code (no login, no other admin powers). The unlock attempt
+// is brute-force protected exactly like a password.
+app.use('/api/upload-portal/unlock', authRateLimit);
+app.use('/api/upload-portal', uploadPortalRoutes);
 app.use('/api/notifications', notificationRoutes);
 
 // The on-site student community: one shared group room (/pages/community.html)
@@ -70,6 +77,14 @@ app.use('/api/community', communityRoutes);
 // admin.html or dashboard.html directly) -----------------------------------
 app.get(['/admin', '/admin.html'], requirePageAuth('ADMIN'), (req, res) => {
   res.sendFile(path.join(__dirname, 'views', 'admin.html'));
+});
+
+// The upload-only portal page. Served to anyone who knows the URL - the page
+// itself is just a lock screen; every action on it requires the access code,
+// which is verified server-side (routes/upload-portal.routes.js).
+app.get(['/upload', '/upload.html', '/upload-portal', '/upload-portal.html'], (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'views', 'upload-portal.html'));
 });
 
 app.get(['/dashboard', '/dashboard.html'], requirePageAuth('STUDENT'), (req, res) => {
