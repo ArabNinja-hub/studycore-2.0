@@ -15,8 +15,16 @@
   let sessionChecked = false;
   let sessionPromise = null;
 
+  function normalizedRole(user) {
+    return String((user && user.role) || '').trim().toLowerCase();
+  }
+
   function isAdmin(user) {
-    return !!user && user.role === 'ADMIN';
+    return normalizedRole(user) === 'admin';
+  }
+
+  function isContentAdmin(user) {
+    return normalizedRole(user) === 'content_admin';
   }
 
   // All app pages are reachable at fixed root paths (/login.html,
@@ -27,7 +35,9 @@
   }
 
   function getDashboardPage(user) {
-    return isAdmin(user) ? getPageLink('admin.html') : getPageLink('dashboard.html');
+    if (isAdmin(user)) return getPageLink('admin.html');
+    if (isContentAdmin(user)) return getPageLink('content-admin.html');
+    return getPageLink('dashboard.html');
   }
 
   async function fetchSession() {
@@ -74,6 +84,7 @@
       case 'trial_active': return { label: `Free Trial · ${s.trialDaysLeft || 0} days left`, icon: 'sparkles', cls: 'trial' };
       case 'payment_pending': return { label: 'Payment Pending', icon: 'clock', cls: 'pending' };
       case 'premium_expired': return { label: 'Premium Expired', icon: 'lock', cls: 'expired' };
+      case 'not_applicable': return { label: 'Content Admin', icon: 'shield', cls: 'trial' };
       default: return { label: 'Trial Expired', icon: 'lock', cls: 'expired' };
     }
   }
@@ -218,7 +229,9 @@
   }
 
   global.StudyCoreAuth = {
+    normalizedRole,
     isAdmin,
+    isContentAdmin,
     getPageLink,
     getDashboardPage,
     fetchSession,

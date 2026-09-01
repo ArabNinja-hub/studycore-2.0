@@ -8,9 +8,13 @@ const storage = require('../lib/storage');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { VALID_PROGRAM_CODES } = require('../lib/programs');
 const { resolveCourse, targetingForResource } = require('../lib/program-access');
+const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
+const { resourceTypeForCategory, resourceTypeLabel } = require('../lib/resource-types');
 
 const router = express.Router();
-router.use(requireAuth, requireRole('ADMIN'));
+// Main Admin only. Content Admin has its own scoped /api/content-admin routes
+// and is rejected here even if it manually requests an /api/admin URL.
+router.use(requireAuth, requireRole(ROLES.ADMIN));
 
 // Keeps the Video library genuinely video-only and the Document library
 // genuinely document-only - without this, nothing stops an admin from
@@ -104,6 +108,12 @@ function serializeResource(row) {
     isPremium: Boolean(row.is_premium),
     pinned: Boolean(row.pinned),
     publishStatus: row.publish_status,
+    resourceType: resourceTypeLabel(row),
+    uploadedBy: row.uploaded_by || null,
+    uploaderName: row.current_uploader_name || row.uploader_name || null,
+    uploaderEmail: row.current_uploader_email || row.uploader_email || null,
+    uploaderRole: normalizeRole(row.uploader_role || row.current_uploader_role) || null,
+    uploadedAt: row.uploaded_at || row.created_at,
     downloadCount: row.download_count,
     viewCount: row.view_count,
     createdAt: row.created_at,
@@ -116,6 +126,20 @@ function deleteFileIfExists(storedKey) {
   // Fire-and-forget - a resource row being deleted shouldn't be blocked
   // because storage was briefly slow.
   storage.deleteObject(storedKey).catch(() => {});
+}
+
+// Use the same live-user join for mutation responses as the management table.
+// That makes a Content Admin's profile edits visible in Main Admin attribution
+// immediately, while serializeResource still falls back to its snapshot after
+// an uploader account has been deleted.
+function resourceWithUploader(resourceId) {
+  return db.prepare(`
+    SELECT r.*, u.name AS current_uploader_name, u.email AS current_uploader_email,
+           u.role AS current_uploader_role
+    FROM resources r
+    LEFT JOIN users u ON u.id = r.uploaded_by
+    WHERE r.id = ?
+  `).get(resourceId);
 }
 
 // ---- Resource CRUD -------------------------------------------------------
@@ -144,13 +168,19 @@ router.get('/resources', (req, res) => {
     params.search = `%${search}%`;
   }
   const sortMap = {
-    newest: 'created_at DESC',
-    oldest: 'created_at ASC',
-    popular: 'download_count DESC',
-    title: 'title ASC'
+    newest: 'resources.created_at DESC',
+    oldest: 'resources.created_at ASC',
+    popular: 'resources.download_count DESC',
+    title: 'resources.title ASC'
   };
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
-  const rows = db.prepare(`SELECT * FROM resources ${where} ORDER BY ${sortMap[sort] || sortMap.newest}`).all(params);
+  const rows = db.prepare(`
+    SELECT resources.*, u.name AS current_uploader_name, u.email AS current_uploader_email, u.role AS current_uploader_role
+    FROM resources
+    LEFT JOIN users u ON u.id = resources.uploaded_by
+    ${where}
+    ORDER BY ${sortMap[sort] || sortMap.newest}
+  `).all(params);
   res.json({ resources: rows.map(serializeResource) });
 });
 
@@ -195,6 +225,7 @@ router.post('/resources', upload.single('file'), (req, res) => {
   }
 
   const now = new Date().toISOString();
+  const uploader = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
   const id = `res-${uuidv4()}`;
   let contentHash = null;
   let duplicateOf = null;
@@ -234,21 +265,28 @@ router.post('/resources', upload.single('file'), (req, res) => {
     due_date: dueDate || null,
     is_premium: isPremium === 'false' || isPremium === '0' ? 0 : 1,
     publish_status: publishStatus || 'published',
+    resource_type: resourceTypeForCategory(category).label,
     uploaded_by: req.user.id,
+    uploader_role: ROLES.ADMIN,
+    uploader_name: uploader ? uploader.name : null,
+    uploader_email: uploader ? uploader.email : null,
+    uploaded_at: now,
     created_at: now,
     updated_at: now
   };
 
   db.prepare(`
-    INSERT INTO resources (id, title, description, category, subject, course, course_id, target_all, topic, year_level, semester, tags,
-      file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status, uploaded_by, created_at, updated_at)
-    VALUES (@id, @title, @description, @category, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @tags,
-      @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status, @uploaded_by, @created_at, @updated_at)
+    INSERT INTO resources (id, title, description, category, resource_type, subject, course, course_id, target_all, topic, year_level, semester, tags,
+      file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status,
+      uploaded_by, uploader_role, uploader_name, uploader_email, uploaded_at, created_at, updated_at)
+    VALUES (@id, @title, @description, @category, @resource_type, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @tags,
+      @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status,
+      @uploaded_by, @uploader_role, @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at)
   `).run(row);
 
   syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
 
-  const saved = db.prepare('SELECT * FROM resources WHERE id = ?').get(id);
+  const saved = resourceWithUploader(id);
   const response = { resource: serializeResource(saved) };
   if (duplicateOf) {
     response.warning = `This file appears to be identical to an existing resource: "${duplicateOf.title}". Both have been kept - delete the one you don't need from the resource table below.`;
@@ -336,6 +374,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     title: (title ?? existing.title).trim(),
     description: description ?? existing.description,
     category: category ?? existing.category,
+    resource_type: category === undefined ? existing.resource_type : resourceTypeForCategory(category).label,
     subject: effectiveSubject ?? existing.subject,
     course: course ?? existing.course,
     course_id: effectiveCourseId ?? existing.course_id,
@@ -354,7 +393,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   };
 
   db.prepare(`
-    UPDATE resources SET title=@title, description=@description, category=@category, subject=@subject, course=@course,
+    UPDATE resources SET title=@title, description=@description, category=@category, resource_type=@resource_type, subject=@subject, course=@course,
       course_id=@course_id, topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url,
       quiz_data=@quiz_data, due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status,
       updated_at=@updated_at, file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type,
@@ -362,7 +401,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     WHERE id=@id
   `).run(updated);
 
-  const saved = db.prepare('SELECT * FROM resources WHERE id = ?').get(existing.id);
+  const saved = resourceWithUploader(existing.id);
   res.json({ resource: serializeResource(saved) });
 });
 
@@ -376,6 +415,80 @@ router.delete('/resources/:id', (req, res) => {
 
 // ---- Users ---------------------------------------------------------------
 
+// Main Admin oversight for the separate Content Admin publishing role. This
+// list intentionally excludes passwords and can safely be used to revoke an
+// account: requireAuth re-checks `is_active` from SQLite on every request, so
+// a revoked account loses access immediately even with an existing cookie.
+router.get('/content-admins', (req, res) => {
+  const rows = db.prepare(`
+    SELECT
+      u.id, u.name, u.email, u.role, u.is_active, u.created_at,
+      COUNT(r.id) AS resource_count,
+      SUM(CASE WHEN r.publish_status = 'published' THEN 1 ELSE 0 END) AS published_count,
+      SUM(CASE WHEN r.publish_status = 'draft' THEN 1 ELSE 0 END) AS draft_count,
+      MAX(COALESCE(r.uploaded_at, r.created_at)) AS last_upload_at
+    FROM users u
+    LEFT JOIN resources r ON r.uploaded_by = u.id
+    WHERE u.role = @role
+    GROUP BY u.id
+    ORDER BY u.created_at DESC
+  `).all({ role: ROLES.CONTENT_ADMIN });
+
+  res.json({
+    contentAdmins: rows.map((account) => ({
+      id: account.id,
+      name: account.name,
+      email: account.email,
+      role: ROLES.CONTENT_ADMIN,
+      accountType: 'Content Admin',
+      isActive: Number(account.is_active) !== 0,
+      createdAt: account.created_at,
+      resourceCount: account.resource_count || 0,
+      publishedCount: account.published_count || 0,
+      draftCount: account.draft_count || 0,
+      lastUploadAt: account.last_upload_at || null
+    }))
+  });
+});
+
+router.patch('/content-admins/:id/status', (req, res) => {
+  const account = db.prepare('SELECT id, name, role, is_active FROM users WHERE id = ?').get(req.params.id);
+  if (!account || !isContentAdmin(account)) {
+    return res.status(404).json({ message: 'Content Admin account not found.' });
+  }
+
+  const value = req.body && req.body.isActive;
+  const isActiveValue = value === true || value === 1 || value === '1' || value === 'true'
+    ? 1
+    : (value === false || value === 0 || value === '0' || value === 'false' ? 0 : null);
+  if (isActiveValue === null) {
+    return res.status(400).json({ message: 'isActive must be true or false.' });
+  }
+
+  db.prepare('UPDATE users SET is_active = ? WHERE id = ?').run(isActiveValue, account.id);
+  res.json({
+    message: isActiveValue ? `${account.name} can use the Content Admin dashboard again.` : `${account.name}'s Content Admin access has been revoked.`,
+    contentAdmin: { id: account.id, isActive: Boolean(isActiveValue) }
+  });
+});
+
+// Deleting a Content Admin deliberately leaves their published resources in
+// the shared library. SQLite clears the live owner reference (ON DELETE SET
+// NULL) while the stored uploader snapshot preserves audit attribution; after
+// deletion only Main Admin can manage those retained resources.
+router.delete('/content-admins/:id', (req, res) => {
+  const account = db.prepare('SELECT id, name, role, avatar_key FROM users WHERE id = ?').get(req.params.id);
+  if (!account || !isContentAdmin(account)) {
+    return res.status(404).json({ message: 'Content Admin account not found.' });
+  }
+  db.prepare('DELETE FROM users WHERE id = ?').run(account.id);
+  // The profile image is account-private and has no value after deletion.
+  // Resource objects deliberately are not touched: their persisted uploader
+  // snapshots keep Main Admin attribution intact.
+  deleteFileIfExists(account.avatar_key);
+  res.json({ message: `Content Admin account for ${account.name} was deleted. Existing resources were retained for Main Admin review.` });
+});
+
 router.get('/users', (req, res) => {
   const { program } = req.query;
   const clauses = [];
@@ -386,7 +499,7 @@ router.get('/users', (req, res) => {
   }
   const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   const users = db.prepare(`
-    SELECT id, name, email, role, school, grade, learning_level, program_code, subscription, trial_end, subscription_start, subscription_end, created_at
+    SELECT id, name, email, role, is_active, school, grade, learning_level, program_code, subscription, trial_end, subscription_start, subscription_end, created_at
     FROM users ${where}
     ORDER BY created_at DESC
   `).all(params);
@@ -395,6 +508,8 @@ router.get('/users', (req, res) => {
   const byCode = new Map(programs.map((p) => [p.code, p]));
   const enriched = users.map((u) => ({
     ...u,
+    role: normalizeRole(u.role) || ROLES.STUDENT,
+    isActive: Number(u.is_active) !== 0,
     program: u.program_code || null,
     programName: u.program_code ? (byCode.get(u.program_code)?.name || u.program_code) : null
   }));
@@ -406,7 +521,7 @@ router.get('/users', (req, res) => {
 router.put('/users/:id/program', (req, res) => {
   const user = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
-  if (user.role === 'ADMIN') return res.status(400).json({ message: 'Admin accounts do not have a student program.' });
+  if (!isStudent(user)) return res.status(400).json({ message: 'Only student accounts have a student program.' });
   const code = String((req.body && req.body.program) || '').trim().toUpperCase();
   if (!code) {
     db.prepare('UPDATE users SET program_code = NULL WHERE id = ?').run(user.id);
@@ -423,7 +538,7 @@ router.delete('/users/:id', (req, res) => {
   if (req.params.id === req.user.id) return res.status(400).json({ message: 'You cannot delete your own account.' });
   const user = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
-  if (user.role === 'ADMIN') return res.status(400).json({ message: 'Admin accounts cannot be removed here.' });
+  if (!isStudent(user)) return res.status(400).json({ message: 'Only student accounts can be removed here. Use the Content Admin controls for Content Admin accounts.' });
   db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
   res.json({ message: 'Student account removed.' });
 });
@@ -499,9 +614,12 @@ router.post('/payments/:id/reject', (req, res) => {
 
 router.get('/analytics', (req, res) => {
   const totalUsers = db.prepare(`SELECT COUNT(*) c FROM users`).get().c;
-  const totalStudents = db.prepare(`SELECT COUNT(*) c FROM users WHERE role = 'STUDENT'`).get().c;
-  const premiumStudents = db.prepare(`SELECT COUNT(*) c FROM users WHERE role = 'STUDENT' AND subscription = 'premium'`).get().c;
+  const totalStudents = db.prepare(`SELECT COUNT(*) c FROM users WHERE role = 'student'`).get().c;
+  const premiumStudents = db.prepare(`SELECT COUNT(*) c FROM users WHERE role = 'student' AND subscription = 'premium'`).get().c;
+  const totalContentAdmins = db.prepare(`SELECT COUNT(*) c FROM users WHERE role = 'content_admin'`).get().c;
+  const activeContentAdmins = db.prepare(`SELECT COUNT(*) c FROM users WHERE role = 'content_admin' AND is_active = 1`).get().c;
   const totalResources = db.prepare(`SELECT COUNT(*) c FROM resources`).get().c;
+  const contentAdminResources = db.prepare(`SELECT COUNT(*) c FROM resources WHERE lower(COALESCE(uploader_role, '')) = 'content_admin'`).get().c;
   const publishedResources = db.prepare(`SELECT COUNT(*) c FROM resources WHERE publish_status = 'published'`).get().c;
   const totalDownloads = db.prepare(`SELECT COALESCE(SUM(download_count),0) c FROM resources`).get().c;
   const totalViews = db.prepare(`SELECT COALESCE(SUM(view_count),0) c FROM resources`).get().c;
@@ -518,7 +636,7 @@ router.get('/analytics', (req, res) => {
            COUNT(*) AS count
     FROM users u
     LEFT JOIN programs p ON p.code = u.program_code
-    WHERE u.role = 'STUDENT'
+    WHERE u.role = 'student'
     GROUP BY u.program_code
     ORDER BY count DESC
   `).all();
@@ -534,7 +652,13 @@ router.get('/analytics', (req, res) => {
   `).all();
 
   const recentUploads = db.prepare(`
-    SELECT id, title, category, created_at FROM resources ORDER BY created_at DESC LIMIT 5
+    SELECT r.id, r.title, r.category, r.resource_type, r.uploaded_at, r.created_at,
+           r.uploader_role, COALESCE(u.name, r.uploader_name) AS uploader_name,
+           COALESCE(u.email, r.uploader_email) AS uploader_email
+    FROM resources r
+    LEFT JOIN users u ON u.id = r.uploaded_by
+    ORDER BY COALESCE(r.uploaded_at, r.created_at) DESC
+    LIMIT 5
   `).all();
 
   const storageUsedBytes = db.prepare(`SELECT COALESCE(SUM(file_size),0) c FROM resources`).get().c;
@@ -551,6 +675,9 @@ router.get('/analytics', (req, res) => {
     totalUsers,
     totalStudents,
     premiumStudents,
+    totalContentAdmins,
+    activeContentAdmins,
+    contentAdminResources,
     totalResources,
     publishedResources,
     totalDownloads,

@@ -1,14 +1,12 @@
 const path = require('path');
 const { Readable } = require('stream');
 const express = require('express');
-const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { requireAuth, COOKIE_NAME } = require('../middleware/auth');
+const { requireAuth, attachUser } = require('../middleware/auth');
 const storage = require('../lib/storage');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'studycore-dev-secret-change-me';
+const { isAdmin, isStudent } = require('../lib/roles');
 
 const router = express.Router();
 
@@ -63,17 +61,27 @@ function accessFor(user) {
   const now = Date.now();
   const subEnd = new Date(user.subscription_end || 0).getTime();
   const trialEnd = new Date(user.trial_end || 0).getTime();
-  const premium = user.role === 'ADMIN' || (user.subscription === 'premium' && now < subEnd);
-  const trial = !premium && user.role === 'STUDENT' && now < trialEnd;
+  const premium = isAdmin(user) || (isStudent(user) && user.subscription === 'premium' && now < subEnd);
+  const trial = !premium && isStudent(user) && now < trialEnd;
   return { user, premium, trial };
+}
+
+function requireStudentLibraryAccess(req, res, next) {
+  if (!isStudent(req.user) && !isAdmin(req.user)) {
+    return res.status(403).json({ message: 'Content Admin accounts can only use the Content Admin dashboard.' });
+  }
+  return next();
 }
 
 function gate(req, res, next) {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
+  if (!isStudent(user) && !isAdmin(user)) {
+    return res.status(403).json({ message: 'Content Admin accounts can only use the Content Admin dashboard.' });
+  }
   req.user = user; // freshest row - never act on the token payload alone
   req.access = accessFor(user);
-  next();
+  return next();
 }
 
 // Can this student open this specific resource right now?
@@ -575,27 +583,24 @@ router.get('/bookmarks/mine', requireAuth, gate, (req, res) => {
   res.json({ resources: rows.map((r) => ({ ...serializeResource(r), locked: canAccess(r, req.access) ? null : lockReason(r, req.access) })) });
 });
 
-router.get('/search', (req, res) => {
+router.get('/search', attachUser, (req, res) => {
   const q = String(req.query.q || '').trim();
   const limit = Math.min(Number(req.query.limit) || 8, 20);
   if (!q) return res.json({ query: '', courses: [], topics: [], results: [], authenticated: false });
 
   // Optional session - search works for anonymous visitors at a reduced scope.
-  let user = null;
-  const token = req.cookies && req.cookies[COOKIE_NAME];
-  if (token) {
-    try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.id);
-    } catch { user = null; }
-  }
+  // attachUser validates the current account and active flag from SQLite, so a
+  // revoked session is treated as signed out even on this public endpoint.
+  // attachUser carries the verified identity/role; re-read the complete row
+  // because search also needs a student's program and subscription fields.
+  const user = req.user ? db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) : null;
   const access = user ? accessFor(user) : { premium: false, trial: false };
   const ql = `%${q}%`;
 
   // 1) Courses. Logged-in students get the dynamic catalog for their
   // program; anonymous visitors get the legacy public subject directory.
   let courses;
-  if (user && user.role !== 'ADMIN' && user.program_code) {
+  if (isStudent(user) && user.program_code) {
     const programCourses = db.prepare(`
       SELECT c.code, c.name, c.slug
       FROM program_courses pc
@@ -710,13 +715,13 @@ router.get('/:id', requireAuth, gate, (req, res) => {
 
 // Documents and videos are view-only. Keep an explicit denial at the former
 // URL so saved links cannot bypass the reader after the UI control is gone.
-router.get('/:id/download', requireAuth, (req, res) => {
+router.get('/:id/download', requireAuth, requireStudentLibraryAccess, (req, res) => {
   res.status(403).json({
     message: 'Downloads are disabled. Open this resource in the StudyCore reader instead.'
   });
 });
 
-router.post('/:id/bookmark', requireAuth, (req, res) => {
+router.post('/:id/bookmark', requireAuth, requireStudentLibraryAccess, (req, res) => {
   const resource = db.prepare('SELECT id FROM resources WHERE id = ?').get(req.params.id);
   if (!resource) return res.status(404).json({ message: 'Resource not found.' });
   try {
@@ -728,7 +733,7 @@ router.post('/:id/bookmark', requireAuth, (req, res) => {
   res.json({ message: 'Bookmarked.' });
 });
 
-router.delete('/:id/bookmark', requireAuth, (req, res) => {
+router.delete('/:id/bookmark', requireAuth, requireStudentLibraryAccess, (req, res) => {
   db.prepare('DELETE FROM bookmarks WHERE user_id = ? AND resource_id = ?').run(req.user.id, req.params.id);
   res.json({ message: 'Bookmark removed.' });
 });
@@ -755,7 +760,7 @@ const COURSE_SUBJECTS = [
 
 // ---- Lesson completion tracking (real, per student) -----------------------
 
-router.post('/:id/complete', requireAuth, (req, res) => {
+router.post('/:id/complete', requireAuth, requireStudentLibraryAccess, (req, res) => {
   const resource = db.prepare('SELECT id FROM resources WHERE id = ?').get(req.params.id);
   if (!resource) return res.status(404).json({ message: 'Resource not found.' });
   try {
@@ -767,12 +772,12 @@ router.post('/:id/complete', requireAuth, (req, res) => {
   res.json({ message: 'Marked as complete.' });
 });
 
-router.delete('/:id/complete', requireAuth, (req, res) => {
+router.delete('/:id/complete', requireAuth, requireStudentLibraryAccess, (req, res) => {
   db.prepare('DELETE FROM lesson_progress WHERE user_id = ? AND resource_id = ?').run(req.user.id, req.params.id);
   res.json({ message: 'Marked as not complete.' });
 });
 
-router.get('/completed/mine', requireAuth, (req, res) => {
+router.get('/completed/mine', requireAuth, requireStudentLibraryAccess, (req, res) => {
   const rows = db.prepare('SELECT resource_id, completed_at FROM lesson_progress WHERE user_id = ?').all(req.user.id);
   res.json({ completed: rows.map((r) => ({ resourceId: r.resource_id, completedAt: r.completed_at })) });
 });
@@ -784,7 +789,7 @@ router.get('/completed/mine', requireAuth, (req, res) => {
 // historical score data) stay intact and nothing referencing the table
 // breaks.
 
-router.post('/:id/quiz-attempt', requireAuth, (req, res) => {
+router.post('/:id/quiz-attempt', requireAuth, requireStudentLibraryAccess, (req, res) => {
   const { score, total } = req.body;
   if (typeof score !== 'number' || typeof total !== 'number' || total <= 0 || score < 0 || score > total) {
     return res.status(400).json({ message: 'Invalid score submitted.' });
@@ -805,7 +810,7 @@ router.post('/:id/quiz-attempt', requireAuth, (req, res) => {
   res.status(201).json({ message: 'Score recorded.' });
 });
 
-router.get('/:id/quiz-attempts/mine', requireAuth, (req, res) => {
+router.get('/:id/quiz-attempts/mine', requireAuth, requireStudentLibraryAccess, (req, res) => {
   const rows = db.prepare(`
     SELECT score, total, created_at FROM quiz_attempts
     WHERE user_id = ? AND resource_id = ?

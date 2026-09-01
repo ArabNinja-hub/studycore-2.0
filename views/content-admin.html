@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Content Admin Dashboard | StudyCore</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/content-admin.css" />
+  </head>
+  <body data-page="content-admin">
+    <header class="ca-topbar">
+      <div class="container ca-topbar-inner">
+        <a class="ca-brand" href="#dashboard" aria-label="StudyCore Content Admin dashboard">
+          <img src="/assets/logo-icon.jpg" alt="" width="36" height="36" />
+          <span><em>Study</em>Core</span>
+        </a>
+
+        <nav class="ca-nav" aria-label="Content Admin navigation">
+          <a href="#dashboard" data-ca-nav="dashboard">Dashboard</a>
+          <a href="#profile" data-ca-nav="profile">Profile</a>
+          <a href="#upload" data-ca-nav="upload">Upload Resource</a>
+          <a href="#uploads" data-ca-nav="uploads">My Uploads</a>
+          <button class="ca-nav-logout" id="caLogoutBtn" type="button" aria-label="Log out">Logout</button>
+        </nav>
+
+        <div class="ca-user" aria-label="Signed-in Content Admin">
+          <span class="ca-user-avatar" id="caNavAvatar" aria-hidden="true">…</span>
+          <span class="ca-user-copy"><strong id="caNavName">Loading…</strong><span>Content Admin</span></span>
+        </div>
+        <button class="icon-btn ca-menu-toggle" id="caMenuToggle" type="button" aria-label="Open Content Admin navigation" aria-expanded="false"></button>
+      </div>
+      <nav class="container ca-mobile-nav" id="caMobileNav" aria-label="Content Admin navigation" aria-hidden="true">
+        <a href="#dashboard" data-ca-nav="dashboard">Dashboard</a>
+        <a href="#profile" data-ca-nav="profile">Profile</a>
+        <a href="#upload" data-ca-nav="upload">Upload Resource</a>
+        <a href="#uploads" data-ca-nav="uploads">My Uploads</a>
+        <button class="btn btn-outline btn-sm ca-logout" id="caMobileLogoutBtn" type="button">Logout</button>
+      </nav>
+    </header>
+
+    <main class="ca-main">
+      <div class="container">
+        <section class="ca-hero" id="dashboard">
+          <div class="ca-hero-copy">
+            <span class="eyebrow">Publishing workspace</span>
+            <h1 id="caWelcomeName">Welcome</h1>
+            <p>Upload and maintain your educational resources in the StudyCore course library.</p>
+          </div>
+          <div class="ca-hero-actions">
+            <a class="btn btn-teal btn-sm" href="#upload" id="caHeroUploadBtn">Upload Resource</a>
+            <a class="btn btn-on-dark btn-sm" href="#uploads">My Uploads</a>
+          </div>
+        </section>
+
+        <section class="ca-stats" aria-label="Your upload summary">
+          <div class="card ca-stat">
+            <span class="ca-stat-icon" id="caTotalIcon"></span>
+            <div><div class="ca-stat-value" id="caTotalCount">—</div><div class="ca-stat-label">Total uploads</div></div>
+          </div>
+          <div class="card ca-stat">
+            <span class="ca-stat-icon" id="caPublishedIcon"></span>
+            <div><div class="ca-stat-value" id="caPublishedCount">—</div><div class="ca-stat-label">Published resources</div></div>
+          </div>
+          <div class="card ca-stat">
+            <span class="ca-stat-icon" id="caDraftIcon"></span>
+            <div><div class="ca-stat-value" id="caDraftCount">—</div><div class="ca-stat-label">Draft resources</div></div>
+          </div>
+        </section>
+
+        <section class="ca-section ca-grid" aria-label="Dashboard overview">
+          <article class="card ca-card">
+            <div class="ca-section-head">
+              <div><h2>Recent uploads</h2><p>Your latest resources in the shared StudyCore library.</p></div>
+              <a href="#uploads">View all</a>
+            </div>
+            <div class="ca-recent-list" id="caRecentUploads"><p class="loading-text">Loading your uploads…</p></div>
+          </article>
+          <aside class="card ca-card">
+            <h3>Publishing access</h3>
+            <p>Content Admin accounts can manage only resources they uploaded.</p>
+            <div class="ca-account-list">
+              <div class="ca-account-item"><span id="caAccountUserIcon"></span><div><strong id="caAccountName">Loading…</strong><small id="caAccountEmail"></small></div></div>
+              <div class="ca-account-item"><span id="caAccountRoleIcon"></span><div><strong>Account Type</strong><small>Content Admin</small></div></div>
+              <div class="ca-account-item"><span id="caAccountScopeIcon"></span><div><strong>Resource scope</strong><small>Upload, edit and delete your own resources only.</small></div></div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="ca-section" id="profile">
+          <div class="ca-section-head"><div><span class="eyebrow">Account</span><h2>Profile</h2><p>Keep your Content Admin profile current.</p></div></div>
+          <div class="ca-profile-grid">
+            <aside class="card ca-profile-summary">
+              <span class="ca-user-avatar" id="caProfileAvatar" aria-hidden="true">…</span>
+              <h3 id="caProfileSummaryName">Loading…</h3>
+              <p id="caProfileSummaryEmail"></p>
+              <span class="ca-role-pill" id="caAccountType"></span>
+            </aside>
+            <article class="card ca-form-card">
+              <h3>Edit profile</h3>
+              <p>Your dashboard greeting and account details update from your authenticated profile.</p>
+              <form id="caProfileForm" novalidate>
+                <div class="ca-form-grid">
+                  <div class="form-group">
+                    <label for="caProfileName">Full name <span class="ca-required">*</span></label>
+                    <input id="caProfileName" type="text" autocomplete="name" required maxlength="160" />
+                  </div>
+                  <div class="form-group">
+                    <label for="caProfileEmail">Email <span class="ca-required">*</span></label>
+                    <input id="caProfileEmail" type="email" autocomplete="email" required maxlength="254" />
+                  </div>
+                  <div class="form-group ca-form-full">
+                    <label for="caProfileRole">Account Type</label>
+                    <input id="caProfileRole" type="text" readonly value="Content Admin" aria-readonly="true" />
+                  </div>
+                </div>
+                <div class="ca-form-actions">
+                  <button class="btn btn-primary btn-sm" type="submit" id="caProfileSaveBtn">Save changes</button>
+                  <span class="ca-form-status" id="caProfileStatus" role="status" aria-live="polite"></span>
+                </div>
+              </form>
+            </article>
+          </div>
+        </section>
+
+        <section class="ca-section" id="upload">
+          <div class="ca-section-head"><div><span class="eyebrow">Publishing</span><h2 id="caUploadHeading">Upload Resource</h2><p>Place one educational resource in its correct school, course and topic.</p></div></div>
+          <article class="card ca-form-card">
+            <form id="caUploadForm" novalidate enctype="multipart/form-data">
+              <input id="caEditingResourceId" type="hidden" value="" />
+              <div class="ca-form-grid">
+                <div class="form-group">
+                  <label for="caResourceType">Resource Type <span class="ca-required">*</span></label>
+                  <select id="caResourceType" required>
+                    <option value="notes">Notes</option>
+                    <option value="past_paper">Past Paper</option>
+                    <option value="study_guide">Study Guide</option>
+                    <option value="lecture_material">Lecture Material</option>
+                    <option value="document">Document</option>
+                    <option value="video">Video</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="caSchoolFaculty">School / Faculty <span class="ca-required">*</span></label>
+                  <select id="caSchoolFaculty" required><option value="">Loading schools and faculties…</option></select>
+                </div>
+                <div class="form-group">
+                  <label for="caCourse">Course <span class="ca-required">*</span></label>
+                  <select id="caCourse" required disabled><option value="">Choose a school or faculty first</option></select>
+                </div>
+                <div class="form-group">
+                  <label for="caTopic">Topic <span class="ca-required">*</span></label>
+                  <input id="caTopic" type="text" required maxlength="120" list="caTopicSuggestions" placeholder="Select or enter a topic" />
+                  <datalist id="caTopicSuggestions"></datalist>
+                </div>
+                <div class="form-group ca-form-full">
+                  <label for="caTitle">Resource title <span class="ca-required">*</span></label>
+                  <input id="caTitle" type="text" required maxlength="180" placeholder="e.g. Introduction to Contract Law notes" />
+                </div>
+                <div class="form-group ca-form-full">
+                  <label for="caDescription">Description <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
+                  <textarea id="caDescription" rows="3" maxlength="5000" placeholder="A brief description students will see with this resource"></textarea>
+                </div>
+                <div class="form-group ca-term-field" id="caTermField" hidden>
+                  <label for="caTerm">Term <span class="ca-required">*</span></label>
+                  <select id="caTerm"><option value="">Choose a term</option><option value="Term 1">Term 1</option><option value="Term 2">Term 2</option><option value="Term 3">Term 3</option></select>
+                  <small class="ca-help">Video resources must be assigned to a term.</small>
+                </div>
+                <div class="form-group" id="caYearLevelField">
+                  <label for="caYearLevel">Year / level <span style="font-weight:400;color:var(--muted);">(optional)</span></label>
+                  <input id="caYearLevel" type="text" maxlength="80" placeholder="e.g. Year 1, 2026" />
+                </div>
+                <div class="form-group">
+                  <label for="caPublishStatus">Publishing status</label>
+                  <select id="caPublishStatus"><option value="published">Published — visible to students</option><option value="draft">Draft — hidden from students</option></select>
+                </div>
+                <div class="form-group ca-form-full">
+                  <label class="ca-file-drop" id="caFileDrop" for="caFile">
+                    <span class="ca-file-drop-icon" id="caFileIcon"></span>
+                    <span><strong id="caFileDropTitle">Choose a resource file <span class="ca-required">*</span></strong><span id="caFileDropHint">PDF, office document, image, archive, audio or a supported video file</span></span>
+                    <input id="caFile" type="file" required />
+                  </label>
+                  <div class="ca-file-name" id="caFileName" aria-live="polite"></div>
+                  <small class="ca-help" id="caFileHelp">Video resources accept .mp4, .mov, .webm, .mkv, or .avi.</small>
+                </div>
+              </div>
+              <div class="ca-upload-progress" id="caUploadProgress" aria-hidden="true"><span id="caUploadProgressBar"></span></div>
+              <div class="ca-form-actions">
+                <button class="btn btn-primary" type="submit" id="caUploadSubmitBtn">Publish Resource</button>
+                <button class="btn btn-outline" type="button" id="caCancelEditBtn" hidden>Cancel edit</button>
+                <span class="ca-form-status" id="caUploadStatus" role="status" aria-live="polite"></span>
+              </div>
+            </form>
+          </article>
+        </section>
+
+        <section class="ca-section" id="uploads">
+          <div class="ca-section-head"><div><span class="eyebrow">Your library</span><h2>My Uploads</h2><p>Only your own resources appear here. Main Admin retains platform-wide oversight.</p></div></div>
+          <article class="card ca-upload-list">
+            <div class="ca-upload-toolbar"><p id="caUploadsCount">Loading your uploads…</p><a class="btn btn-primary btn-sm" href="#upload" id="caUploadsNewBtn">Upload Resource</a></div>
+            <div class="ca-upload-items" id="caUploadsList"><p class="loading-text" style="padding:22px;">Loading…</p></div>
+          </article>
+        </section>
+      </div>
+    </main>
+
+    <div class="ca-toast-container" id="caToastContainer" aria-live="polite" aria-atomic="true"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/content-admin.js"></script>
+  </body>
+</html>

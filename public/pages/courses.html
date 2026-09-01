@@ -94,10 +94,12 @@
 
         const user = await StudyCoreAuth.fetchSession();
 
-        if (user && user.role !== 'ADMIN') {
+        if (user && StudyCoreAuth.isContentAdmin(user)) {
+          window.location.replace('/content-admin.html');
+        } else if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
           // Logged-in student: show ONLY the courses in their program.
           renderProgramCourses(user);
-        } else if (user && user.role === 'ADMIN') {
+        } else if (user && StudyCoreAuth.isAdmin(user)) {
           renderAdminView();
         } else {
           // Anonymous visitor: keep the public subject catalog.

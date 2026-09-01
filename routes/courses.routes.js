@@ -1,8 +1,10 @@
 const express = require('express');
 const db = require('../db');
-const { requireAuth, attachUser } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
+const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 
 const router = express.Router();
+const requireStudentLearningAccount = requireRole(ROLES.STUDENT, ROLES.ADMIN);
 
 // Course homes must always reflect the latest published admin uploads rather
 // than a browser or proxy serving an older API response.
@@ -61,8 +63,8 @@ function accessFor(user) {
   const now = Date.now();
   const subEnd = new Date(user.subscription_end || 0).getTime();
   const trialEnd = new Date(user.trial_end || 0).getTime();
-  const premium = user.role === 'ADMIN' || (user.subscription === 'premium' && now < subEnd);
-  const trial = !premium && user.role === 'STUDENT' && now < trialEnd;
+  const premium = isAdmin(user) || (isStudent(user) && user.subscription === 'premium' && now < subEnd);
+  const trial = !premium && isStudent(user) && now < trialEnd;
   return { premium, trial };
 }
 
@@ -168,7 +170,7 @@ router.get('/', (req, res) => {
 // lesson experience page to render breadcrumbs and navigation.
 // Registered BEFORE the /:subject route below so "lesson" is never swallowed
 // as a subject name.
-router.get('/lesson/:id', requireAuth, (req, res) => {
+router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
   const access = accessFor(user);
@@ -216,7 +218,7 @@ router.get('/lesson/:id', requireAuth, (req, res) => {
 
 // GET /api/courses/:subject - full course home for a logged-in student.
 // :subject accepts either the subject name ("Physics") or the slug ("physics").
-router.get('/:subject', requireAuth, (req, res) => {
+router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
 

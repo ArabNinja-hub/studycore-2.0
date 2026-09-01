@@ -31,7 +31,7 @@ function makeUser(role, label) {
   db.prepare(`
     INSERT INTO users (id, name, email, password, role, created_at)
     VALUES (?, ?, ?, 'pass123', ?, ?)
-  `).run(id, `${label} ${role === 'ADMIN' ? 'Admin' : 'Student'}`, `${id}@test.studycore`, role, nowIso());
+  `).run(id, `${label} ${role === 'admin' ? 'Admin' : 'Student'}`, `${id}@test.studycore`, role, nowIso());
   return { id, role, email: `${id}@test.studycore` };
 }
 
@@ -87,9 +87,9 @@ test('community API: posting, replies, editing, reactions and moderation', { tim
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
-  const studentA = makeUser('STUDENT', 'Amara');
-  const studentB = makeUser('STUDENT', 'Bwalya');
-  const admin = makeUser('ADMIN', 'Relentless');
+  const studentA = makeUser('student', 'Amara');
+  const studentB = makeUser('student', 'Bwalya');
+  const admin = makeUser('admin', 'Relentless');
 
   const call = async (method, url, user, body) => {
     const res = await fetch(`${baseUrl}${url}`, {
@@ -284,8 +284,8 @@ test('community API: SSE stream pushes new messages and typing to other members'
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
-  const listener = makeUser('STUDENT', 'Chisanga');
-  const speaker = makeUser('STUDENT', 'Mulenga');
+  const listener = makeUser('student', 'Chisanga');
+  const speaker = makeUser('student', 'Mulenga');
 
   const streamRes = await fetch(`${baseUrl}/api/community/stream`, { headers: { Cookie: cookieFor(listener) } });
   assert.equal(streamRes.status, 200);
@@ -474,7 +474,7 @@ test('community.js escapes member content and only links http(s) URLs', () => {
     pinned: false,
     createdAt: new Date().toISOString(),
     mine: false,
-    author: { id: 'u-1', name: `<svg onload=alert(1)>`, role: 'STUDENT', isAdmin: false },
+    author: { id: 'u-1', name: `<svg onload=alert(1)>`, role: 'student', isAdmin: false },
     replyTo: { id: 'cm-0', authorName: `<b onmouseover=alert(2)>Admin</b>`, bodyPreview: xss },
     reactions: { heart: 0, mine: false }
   };

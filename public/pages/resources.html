@@ -66,6 +66,10 @@
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
         const user = await StudyCoreAuth.fetchSession();
+        if (user && StudyCoreAuth.isContentAdmin(user)) {
+          window.location.replace('/content-admin.html');
+          return;
+        }
 
         const params = new URLSearchParams(location.search);
         let activeCourse = params.get('course') || '';
@@ -97,7 +101,7 @@
         if (user) {
           try { bookmarked = new Set((await StudyCoreAPI.myBookmarks()).resources.map((r) => r.id)); } catch {}
           // Program-aware course filter for students.
-          if (user.role === 'STUDENT' && user.program) {
+          if (StudyCoreAuth.normalizedRole(user) === 'student' && user.program) {
             try {
               const mine = await StudyCoreAPI.myProgram();
               if (mine.program && mine.courses && mine.courses.length) {

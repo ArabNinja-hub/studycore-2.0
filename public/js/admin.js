@@ -373,6 +373,7 @@
         ${stat('library', 'Total uploads', a.totalResources, `${a.publishedResources} published`)}
         ${stat('download', 'Downloads', a.totalDownloads, `${a.totalViews} views`)}
         ${stat('users', 'Users', a.totalUsers, `${a.premiumStudents} premium students`)}
+        ${stat('shield', 'Content Admins', a.totalContentAdmins || 0, `${a.activeContentAdmins || 0} active · ${a.contentAdminResources || 0} uploads`)}
         ${stat('wallet', 'Revenue', `K${a.revenue}`, 'confirmed subscriptions')}
         <div class="card dash-section span-4">
           <div class="dash-section-head"><h3 style="font-size:1rem;">Most downloaded</h3></div>
@@ -443,7 +444,7 @@
 
   async function loadResourceTable() {
     const tbody = document.getElementById('adminResourceTbody');
-    tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted);">Loading…</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" style="color:var(--muted);">Loading…</td></tr>';
     try {
       const { resources } = await StudyCoreAPI.adminListResources({
         search: currentFilters.search || undefined,
@@ -452,7 +453,7 @@
         sort: currentFilters.sort
       });
       if (!resources.length) {
-        tbody.innerHTML = '<tr><td colspan="9" style="color:var(--muted);padding:24px;text-align:center;">No resources match.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" style="color:var(--muted);padding:24px;text-align:center;">No resources match.</td></tr>';
         return;
       }
       tbody.innerHTML = resources.map((r) => {
@@ -468,7 +469,11 @@
               </div>
             </div>
           </td>
-          <td>${CATEGORY_LABELS[r.category] || r.category}</td>
+          <td>${escapeHtml(r.resourceType || CATEGORY_LABELS[r.category] || r.category)}</td>
+          <td>
+            <strong style="font-size:0.8rem;color:var(--ink);">${escapeHtml(r.uploaderName || 'Unattributed')}</strong>
+            <span style="display:block;font-size:0.7rem;color:var(--muted);">${escapeHtml(r.uploaderRole === 'content_admin' ? 'Content Admin' : (r.uploaderRole === 'admin' ? 'Main Admin' : 'Legacy upload'))}</span>
+          </td>
           <td>${escapeHtml(cc.text)}</td>
           <td>${window.SCAdminPrograms ? SCAdminPrograms.targetBadge(r) : ''}</td>
           <td>${escapeHtml(r.topic || '—')}${r.semester ? `<br><span style="font-size:0.72rem;color:var(--muted);">${escapeHtml(r.semester)}</span>` : ''}</td>
@@ -494,7 +499,7 @@
       tbody.querySelectorAll('[data-edit-ann]').forEach((btn) => btn.addEventListener('click', () => editAnnouncement(resources.find((r) => r.id === btn.getAttribute('data-edit-ann')))));
       tbody.querySelectorAll('[data-delete]').forEach((btn) => btn.addEventListener('click', () => deleteResource(btn.getAttribute('data-delete'))));
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="9" style="color:var(--red-600);">${escapeHtml(err.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="10" style="color:var(--red-600);">${escapeHtml(err.message)}</td></tr>`;
     }
   }
 
@@ -564,6 +569,71 @@
     }
   }
 
+  /* ── Content Admin accounts ─────────────── */
+  async function loadContentAdmins() {
+    const target = document.getElementById('contentAdminsList');
+    if (!target) return;
+    try {
+      const { contentAdmins } = await StudyCoreAPI.adminListContentAdmins();
+      if (!contentAdmins.length) {
+        target.innerHTML = '<p style="color:var(--muted);">No Content Admin accounts have been created yet.</p>';
+        return;
+      }
+      target.innerHTML = contentAdmins.map((account) => {
+        const active = Boolean(account.isActive);
+        const counts = `${account.resourceCount || 0} upload${account.resourceCount === 1 ? '' : 's'} · ${account.publishedCount || 0} published${account.draftCount ? ` · ${account.draftCount} draft${account.draftCount === 1 ? '' : 's'}` : ''}`;
+        return `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;">
+            <span style="min-width:0;">
+              <strong style="color:var(--ink);">${escapeHtml(account.name)}</strong>
+              <span class="badge ${active ? 'badge-green' : 'badge-red'}" style="margin-left:8px;">${active ? 'Active' : 'Revoked'}</span>
+              <span style="display:block;font-size:0.83rem;color:var(--muted);margin-top:3px;">${escapeHtml(account.email)} · ${counts}${account.lastUploadAt ? ` · last upload ${timeAgo(account.lastUploadAt)}` : ''}</span>
+            </span>
+            <span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="btn btn-outline btn-sm" data-content-admin-status="${escapeHtml(account.id)}" data-next-active="${active ? 'false' : 'true'}">${active ? 'Revoke access' : 'Restore access'}</button>
+              <button class="btn btn-ghost btn-sm" data-delete-content-admin="${escapeHtml(account.id)}" data-content-admin-name="${escapeHtml(account.name)}" style="color:var(--red-600);">${SC.icon('trash', { size: 13 })} Delete</button>
+            </span>
+          </div>`;
+      }).join('');
+
+      target.querySelectorAll('[data-content-admin-status]').forEach((button) => button.addEventListener('click', async () => {
+        const id = button.getAttribute('data-content-admin-status');
+        const nextActive = button.getAttribute('data-next-active') === 'true';
+        const action = nextActive ? 'restore' : 'revoke';
+        if (!confirm(`${action[0].toUpperCase()}${action.slice(1)} this Content Admin's access?`)) return;
+        button.disabled = true;
+        try {
+          const result = await StudyCoreAPI.adminSetContentAdminStatus(id, nextActive);
+          showToast(result.message, 'success');
+          loadContentAdmins();
+          loadAnalytics();
+        } catch (err) {
+          showToast(err.message, 'error');
+          button.disabled = false;
+        }
+      }));
+
+      target.querySelectorAll('[data-delete-content-admin]').forEach((button) => button.addEventListener('click', async () => {
+        const id = button.getAttribute('data-delete-content-admin');
+        const name = button.getAttribute('data-content-admin-name') || 'this account';
+        if (!confirm(`Delete the Content Admin account for ${name}? Their existing uploads will remain for Main Admin review.`)) return;
+        button.disabled = true;
+        try {
+          const result = await StudyCoreAPI.adminDeleteContentAdmin(id);
+          showToast(result.message, 'success');
+          loadContentAdmins();
+          loadResourceTable();
+          loadAnalytics();
+        } catch (err) {
+          showToast(err.message, 'error');
+          button.disabled = false;
+        }
+      }));
+    } catch (err) {
+      target.innerHTML = `<p style="color:var(--red-600);">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
   /* ── Students ───────────────────────────── */
   function renderUserProgramFilter() {
     const sel = document.getElementById('userProgramFilter');
@@ -582,7 +652,7 @@
     const programFilter = filterSel ? filterSel.value : '';
     try {
       const { users } = await StudyCoreAPI.adminListUsers(programFilter ? { program: programFilter } : {});
-      const students = users.filter((u) => u.role === 'STUDENT');
+      const students = users.filter((u) => String(u.role || '').toLowerCase() === 'student');
       renderUserProgramFilter();
       if (!students.length) { target.innerHTML = '<p style="color:var(--muted);">No students match.</p>'; return; }
 
@@ -639,7 +709,7 @@
   /* ── Boot ──────────────────────────────── */
   async function initAdminPage() {
     const user = await StudyCoreAuth.fetchSession();
-    if (!user || user.role !== 'ADMIN') { window.location.href = '/login.html'; return; }
+    if (!user || !StudyCoreAuth.isAdmin(user)) { window.location.href = '/login.html'; return; }
 
     // One-time welcome transition after login
     const welcomeInfo = StudyCoreAuth.consumeWelcomeFlag();
@@ -707,6 +777,7 @@
     loadCommunityStats();
     loadResourceTable();
     loadPayments();
+    loadContentAdmins();
     loadUsers();
     loadTopicSuggest();
   }

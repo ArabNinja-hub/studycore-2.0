@@ -35,6 +35,10 @@
   const StudyCoreAPI = {
     // Auth
     register: (payload) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
+    // The access code is supplied only from the registration form and sent
+    // directly to the server for validation. It is never persisted in browser
+    // storage or returned in an API response.
+    registerContentAdmin: (payload) => request('/api/auth/register-content-admin', { method: 'POST', body: JSON.stringify(payload) }),
     login: (payload) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
     logout: () => request('/api/auth/logout', { method: 'POST' }),
     me: () => request('/api/auth/me'),
@@ -139,12 +143,31 @@
     adminCreateResource: (formData) => request('/api/admin/resources', { method: 'POST', body: formData }),
     adminUpdateResource: (id, formData) => request(`/api/admin/resources/${id}`, { method: 'PUT', body: formData }),
     adminDeleteResource: (id) => request(`/api/admin/resources/${id}`, { method: 'DELETE' }),
-    adminListUsers: () => request('/api/admin/users'),
+    adminListUsers: (params = {}) => {
+      const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));
+      const qStr = qs.toString();
+      return request(`/api/admin/users${qStr ? `?${qStr}` : ''}`);
+    },
     adminDeleteUser: (id) => request(`/api/admin/users/${id}`, { method: 'DELETE' }),
+    adminListContentAdmins: () => request('/api/admin/content-admins'),
+    adminSetContentAdminStatus: (id, isActive) => request(`/api/admin/content-admins/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH', body: JSON.stringify({ isActive })
+    }),
+    adminDeleteContentAdmin: (id) => request(`/api/admin/content-admins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     adminAnalytics: () => request('/api/admin/analytics'),
     adminListPayments: (status) => request(`/api/admin/payments${status ? `?status=${status}` : ''}`),
     adminApprovePayment: (id) => request(`/api/admin/payments/${id}/approve`, { method: 'POST' }),
-    adminRejectPayment: (id) => request(`/api/admin/payments/${id}/reject`, { method: 'POST' })
+    adminRejectPayment: (id) => request(`/api/admin/payments/${id}/reject`, { method: 'POST' }),
+
+    // Content Admin: deliberately scoped to the authenticated uploader's own
+    // resources. The server independently enforces this ownership boundary.
+    contentAdminDashboard: () => request('/api/content-admin/dashboard'),
+    contentAdminCatalog: () => request('/api/content-admin/catalog'),
+    contentAdminListResources: () => request('/api/content-admin/resources'),
+    contentAdminGetResource: (id) => request(`/api/content-admin/resources/${encodeURIComponent(id)}`),
+    contentAdminCreateResource: (formData) => request('/api/content-admin/resources', { method: 'POST', body: formData }),
+    contentAdminUpdateResource: (id, formData) => request(`/api/content-admin/resources/${encodeURIComponent(id)}`, { method: 'PUT', body: formData }),
+    contentAdminDeleteResource: (id) => request(`/api/content-admin/resources/${encodeURIComponent(id)}`, { method: 'DELETE' })
   };
 
   // XHR wrapper so we can report real upload progress (fetch can't do this yet).

@@ -1,7 +1,8 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, attachUser } = require('../middleware/auth');
+const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const {
   serializeProgram,
   serializeCourse,
@@ -17,6 +18,7 @@ const {
 } = require('../lib/program-access');
 
 const router = express.Router();
+const requireStudentLearningAccount = requireRole(ROLES.STUDENT, ROLES.ADMIN);
 
 // Course content always reflects the latest admin uploads.
 router.use((req, res, next) => {
@@ -31,8 +33,8 @@ function accessFor(user) {
   const now = Date.now();
   const subEnd = new Date(user.subscription_end || 0).getTime();
   const trialEnd = new Date(user.trial_end || 0).getTime();
-  const premium = user.role === 'ADMIN' || (user.subscription === 'premium' && now < subEnd);
-  const trial = !premium && user.role === 'STUDENT' && now < trialEnd;
+  const premium = isAdmin(user) || (isStudent(user) && user.subscription === 'premium' && now < subEnd);
+  const trial = !premium && isStudent(user) && now < trialEnd;
   return { premium, trial };
 }
 
@@ -64,20 +66,23 @@ function publishedCourseResources(user, courseId) {
 
 // ---- Public: program directory ------------------------------------------
 // Shown on the signup page and (for anonymous visitors) on the courses page.
-router.get('/', (req, res) => {
+router.get('/', attachUser, (req, res) => {
   const rows = db.prepare('SELECT * FROM programs ORDER BY rowid ASC').all();
   const includeCounts = req.query.counts === '1';
+  const includeStudentCounts = includeCounts && isAdmin(req.user);
   const programs = rows.map((p) => {
     const extra = {};
     if (includeCounts) {
-      const courseCount = db.prepare(
+      // Course counts support the public program directory. Enrollment counts
+      // are operational data and remain visible only to the Main Admin.
+      extra.courseCount = db.prepare(
         'SELECT COUNT(*) c FROM program_courses WHERE program_code = ?'
       ).get(p.code).c;
-      const studentCount = db.prepare(
-        "SELECT COUNT(*) c FROM users WHERE role = 'STUDENT' AND program_code = ?"
-      ).get(p.code).c;
-      extra.courseCount = courseCount;
-      extra.studentCount = studentCount;
+      if (includeStudentCounts) {
+        extra.studentCount = db.prepare(
+          "SELECT COUNT(*) c FROM users WHERE role = 'student' AND program_code = ?"
+        ).get(p.code).c;
+      }
     }
     return serializeProgram(p, extra);
   });
@@ -87,10 +92,10 @@ router.get('/', (req, res) => {
 // ---- Student: their own program + courses -------------------------------
 // This is the endpoint the student dashboard uses: it returns ONLY the
 // courses belonging to the logged-in student's program, with content counts.
-router.get('/mine', requireAuth, (req, res) => {
+router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
-  if (user.role === 'ADMIN') return res.json({ program: null, courses: [] });
+  if (isAdmin(user)) return res.json({ program: null, courses: [] });
 
   const program = user.program_code
     ? db.prepare('SELECT * FROM programs WHERE code = ?').get(user.program_code)
@@ -143,14 +148,14 @@ router.get('/mine', requireAuth, (req, res) => {
 // :key accepts course id, slug (ma110) or code (MA110). Access is enforced:
 // the student's program must include the course, and every resource returned
 // is filtered by program visibility in SQL.
-router.get('/course/:key', requireAuth, (req, res) => {
+router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
 
   const course = resolveCourse(req.params.key);
   if (!course) return res.status(404).json({ message: 'Course not found.' });
 
-  if (user.role !== 'ADMIN') {
+  if (!isAdmin(user)) {
     if (!user.program_code || !programIncludesCourse(user.program_code, course.id)) {
       // Program-based access enforced server-side — a Law student requesting
       // an E.D/Mines course id gets a hard 403, not just hidden UI.
@@ -309,7 +314,7 @@ router.get('/course/:key', requireAuth, (req, res) => {
 // Previous/next lesson and the enclosing course, for the lesson experience
 // page. The lesson must belong to a course the student's program includes —
 // the program course home data is re-derived here and filtered identically.
-router.get('/lesson/:id', requireAuth, (req, res) => {
+router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
 
@@ -319,7 +324,7 @@ router.get('/lesson/:id', requireAuth, (req, res) => {
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(row.course_id);
   if (!course) return res.status(404).json({ message: 'Course not found.' });
 
-  if (user.role !== 'ADMIN') {
+  if (!isAdmin(user)) {
     if (!user.program_code || !programIncludesCourse(user.program_code, course.id)) {
       return res.status(403).json({ message: 'This lesson is not part of your program.' });
     }
@@ -372,7 +377,7 @@ router.get('/lesson/:id', requireAuth, (req, res) => {
 // ===========================================================================
 // ADMIN — program & course management
 // ===========================================================================
-router.use('/admin', requireAuth, requireRole('ADMIN'));
+router.use('/admin', requireAuth, requireRole(ROLES.ADMIN));
 
 // All programs with their courses (for the admin dashboard).
 router.get('/admin', (req, res) => {
@@ -390,7 +395,7 @@ router.get('/admin', (req, res) => {
       return serializeCourse(c, { resourceCount });
     });
     const studentCount = db.prepare(
-      "SELECT COUNT(*) c FROM users WHERE role = 'STUDENT' AND program_code = ?"
+      "SELECT COUNT(*) c FROM users WHERE role = 'student' AND program_code = ?"
     ).get(p.code).c;
     return serializeProgram(p, { courses, studentCount });
   });

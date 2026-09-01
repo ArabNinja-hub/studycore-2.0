@@ -34,11 +34,14 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { EventEmitter } = require('node:events');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
+const { ROLES, isAdmin, normalizeRole } = require('../lib/roles');
 const { rateLimit } = require('../middleware/security');
 
 const router = express.Router();
-router.use(requireAuth);
+// The community remains a student + Main Admin feature. Content Admins have
+// a separate restricted publishing surface and cannot post/read this room.
+router.use(requireAuth, requireRole(ROLES.STUDENT, ROLES.ADMIN));
 
 // A group chat is chatty, but not 500-messages-a-minute chatty. 30 posts per
 // minute per IP is far more than any real student needs and still stops a
@@ -82,8 +85,8 @@ function publicMember(user, isOnline) {
   return {
     id: user.id,
     name: user.name,
-    role: user.role,
-    isAdmin: user.role === 'ADMIN',
+    role: normalizeRole(user.role) || ROLES.STUDENT,
+    isAdmin: isAdmin(user),
     isOnline: Boolean(isOnline)
   };
 }
@@ -91,7 +94,7 @@ function publicMember(user, isOnline) {
 /* ── Shared read helpers ────────────────────── */
 
 function isAdminRequest(req) {
-  return req.user && req.user.role === 'ADMIN';
+  return isAdmin(req.user);
 }
 
 // Seeds the read marker the first time this user touches the community, so the
@@ -141,8 +144,8 @@ function shapeMessage(row, viewerId, reactionMap) {
     author: {
       id: row.user_id,
       name: row.author_name,
-      role: row.author_role,
-      isAdmin: row.author_role === 'ADMIN'
+      role: normalizeRole(row.author_role) || ROLES.STUDENT,
+      isAdmin: normalizeRole(row.author_role) === ROLES.ADMIN
     },
     replyTo: replyVisible
       ? {

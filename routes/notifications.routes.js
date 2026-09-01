@@ -1,11 +1,12 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
+const { ROLES } = require('../lib/roles');
 const { resourceVisibilityClause, programCanSeeResource } = require('../lib/program-access');
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(requireAuth, requireRole(ROLES.STUDENT, ROLES.ADMIN));
 
 // Announcements obey the SAME program targeting as every other resource:
 // a Law announcement only reaches Law students; "All Students" reaches

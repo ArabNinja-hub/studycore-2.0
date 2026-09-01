@@ -106,8 +106,8 @@ test('HTTP API: approving a payment activates premium and dispatches the access-
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
   const stamp = Date.now();
-  const admin = { id: `admin-mail-${stamp}`, name: 'Mail Admin', email: `admin.mail.${stamp}@test.com`, password: 'pass', role: 'ADMIN', created_at: NOW };
-  const student = { id: `student-mail-${stamp}`, name: 'Mail Student', email: `student.mail.${stamp}@test.com`, password: 'pass', role: 'STUDENT', created_at: NOW };
+  const admin = { id: `admin-mail-${stamp}`, name: 'Mail Admin', email: `admin.mail.${stamp}@test.com`, password: 'pass', role: 'admin', created_at: NOW };
+  const student = { id: `student-mail-${stamp}`, name: 'Mail Student', email: `student.mail.${stamp}@test.com`, password: 'pass', role: 'student', created_at: NOW };
   db.prepare(`INSERT INTO users (id, name, email, password, role, created_at) VALUES (@id, @name, @email, @password, @role, @created_at)`).run(admin);
   db.prepare(`INSERT INTO users (id, name, email, password, role, created_at) VALUES (@id, @name, @email, @password, @role, @created_at)`).run(student);
 

@@ -139,7 +139,9 @@
   // program courses (Program → Course). Static fallback remains if the fetch
   // fails, so navigation never breaks.
   async function updateCoursesDropdownForUser(user) {
-    if (!user || user.role === 'ADMIN') return;
+    // Only students have a program enrollment to resolve. Content Admins use
+    // their dedicated publishing dashboard instead of student course data.
+    if (!user || StudyCoreAuth.normalizedRole(user) !== 'student') return;
     try {
       const data = await StudyCoreAPI.myProgram();
       if (!data || !data.program || !(data.courses || []).length) return;
@@ -237,8 +239,20 @@
   function accountMenuHtml(user) {
     const label = StudyCoreAuth.subscriptionLabel(user);
     const badgeCls = { premium: 'badge-amber', trial: '', pending: 'badge-amber', expired: 'badge-red' }[label.cls] || '';
-    const adminLink = StudyCoreAuth.isAdmin(user)
-      ? `<a href="/admin.html">${SC.icon('settings', { size: 17 })} Admin Dashboard</a>`
+    const role = StudyCoreAuth.normalizedRole(user);
+    const dashboard = StudyCoreAuth.getDashboardPage(user);
+    const contentAdminLinks = role === 'content_admin' ? `
+      <a href="/content-admin.html">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
+      <a href="/content-admin.html#profile">${SC.icon('user', { size: 17 })} Profile</a>
+      <a href="/content-admin.html#upload">${SC.icon('upload', { size: 17 })} Upload Resource</a>
+      <a href="/content-admin.html#uploads">${SC.icon('library', { size: 17 })} My Uploads</a>` : '';
+    const studentLinks = role === 'student' ? `
+      <a href="/dashboard.html">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
+      <a href="/dashboard.html#profile">${SC.icon('user', { size: 17 })} Profile &amp; photo</a>
+      <a href="/dashboard.html#premium">${SC.icon('crown', { size: 17 })} Premium &amp; billing</a>
+      <a href="/dashboard.html#community">${SC.icon('message-circle', { size: 17 })} Community</a>` : '';
+    const mainAdminLinks = role === 'admin'
+      ? `<a href="${dashboard}">${SC.icon('settings', { size: 17 })} Admin Dashboard</a>`
       : '';
     return `
       <div class="account-menu">
@@ -256,11 +270,7 @@
               </span>
             </div>
           </div>
-          <a href="/dashboard.html">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
-          <a href="/dashboard.html#profile">${SC.icon('user', { size: 17 })} Profile &amp; photo</a>
-          <a href="/dashboard.html#premium">${SC.icon('crown', { size: 17 })} Premium &amp; billing</a>
-          <a href="/dashboard.html#community">${SC.icon('message-circle', { size: 17 })} Community</a>
-          ${adminLink}
+          ${contentAdminLinks || studentLinks || mainAdminLinks}
           <button type="button" class="danger" id="accountLogout">${SC.icon('log-out', { size: 17 })} Log Out</button>
         </div>
       </div>
@@ -601,15 +611,22 @@
     if (!slot) return;
     const user = await StudyCoreAuth.fetchSession();
     if (user) {
-      // Mirrors the desktop avatar menu: dashboard entry points live in the
-      // Account section (not at the top of the Study section).
-      const adminLink = StudyCoreAuth.isAdmin(user)
-        ? `<a href="/admin.html">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>`
-        : '';
+      // Mirrors the desktop avatar menu and never routes a Content Admin to
+      // the student dashboard.
+      const role = StudyCoreAuth.normalizedRole(user);
+      const dashboard = StudyCoreAuth.getDashboardPage(user);
+      const accountLinks = role === 'content_admin' ? `
+        <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
+        <a href="${dashboard}#profile">${SC.icon('user', { size: 20 })} Profile</a>
+        <a href="${dashboard}#upload">${SC.icon('upload', { size: 20 })} Upload Resource</a>
+        <a href="${dashboard}#uploads">${SC.icon('library', { size: 20 })} My Uploads</a>`
+        : role === 'admin' ? `
+        <a href="${dashboard}">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>`
+        : `
+        <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
+        <a href="${dashboard}#profile">${SC.icon('user', { size: 20 })} Profile</a>`;
       slot.innerHTML = `
-        <a href="/dashboard.html">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
-        ${adminLink}
-        <a href="/dashboard.html#profile">${SC.icon('user', { size: 20 })} Profile</a>
+        ${accountLinks}
         <button type="button" id="mobileLogoutBtn" style="color:var(--red-600);">${SC.icon('log-out', { size: 20 })} Log Out</button>
       `;
       const lo = document.getElementById('mobileLogoutBtn');
