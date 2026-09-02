@@ -8,6 +8,7 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/quiz.css" />
   </head>
   <body data-page="admin">
     <div id="siteNav"></div>
@@ -81,16 +82,15 @@
             </form>
           </div>
 
-          <!-- Student community -->
+          <!-- Quizzes (managed here by Main Admin) -->
           <div class="card card-pad" style="margin-bottom:28px;">
-            <h3 style="display:flex;align-items:center;gap:10px;" id="communityCardHeading"><span data-community-icon></span> Student community</h3>
-            <p style="margin:6px 0 14px;">
-              The live group room where students ask each other questions and help one another.
-              Join the conversation, pin the answers that matter, and remove anything out of line —
-              everything you post is labelled <strong>Admin</strong> so students know it is you.
+            <h3 style="display:flex;align-items:center;gap:10px;"><span id="quizzesHeadingIcon"></span> Quizzes</h3>
+            <p style="margin:6px 0 18px;">
+              Build program-targeted quizzes for students — multiple-choice, free-word answers, or an image
+              with a question. Quizzes appear on the student <a href="/quiz.html">Quizzes page</a> for the
+              programs you target, and every attempt is graded and recorded automatically.
             </p>
-            <div id="communityStats" class="community-stats" style="margin-bottom:16px;"><p class="loading-text">Loading…</p></div>
-            <a class="btn btn-primary btn-sm" href="/pages/community.html" id="communityOpenBtn">Open the community room</a>
+            <div id="quizAdminMount"></div>
           </div>
 
           <!-- Upload -->
@@ -131,7 +131,6 @@
                     <option value="video">Video Lesson</option>
                     <option value="tutorial">Tutorial Sheet</option>
                     <option value="past_paper">Past Paper</option>
-                    <option value="quiz">Quiz (admin-only)</option>
                     <option value="assignment">Assignment (admin-only)</option>
                   </select>
                 </div>

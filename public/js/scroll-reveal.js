@@ -30,8 +30,7 @@
     '.video-term-grid > .video-term-card',
     '.announcement-list > .announcement-card',
     '.achievement',
-    '.premium-card',
-    '.community-panel'
+    '.premium-card'
   ].join(',');
 
   const STAGGER_SELECTORS = [
@@ -101,7 +100,7 @@
     const direction = element.getAttribute('data-scroll-reveal');
     if (direction === 'fade-left' || direction === 'fade-right' || direction === 'fly-in') return direction;
     if (element.matches('img') || element.hasAttribute('data-scroll-reveal-image')) return 'fade-right';
-    if (element.matches('.course-card, .course-mini, .resource-card, .topic-card, .video-term-card, .announcement-card, .achievement, .premium-card, .feature-grid > .card, .community-panel')) {
+    if (element.matches('.course-card, .course-mini, .resource-card, .topic-card, .video-term-card, .announcement-card, .achievement, .premium-card, .feature-grid > .card')) {
       const group = element.closest(STAGGER_SELECTORS);
       const siblings = group
         ? candidatesIn(group).filter((candidate) => candidate !== group && isCandidateVisible(candidate))

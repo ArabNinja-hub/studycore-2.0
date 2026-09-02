@@ -59,7 +59,7 @@
   const NAV_LINKS = [
     { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
     { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text' },
-    { id: 'community', label: 'Community', href: '/pages/community.html', icon: 'users', badge: 'community' },
+    { id: 'quizzes', label: 'Quizzes', href: '/quiz.html', icon: 'circle-help' },
     { id: 'announcements', label: 'Announcements', href: '/pages/announcements.html', icon: 'bell' },
     { id: 'about', label: 'About', href: '/pages/about.html', icon: 'info' }
   ];
@@ -248,9 +248,9 @@
       <a href="/content-admin.html#uploads">${SC.icon('library', { size: 17 })} My Uploads</a>` : '';
     const studentLinks = role === 'student' ? `
       <a href="/dashboard.html">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
+      <a href="/quiz.html">${SC.icon('circle-help', { size: 17 })} Quizzes</a>
       <a href="/dashboard.html#profile">${SC.icon('user', { size: 17 })} Profile &amp; photo</a>
-      <a href="/dashboard.html#premium">${SC.icon('crown', { size: 17 })} Premium &amp; billing</a>
-      <a href="/dashboard.html#community">${SC.icon('message-circle', { size: 17 })} Community</a>` : '';
+      <a href="/dashboard.html#premium">${SC.icon('crown', { size: 17 })} Premium &amp; billing</a>` : '';
     const mainAdminLinks = role === 'admin'
       ? `<a href="${dashboard}">${SC.icon('settings', { size: 17 })} Admin Dashboard</a>`
       : '';
@@ -557,9 +557,9 @@
         <a href="/pages/about.html"${activeAttrs('about')} style="--idx:8">${SC.icon('info', { size: 20 })} About StudyCore</a>
 
         <div class="mobile-nav-divider" style="--idx:9"></div>
-        <div class="mobile-nav-label" style="--idx:10">Community</div>
-        <a href="/pages/community.html"${activeAttrs('community')} style="--idx:11" id="mobileNavCommunityLink">
-          ${SC.icon('users', { size: 20 })} <span>Student Community</span><span class="notif-badge-inline" id="mobileNavCommunityBadge" style="display:none;"></span>
+        <div class="mobile-nav-label" style="--idx:10">Practice</div>
+        <a href="/quiz.html"${activeAttrs('quizzes')} style="--idx:11" id="mobileNavQuizzesLink">
+          ${SC.icon('circle-help', { size: 20 })} <span>Quizzes</span>
         </a>
         <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:12">
           ${SC.icon('whatsapp', { size: 20 })} WhatsApp Academic Channel
@@ -788,7 +788,7 @@
               <li><a href="/pages/resources.html">Open Resources</a></li>
               <li><a href="/pages/resources.html?type=past_paper">View Past Papers</a></li>
               <li><a href="/pages/announcements.html">Announcements</a></li>
-              <li><a href="/pages/community.html">Student Community</a></li>
+              <li><a href="/quiz.html">Quizzes</a></li>
               <li><a href="/pages/search.html">Search</a></li>
             </ul>
           </div>
@@ -837,46 +837,6 @@
         .catch(() => ({ channel: WHATSAPP_CHANNEL_URL, group: '' }));
     }
     return whatsappPromise;
-  }
-
-  /* ── Community panel (channel + group links) ─ */
-  function bindCommunityGroupBtn(host) {
-    const groupBtn = host && host.querySelector('#communityGroupBtn');
-    if (!groupBtn) return;
-    whatsappLinks().then((links) => {
-      if (links.group) {
-        groupBtn.href = links.group;
-        groupBtn.style.display = '';
-      }
-    });
-  }
-
-  function renderCommunityPanel(host) {
-    if (!host) return;
-    host.classList.add('community-panel');
-    host.innerHTML = `
-      <div>
-        <span class="eyebrow" style="color:#128c7e;">${SC.icon('users', { size: 14 })} Community</span>
-        <h2>Ask questions, study together</h2>
-        <p>
-          The StudyCore community is a live group room right here on the site — post a question,
-          answer a classmate, and get replies from the StudyCore admin. You can also follow the
-          official academic channel on WhatsApp for tips and updates.
-        </p>
-        <div class="community-actions">
-          <a class="btn btn-primary" href="/pages/community.html">
-            ${SC.icon('message-circle', { size: 18 })} Open the Student Community
-          </a>
-          <a class="btn whatsapp-btn" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">
-            ${SC.icon('whatsapp', { size: 18 })} Follow the Channel
-          </a>
-          <a class="btn btn-outline" id="communityGroupBtn" style="display:none;" target="_blank" rel="noopener">
-            ${SC.icon('users', { size: 18 })} Join the WhatsApp Group
-          </a>
-        </div>
-      </div>
-    `;
-    bindCommunityGroupBtn(host);
   }
 
   /* ── Announcement Details Modal ──────────── */
@@ -1295,69 +1255,6 @@
     }
   };
 
-  /* ── Community unread badge ────────────────
-     The Community nav link carries a small unread pill. It is deliberately
-     separate from the announcement bell: the room is a conversation, not a
-     notice board, and mixing the two counts would make both meaningless. */
-  const CommunityBadge = {
-    count: 0,
-    currentUser: null,
-    timer: null,
-
-    init(user) {
-      this.currentUser = user;
-      if (!user) {
-        this.set(0);
-        return;
-      }
-      this.refresh();
-      this.start();
-    },
-
-    set(count) {
-      this.count = Math.max(0, count || 0);
-      const label = this.count > 99 ? '99+' : String(this.count);
-      const navPill = document.getElementById('navBadge_community');
-      const mobilePill = document.getElementById('mobileNavCommunityBadge');
-
-      if (navPill) {
-        navPill.style.display = this.count > 0 ? 'inline-flex' : 'none';
-        navPill.textContent = this.count > 0 ? label : '';
-        navPill.setAttribute('aria-label', `${this.count} unread community ${this.count === 1 ? 'message' : 'messages'}`);
-      }
-      if (mobilePill) {
-        mobilePill.style.display = this.count > 0 ? 'inline-flex' : 'none';
-        mobilePill.textContent = this.count > 0 ? label : '';
-      }
-    },
-
-    async refresh() {
-      if (!this.currentUser) return;
-      try {
-        const data = await StudyCoreAPI.communityUnreadCount();
-        this.set(data.unreadCount || 0);
-      } catch {
-        // logged out mid-session, or offline - the badge simply stays put
-      }
-    },
-
-    start() {
-      if (this.timer) clearInterval(this.timer);
-      this.timer = setInterval(() => {
-        // The room page keeps its own badge at zero while it is open, so
-        // skipping hidden tabs is enough to stay polite to the server.
-        if (!document.hidden && this.currentUser) this.refresh();
-      }, 45000);
-
-      document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && this.currentUser) this.refresh();
-      });
-      window.addEventListener('focus', () => {
-        if (this.currentUser) this.refresh();
-      });
-    }
-  };
-
   /* ── Mobile bottom dock (quick navigation) ──
      A modern, thumb-reachable dock that keeps the handful of places a user
      actually goes one tap away, so nobody has to dig through the drawer or
@@ -1374,7 +1271,7 @@
     home: ['home', 'dashboard', 'admin'],
     courses: ['courses', 'course', 'lesson', 'videos'],
     resources: ['resources', 'viewer'],
-    community: ['community'],
+    quizzes: ['quizzes'],
     announcements: ['announcements']
   };
 
@@ -1435,7 +1332,7 @@
       items = [
         dockItem('Home', 'home', { href: homeHref, active: dockIsCurrent('home') }),
         dockItem('Courses', 'library', { href: '/pages/courses.html', active: dockIsCurrent('courses') }),
-        dockItem('Community', 'users', { href: '/pages/community.html', active: dockIsCurrent('community') }),
+        dockItem('Quizzes', 'circle-help', { href: '/quiz.html', active: dockIsCurrent('quizzes') }),
         dockItem('Announcements', 'bell', { href: '/pages/announcements.html', active: dockIsCurrent('announcements') })
       ];
     }
@@ -1556,7 +1453,6 @@
     // courses once we know who they are.
     updateCoursesDropdownForUser(user).catch(() => {});
     NotificationManager.init(user);
-    CommunityBadge.init(user);
 
     // Footer group button (official invite link from the server)
     whatsappLinks().then((links) => {
@@ -1573,13 +1469,7 @@
     openSearchOverlay,
     openAnnouncementModal,
     refreshNotifications: (force = true) => NotificationManager.fetchStatus(force),
-    // The community room page calls these so the nav pill clears the moment a
-    // student opens (or catches up in) the room, without waiting for a poll.
-    setCommunityUnread: (count) => CommunityBadge.set(count),
-    refreshCommunityUnread: () => CommunityBadge.refresh(),
     whatsappLinks,
-    renderCommunityPanel,
-    bindCommunityGroupBtn,
     WHATSAPP_CHANNEL_URL
   };
 

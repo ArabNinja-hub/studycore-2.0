@@ -17,7 +17,7 @@ const programsRoutes = require('./routes/programs.routes');
 const adminRoutes = require('./routes/admin.routes');
 const contentAdminRoutes = require('./routes/content-admin.routes');
 const notificationRoutes = require('./routes/notifications.routes');
-const communityRoutes = require('./routes/community.routes');
+const quizRoutes = require('./routes/quiz.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -47,7 +47,7 @@ app.use('/api/auth/password', authRateLimit);
 app.use('/api/auth', authRoutes);
 
 // Public site config. Official WhatsApp links live in .env so the owner can
-// rotate them without touching page code; the community panels on every page
+// rotate them without touching page code; the marketing panels on every page
 // fetch them here on load. No auth required - nothing in this payload is
 // private.
 app.get('/api/config', (req, res) => {
@@ -66,11 +66,10 @@ app.use('/api/programs', programsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/content-admin', contentAdminRoutes);
 app.use('/api/notifications', notificationRoutes);
-
-// The on-site student community: one shared group room (/pages/community.html)
-// where students ask questions and the admin answers. Session-gated like every
-// other /api route; the room itself is moderated server-side.
-app.use('/api/community', communityRoutes);
+// Quizzes: program-targeted practice for students, authored by Content Admins
+// and the Main Admin. The quiz itself is a resource (category='quiz') so it
+// inherits the platform's exact program/course visibility rules.
+app.use('/api/quiz', quizRoutes);
 
 // ---- Protected view routes (server-side gated, must be registered BEFORE
 // the static file middleware so an unauthenticated request can never receive
@@ -88,6 +87,14 @@ app.get(['/content-admin', '/content-admin.html'], requirePageAuth(ROLES.CONTENT
 app.get(['/dashboard', '/dashboard.html'], requirePageAuth(ROLES.STUDENT), (req, res) => {
   res.set('Cache-Control', 'no-store');
   res.sendFile(path.join(__dirname, 'views', 'dashboard.html'));
+});
+
+// Quizzes: a program-targeted practice surface for students. Main Admin may
+// also open it to preview the student experience; authoring happens in the
+// dashboards, not here.
+app.get(['/quiz', '/quiz.html'], requirePageAuth(ROLES.STUDENT, ROLES.ADMIN), (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.sendFile(path.join(__dirname, 'views', 'quiz.html'));
 });
 
 // Dynamic course home (program → course). Server-side gated like every other
@@ -116,7 +123,6 @@ app.get('/viewer/:documentId', requirePageAuth(ROLES.STUDENT, ROLES.ADMIN), (req
 // checks that deny the underlying student library, community, and course data.
 const contentAdminStudentPagePaths = [
   '/pages/announcements.html',
-  '/pages/community.html',
   '/pages/courses.html',
   '/pages/lesson.html',
   '/pages/resources.html',

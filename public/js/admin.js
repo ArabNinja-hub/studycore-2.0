@@ -326,37 +326,6 @@
   }
 
   /* ── Analytics ──────────────────────────── */
-  /* ── Student community ────────────────────
-     The room itself lives at /pages/community.html (the admin is a normal
-     member there, with pin + delete powers). This card just shows how active
-     it is so the admin knows whether questions are waiting. */
-  async function loadCommunityStats() {
-    const target = document.getElementById('communityStats');
-    if (!target) return;
-    try {
-      const data = await StudyCoreAPI.communityRoom({ limit: 1 });
-      const stats = data.stats || {};
-      const online = data.onlineCount || 0;
-      const latest = (data.messages && data.messages[0]) || null;
-      const pill = (icon, label, value) => `
-        <span class="community-stat-pill">${SC.icon(icon, { size: 15 })} <strong>${value}</strong> ${label}</span>`;
-      target.innerHTML = `
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-          ${pill('message-circle', 'messages total', stats.totalMessages || 0)}
-          ${pill('zap', 'today', stats.messagesToday || 0)}
-          ${pill('users', 'students posting', stats.participants || 0)}
-          ${pill('activity', 'online now', online)}
-        </div>
-        <p style="font-size:0.83rem;color:var(--muted);">
-          ${latest
-            ? `Latest from <strong>${escapeHtml(latest.author.name)}</strong> ${timeAgo(latest.createdAt)}: “${escapeHtml(latest.body.length > 90 ? `${latest.body.slice(0, 87)}…` : latest.body)}”`
-            : 'No messages yet — be the first to say hello.'}
-        </p>`;
-    } catch (err) {
-      target.innerHTML = `<p style="color:var(--red-600);font-size:0.85rem;">${escapeHtml(err.message)}</p>`;
-    }
-  }
-
   async function loadAnalytics() {
     const target = document.getElementById('adminAnalytics');
     try {
@@ -486,7 +455,7 @@
           <td>${r.viewCount}</td>
           <td>
             <div class="table-actions">
-              <button class="btn btn-outline btn-sm" data-edit="${r.id}">${SC.icon('edit', { size: 13 })} Edit</button>
+              ${['announcement', 'quiz'].includes(r.category) ? '' : `<button class="btn btn-outline btn-sm" data-edit="${r.id}">${SC.icon('edit', { size: 13 })} Edit</button>`}
               ${r.category === 'announcement' ? `<button class="btn btn-ghost btn-sm" data-edit-ann="${r.id}">${SC.icon('bell', { size: 13 })}</button>` : ''}
               <button class="btn btn-ghost btn-sm" data-delete="${r.id}" style="color:var(--red-600);">${SC.icon('trash', { size: 13 })}</button>
             </div>
@@ -707,6 +676,22 @@
   }
 
   /* ── Boot ──────────────────────────────── */
+
+  /* ── Quiz management (Main Admin) ──────── */
+  function mountQuizAdmin() {
+    const mount = document.getElementById('quizAdminMount');
+    if (!mount || !window.StudyCoreQuizAdmin) return;
+    const flatten = (programs) => {
+      const out = [];
+      (programs || []).forEach((p) => (p.courses || []).forEach((c) => out.push({ id: c.id, code: c.code, name: c.name })));
+      return out;
+    };
+    StudyCoreQuizAdmin.mount(mount, {
+      role: 'admin',
+      getPrograms: () => StudyCoreAPI.adminPrograms().then((d) => (d.programs || []).map((p) => ({ code: p.code, name: p.name }))),
+      loadCourses: () => StudyCoreAPI.adminPrograms().then((d) => flatten(d.programs))
+    }).catch(() => {});
+  }
   async function initAdminPage() {
     const user = await StudyCoreAuth.fetchSession();
     if (!user || !StudyCoreAuth.isAdmin(user)) { window.location.href = '/login.html'; return; }
@@ -766,15 +751,13 @@
       document.getElementById('resourceForm').scrollIntoView({ behavior: 'smooth' });
     }));
 
-    const communityIcon = document.querySelector('[data-community-icon]');
-    if (communityIcon) communityIcon.innerHTML = SC.icon('users', { size: 19 });
-    const communityOpenBtn = document.getElementById('communityOpenBtn');
-    if (communityOpenBtn) communityOpenBtn.innerHTML = `${SC.icon('message-circle', { size: 15 })} Open the community room`;
+    const quizzesHeadingIcon = document.getElementById('quizzesHeadingIcon');
+    if (quizzesHeadingIcon) quizzesHeadingIcon.innerHTML = SC.icon('circle-help', { size: 19 });
 
     renderAdminToolbar();
     renderProgramFilterChips();
     loadAnalytics();
-    loadCommunityStats();
+    mountQuizAdmin();
     loadResourceTable();
     loadPayments();
     loadContentAdmins();

@@ -187,10 +187,17 @@
         </div>
       </section>
 
-      <!-- Community -->
+      <!-- Quizzes: program-targeted practice -->
       <section class="section" style="padding-top:0;">
         <div class="container">
-          <div class="community-panel" id="communityPanel"></div>
+          <div style="background:linear-gradient(135deg,#0e7568 0%,#0b2033 100%);border-radius:18px;padding:34px 30px;display:flex;gap:22px;align-items:center;flex-wrap:wrap;color:#fff;">
+            <div style="width:54px;height:54px;border-radius:14px;background:rgba(255,255,255,0.12);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><span data-icon="circle-help" data-icon-size="26"></span></div>
+            <div style="flex:1;min-width:240px;">
+              <h2 style="margin:0 0 8px;">Test yourself with Quizzes</h2>
+              <p style="margin:0;color:rgba(255,255,255,0.8);">Content Admins and the StudyCore team post program-targeted quizzes — multiple-choice, word answers, or image questions. Take them any time and watch your best scores improve.</p>
+            </div>
+            <a class="btn btn-amber" href="/quiz.html">Open Quizzes</a>
+          </div>
         </div>
       </section>
     </main>
@@ -319,8 +326,6 @@
         } finally {
           catalog.setAttribute('aria-busy', 'false');
         }
-
-        SCLayout.renderCommunityPanel(document.getElementById('communityPanel'));
 
         // Home hero decorative floating background logo controller
         (function initHeroLogo() {

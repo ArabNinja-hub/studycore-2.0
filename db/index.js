@@ -527,71 +527,10 @@ try {
   // already exist - fine
 }
 
-// Community: the on-site student group room (/pages/community.html). One
-// shared conversation - like a WhatsApp group - where students ask questions,
-// answer each other and the admin joins in. Messages are plain text; the row
-// id is a uuid like everywhere else, but ordering and pagination use SQLite's
-// implicit rowid (exposed as `seq`), which is strictly increasing and immune
-// to two messages landing in the same millisecond.
-//
-// Deleting works two ways, on purpose:
-//   - a student deleting their own message is a SOFT delete (deleted = 1) so
-//     the conversation keeps its shape and replies still point at something,
-//     exactly like "You deleted this message" in WhatsApp;
-//   - an admin removing somebody else's message is a HARD delete - spam goes
-//     away completely (replies fall back to no quote via ON DELETE SET NULL).
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS community_messages (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      body TEXT NOT NULL,
-      reply_to_id TEXT REFERENCES community_messages(id) ON DELETE SET NULL,
-      pinned INTEGER NOT NULL DEFAULT 0,
-      pinned_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-      deleted INTEGER NOT NULL DEFAULT 0,
-      edited_at TEXT,
-      created_at TEXT NOT NULL
-    )
-  `);
-  db.exec('CREATE INDEX IF NOT EXISTS idx_community_messages_user ON community_messages(user_id)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_community_messages_pinned ON community_messages(pinned)');
-} catch {
-  // already exists - fine
-}
-
-// One heart ("helpful / agree") per person per message. WhatsApp-style
-// lightweight acknowledgement rather than a full threaded forum.
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS community_reactions (
-      id TEXT PRIMARY KEY,
-      message_id TEXT NOT NULL REFERENCES community_messages(id) ON DELETE CASCADE,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at TEXT NOT NULL,
-      UNIQUE(message_id, user_id)
-    )
-  `);
-  db.exec('CREATE INDEX IF NOT EXISTS idx_community_reactions_message ON community_reactions(message_id)');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_community_reactions_user ON community_reactions(user_id)');
-} catch {
-  // already exists - fine
-}
-
-// Per-student "I have read up to here" marker. Powers the unread badge on the
-// Community nav link without storing a read row per message. Seeded lazily the
-// first time a user touches the community API, so joining never greets a
-// brand-new student with hundreds of "unread" messages.
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS community_read_state (
-      user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-      last_read_at TEXT NOT NULL
-    )
-  `);
-} catch {
-  // already exists - fine
-}
+// Quizzes are stored as resources (category = 'quiz'); their questions live
+// in resources.quiz_data and student attempts in quiz_attempts (both defined
+// above). The on-site student community room was removed - quizzes replace it
+// as the primary interactive, program-targeted student activity.
 
 function generateReferralCode() {
   // Short, easy to read aloud/type on a phone - avoids ambiguous characters

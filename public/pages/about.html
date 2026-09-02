@@ -84,9 +84,21 @@
         </div>
       </section>
 
-      <section class="section" id="community">
+      <section class="section" id="quizzes">
         <div class="container">
-          <div class="community-panel" id="communityPanel"></div>
+          <div class="section-heading">
+            <span class="eyebrow">Practice</span>
+            <h2>Quizzes made for your program</h2>
+            <p>Test yourself with program-targeted quizzes posted by Content Admins and the StudyCore team.</p>
+          </div>
+          <div class="feature-grid">
+            <div class="card card-pad"><div class="card-icon" data-icon="list-checks"></div><h3 style="margin-top:14px;">Multiple choice</h3><p>Pick the right answer — single or multiple correct options, graded instantly.</p></div>
+            <div class="card card-pad"><div class="card-icon" data-icon="edit"></div><h3 style="margin-top:14px;">Word answers</h3><p>Type a short answer; matching is case-insensitive so "O2" and "oxygen" both score.</p></div>
+            <div class="card card-pad"><div class="card-icon" data-icon="image"></div><h3 style="margin-top:14px;">Image questions</h3><p>Admins can post an image and ask a question about it — perfect for diagrams and maps.</p></div>
+          </div>
+          <div style="text-align:center;margin-top:18px;">
+            <a class="btn btn-primary" href="/quiz.html">Open Quizzes</a>
+          </div>
         </div>
       </section>
 
@@ -118,7 +130,6 @@
       document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 }); });
         document.getElementById('contactCta').innerHTML = `${SC.icon('whatsapp', { size: 17 })} Message StudyCore`;
-        SCLayout.renderCommunityPanel(document.getElementById('communityPanel'));
       });
     </script>
   </body>

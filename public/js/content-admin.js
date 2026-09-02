@@ -489,7 +489,7 @@
       if (file) setFile(file);
     });
 
-    ['dashboard', 'profile', 'upload', 'uploads'].forEach((id) => {
+    ['dashboard', 'profile', 'upload', 'uploads', 'quizzes'].forEach((id) => {
       const section = document.getElementById(id);
       if (!section || !('IntersectionObserver' in window)) return;
       const observer = new IntersectionObserver((entries) => {
@@ -499,6 +499,21 @@
       }, { rootMargin: '-22% 0px -68% 0px', threshold: 0 });
       observer.observe(section);
     });
+  }
+
+  function mountContentQuiz() {
+    const mount = document.getElementById('contentQuizMount');
+    if (!mount || !window.StudyCoreQuizAdmin) return;
+    const flatten = (programs) => {
+      const out = [];
+      (programs || []).forEach((p) => (p.courses || []).forEach((c) => out.push({ id: c.id, code: c.code, name: c.name })));
+      return out;
+    };
+    StudyCoreQuizAdmin.mount(mount, {
+      role: 'content_admin',
+      getPrograms: () => StudyCoreAPI.contentAdminCatalog().then((d) => (d.programs || []).map((p) => ({ code: p.code, name: p.name }))),
+      loadCourses: () => StudyCoreAPI.contentAdminCatalog().then((d) => flatten(d.programs))
+    }).catch(() => {});
   }
 
   async function init() {
@@ -527,6 +542,8 @@
       showToast(err.message || 'Could not load your Content Admin workspace.', 'error');
       setStatus($('#caUploadStatus'), 'Some dashboard data could not be loaded. Refresh and try again.', 'error');
     }
+
+    mountContentQuiz();
   }
 
   document.addEventListener('DOMContentLoaded', init);
