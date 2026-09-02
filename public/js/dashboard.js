@@ -572,11 +572,6 @@
     }
   }
 
-  /* ── Community ──────────────────────────── */
-  function renderCommunity() {
-    SCLayout.renderCommunityPanel($('#communityPanel'));
-  }
-
   /* ── Program selection (for older accounts / changes) ── */
   async function loadProgramPicker() {
     try {
@@ -622,7 +617,6 @@
     renderPremiumPanel();
     bindAvatar();
     bindForms();
-    renderCommunity();
     loadAnnouncements();
     loadBookmarks();
     loadReferral();

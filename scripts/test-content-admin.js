@@ -161,7 +161,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.equal(alice.role, ROLES.CONTENT_ADMIN);
     assert.doesNotMatch(aliceSignup.raw, /content-admin-test-access-code/i, 'the registration response must not expose the access code');
     assert.equal(db.prepare('SELECT role FROM users WHERE id = ?').get(alice.id).role, ROLES.CONTENT_ADMIN);
-    const contentAdminStudentPage = await call(baseUrl, 'GET', '/pages/community.html', { cookie: alice.cookie, manualRedirect: true });
+    const contentAdminStudentPage = await call(baseUrl, 'GET', '/pages/announcements.html', { cookie: alice.cookie, manualRedirect: true });
     assert.equal(contentAdminStudentPage.response.status, 302, 'Content Admin student-page URLs are redirected server-side');
     assert.equal(contentAdminStudentPage.response.headers.get('location'), '/content-admin.html');
     // Registration code is never part of normal authentication: subsequent
@@ -210,7 +210,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.equal((await call(baseUrl, 'GET', '/api/programs/mine', { cookie: alice.cookie })).response.status, 403);
     assert.equal((await call(baseUrl, 'GET', '/api/courses/mathematics', { cookie: alice.cookie })).response.status, 403);
     assert.equal((await call(baseUrl, 'GET', '/api/notifications', { cookie: alice.cookie })).response.status, 403);
-    assert.equal((await call(baseUrl, 'GET', '/api/community', { cookie: alice.cookie })).response.status, 403);
+    assert.equal((await call(baseUrl, 'GET', '/api/quiz/student', { cookie: alice.cookie })).response.status, 403);
     assert.equal((await call(baseUrl, 'POST', '/api/auth/subscribe', {
       cookie: alice.cookie, body: { phone: '0970000000', method: 'MTN MoMo' }
     })).response.status, 403);

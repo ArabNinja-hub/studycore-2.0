@@ -112,28 +112,25 @@
     markNotificationRead: (id) => request(`/api/notifications/${encodeURIComponent(id)}/read`, { method: 'POST' }),
     markAllNotificationsRead: () => request('/api/notifications/read-all', { method: 'POST' }),
 
-    // Community (the on-site student group room)
-    communityRoom: (params = {}) => {
-      const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));
-      const qStr = qs.toString();
-      return request(`/api/community${qStr ? `?${qStr}` : ''}`);
+    // Quizzes (program-targeted practice authored by Content Admins / Main Admin)
+    quizListMine: () => request('/api/quiz/mine'),
+    quizGetForEdit: (id) => request(`/api/quiz/${encodeURIComponent(id)}/manage`),
+    quizCreate: (payload) => request('/api/quiz', { method: 'POST', body: JSON.stringify(payload) }),
+    quizUpdate: (id, payload) => request(`/api/quiz/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    quizDelete: (id) => request(`/api/quiz/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    quizUploadImage: (file) => {
+      const fd = new FormData();
+      fd.append('image', file);
+      return request('/api/quiz/image', { method: 'POST', body: fd });
     },
-    communitySend: (body, replyToId) => request('/api/community', {
-      method: 'POST', body: JSON.stringify({ body, replyToId: replyToId || null })
+    quizImageUrl: (key) => `/api/quiz/image/${encodeURIComponent(key)}`,
+    // Student-facing
+    quizAvailable: () => request('/api/quiz/student'),
+    quizTake: (id) => request(`/api/quiz/${encodeURIComponent(id)}`),
+    quizSubmitAttempt: (id, payload) => request(`/api/quiz/${encodeURIComponent(id)}/attempt`, {
+      method: 'POST', body: JSON.stringify(payload)
     }),
-    communityEdit: (id, body) => request(`/api/community/${encodeURIComponent(id)}`, {
-      method: 'PATCH', body: JSON.stringify({ body })
-    }),
-    communityDelete: (id) => request(`/api/community/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-    communityReact: (id) => request(`/api/community/${encodeURIComponent(id)}/react`, { method: 'POST' }),
-    communityPin: (id) => request(`/api/community/${encodeURIComponent(id)}/pin`, { method: 'POST' }),
-    communityUnpin: (id) => request(`/api/community/${encodeURIComponent(id)}/pin`, { method: 'DELETE' }),
-    communityMarkRead: () => request('/api/community/read', { method: 'POST' }),
-    communityUnreadCount: () => request('/api/community/unread-count'),
-    communityMembers: () => request('/api/community/members'),
-    communityTyping: () => request('/api/community/typing', { method: 'POST' }),
-    // Opened with EventSource (cookies ride along automatically, same origin).
-    communityStreamUrl: () => '/api/community/stream',
+    quizMyAttempts: (id) => request(`/api/quiz/${encodeURIComponent(id)}/attempts/mine`),
 
     // Admin
     adminListResources: (params = {}) => {

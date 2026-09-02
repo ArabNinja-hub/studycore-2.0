@@ -9,6 +9,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/css/style.css" />
     <link rel="stylesheet" href="/css/content-admin.css" />
+    <link rel="stylesheet" href="/css/quiz.css" />
   </head>
   <body data-page="content-admin">
     <header class="ca-topbar">
@@ -23,6 +24,7 @@
           <a href="#profile" data-ca-nav="profile">Profile</a>
           <a href="#upload" data-ca-nav="upload">Upload Resource</a>
           <a href="#uploads" data-ca-nav="uploads">My Uploads</a>
+          <a href="#quizzes" data-ca-nav="quizzes">Quizzes</a>
           <button class="ca-nav-logout" id="caLogoutBtn" type="button" aria-label="Log out">Logout</button>
         </nav>
 
@@ -37,6 +39,7 @@
         <a href="#profile" data-ca-nav="profile">Profile</a>
         <a href="#upload" data-ca-nav="upload">Upload Resource</a>
         <a href="#uploads" data-ca-nav="uploads">My Uploads</a>
+        <a href="#quizzes" data-ca-nav="quizzes">Quizzes</a>
         <button class="btn btn-outline btn-sm ca-logout" id="caMobileLogoutBtn" type="button">Logout</button>
       </nav>
     </header>
@@ -204,6 +207,13 @@
             <div class="ca-upload-items" id="caUploadsList"><p class="loading-text" style="padding:22px;">Loading…</p></div>
           </article>
         </section>
+
+        <section class="ca-section" id="quizzes">
+          <div class="ca-section-head"><div><span class="eyebrow">Practice</span><h2>Quizzes</h2><p>Build quizzes for the programs you publish to — multiple-choice, free-word answers, or an image with a question. Students see them on the <a href="/quiz.html">Quizzes page</a> for their program.</p></div></div>
+          <article class="card ca-form-card">
+            <div id="contentQuizMount"></div>
+          </article>
+        </section>
       </div>
     </main>
 
@@ -214,6 +224,7 @@
     <script src="/js/auth.js"></script>
     <script src="/js/main.js"></script>
     <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/quiz-admin.js"></script>
     <script src="/js/content-admin.js"></script>
   </body>
 </html>
