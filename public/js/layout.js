@@ -1358,6 +1358,109 @@
     }
   };
 
+  /* ── Mobile bottom dock (quick navigation) ──
+     A modern, thumb-reachable dock that keeps the handful of places a user
+     actually goes one tap away, so nobody has to dig through the drawer or
+     scroll a very long dashboard on a phone. It is role- and page-aware:
+       - A student / Main-Admin dashboard (each a single, long page) becomes a
+         set of in-page shortcuts that jump straight to its sections instead
+         of endless scrolling.
+       - Everywhere else it offers that user's top-level destinations.
+     Shown only at phone/tablet widths and only for signed-in student &
+     Main-Admin accounts (Content Admin uses its own workspace chrome, and
+     guests keep the simpler drawer). Full-screen pages such as the document
+     viewer keep the whole screen for reading. */
+  const MOB_TOP_PAGES = {
+    home: ['home', 'dashboard', 'admin'],
+    courses: ['courses', 'course', 'lesson', 'videos'],
+    resources: ['resources', 'viewer'],
+    community: ['community'],
+    announcements: ['announcements']
+  };
+
+  function dockIsCurrent(key) {
+    const page = currentPage();
+    return (MOB_TOP_PAGES[key] || []).indexOf(page) !== -1;
+  }
+
+  function dockGlyph(label, icon) {
+    return `<span class="mob-dock-ic">${SC.icon(icon, { size: 21 })}</span><span class="mob-dock-lb">${label}</span>`;
+  }
+
+  function dockItem(label, icon, opts) {
+    const o = opts || {};
+    if (o.href) {
+      return `<a class="mob-dock-item${o.active ? ' active' : ''}" href="${o.href}"${o.active ? ' aria-current="page"' : ''}>${dockGlyph(label, icon)}</a>`;
+    }
+    const target = o.scroll || 'top';
+    return `<a class="mob-dock-item" href="#${target === 'top' ? '' : target}" data-scroll="${target}">${dockGlyph(label, icon)}</a>`;
+  }
+
+  function teardownMobileDock() {
+    const host = document.getElementById('mobDockHost');
+    if (host) host.remove();
+    document.body.classList.remove('has-mobtabs');
+  }
+
+  function renderMobileDock(user) {
+    const role = user ? StudyCoreAuth.normalizedRole(user) : '';
+    // Only signed-in student & Main-Admin accounts get the dock.
+    if (!user || (role !== 'student' && role !== 'admin')) { teardownMobileDock(); return; }
+    // Keep the whole screen for full-screen reading / dedicated workspaces.
+    if (currentPage() === 'viewer' || currentPage() === 'content-admin') { teardownMobileDock(); return; }
+
+    const page = currentPage();
+    let items;
+    if (page === 'dashboard') {
+      // A student's dashboard is one long page: offer section shortcuts.
+      items = [
+        dockItem('Overview', 'home', { scroll: 'top' }),
+        dockItem('Continue', 'play', { scroll: 'continueSlot' }),
+        dockItem('Courses', 'library', { scroll: 'myCoursesList' }),
+        dockItem('Premium', 'crown', { scroll: 'premium' }),
+        dockItem('Profile', 'user', { scroll: 'profile' })
+      ];
+    } else if (page === 'admin') {
+      // The Main-Admin dashboard is one long page: offer section shortcuts.
+      items = [
+        dockItem('Overview', 'home', { scroll: 'top' }),
+        dockItem('Announce', 'bell', { scroll: 'announcementForm' }),
+        dockItem('Content', 'file-text', { scroll: 'adminResourceTableWrap' }),
+        dockItem('Students', 'users', { scroll: 'usersList' }),
+        dockItem('Payments', 'wallet', { scroll: 'paymentsList' })
+      ];
+    } else {
+      // Top-level destinations for this account across the whole site.
+      const homeHref = role === 'admin' ? '/admin.html' : '/dashboard.html';
+      items = [
+        dockItem('Home', 'home', { href: homeHref, active: dockIsCurrent('home') }),
+        dockItem('Courses', 'library', { href: '/pages/courses.html', active: dockIsCurrent('courses') }),
+        dockItem('Community', 'users', { href: '/pages/community.html', active: dockIsCurrent('community') }),
+        dockItem('Announcements', 'bell', { href: '/pages/announcements.html', active: dockIsCurrent('announcements') })
+      ];
+    }
+
+    let host = document.getElementById('mobDockHost');
+    if (!host) {
+      host = document.createElement('nav');
+      host.id = 'mobDockHost';
+      host.className = 'mob-dock';
+      host.setAttribute('aria-label', 'Quick navigation');
+      document.body.appendChild(host);
+    }
+    host.innerHTML = `<div class="mob-dock-inner">${items.join('')}</div>`;
+    host.querySelectorAll('[data-scroll]').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = a.getAttribute('data-scroll');
+        if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+        const el = document.getElementById(target);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+    document.body.classList.add('has-mobtabs');
+  }
+
   function ensureMobileMeta() {
     const vp = document.querySelector('meta[name="viewport"]');
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
@@ -1448,6 +1551,7 @@
     const user = await StudyCoreAuth.fetchSession();
     renderNavAuth();
     renderMobileNavAuth();
+    renderMobileDock(user);
     // Swap the public course flyout/drawer for the student's own program
     // courses once we know who they are.
     updateCoursesDropdownForUser(user).catch(() => {});

@@ -942,6 +942,76 @@ body[data-theme='dark'] .notif-unread-dot {
 .nav-backdrop { position: fixed; inset: 0; background: rgba(8, 23, 38, 0.5); z-index: 998; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 .nav-backdrop.open { opacity: 1; pointer-events: auto; }
 
+/* ── Mobile bottom dock (quick navigation) ──
+   A slim floating tab dock for signed-in student & Main-Admin accounts on
+   phones/tablets. It keeps the handful of places a user actually goes one
+   thumb-tap away and turns the very long single-page dashboards into
+   tap-to-jump sections, so nobody has to dig through the drawer or scroll
+   endlessly on a phone. Hidden on desktop and never rendered for guests or
+   Content Admins (see layout.js). */
+.mob-dock {
+  position: fixed; left: 50%; bottom: 10px;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 955; /* below the drawer (999) so the drawer slides over it */
+  display: none;
+  width: calc(100vw - 24px); max-width: 520px;
+  padding: 6px;
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 78%, var(--teal-500) 22%);
+  box-shadow: 0 12px 34px -8px rgba(8, 23, 38, 0.24), 0 3px 10px rgba(8, 23, 38, 0.08);
+  opacity: 0; visibility: hidden;
+  transition: opacity 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1), visibility 0s linear 0.25s;
+}
+.mob-dock-inner { display: flex; align-items: stretch; gap: 2px; }
+.mob-dock-item {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 6px 2px 5px; border-radius: 16px;
+  color: var(--muted); text-decoration: none;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+  transition: color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+}
+.mob-dock-item:hover { color: var(--teal-600); background: color-mix(in srgb, var(--bg-alt) 70%, transparent); }
+.mob-dock-item:active { transform: scale(0.96); }
+.mob-dock-ic { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
+.mob-dock-item.active { color: var(--teal-700); }
+.mob-dock-item.active .mob-dock-ic {
+  background: color-mix(in srgb, var(--teal-50) 90%, var(--card));
+  border-radius: 9px; color: var(--teal-700);
+}
+.mob-dock-lb {
+  max-width: 100%; font-size: 0.62rem; font-weight: 600; line-height: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.01em;
+}
+@media (max-width: 1180px) {
+  body.has-mobtabs .mob-dock {
+    display: block;
+    opacity: 1; visibility: visible;
+    transform: translateX(-50%) translateY(0);
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  body.has-mobtabs { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (max-width: 480px) {
+  .mob-dock-lb { font-size: 0.58rem; }
+  .mob-dock-item { padding-left: 0; padding-right: 0; gap: 3px; }
+  .mob-dock-ic { width: 24px; height: 24px; }
+}
+/* Dock section-shortcut targets land below the floating nav island (the
+   shared top chrome stays sticky), not hidden underneath it. */
+body.has-mobtabs #continueSlot,
+body.has-mobtabs #myCoursesList,
+body.has-mobtabs #premium,
+body.has-mobtabs #profile,
+body.has-mobtabs #announcementForm,
+body.has-mobtabs #adminResourceTableWrap,
+body.has-mobtabs #usersList,
+body.has-mobtabs #paymentsList {
+  scroll-margin-top: calc(var(--nav-h) + var(--nav-float) + 18px);
+}
+
 @media (max-width: 1180px) {
   .nav-links,
   .nav-actions .btn-primary,
