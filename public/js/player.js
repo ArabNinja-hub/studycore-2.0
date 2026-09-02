@@ -175,6 +175,13 @@
           return;
         }
         if (probe.status === 403) {
+          // Access lapsed mid-session (subscription expired). Swap in the
+          // lock wall and stop the player's own timers/listeners first,
+          // otherwise they keep running against the removed <video>.
+          destroyed = true;
+          clearInterval(reportTimer);
+          clearMetaTimer();
+          clearTimeout(bufferTimer);
           renderLock(container, o);
           return;
         }
@@ -210,6 +217,9 @@
       }
 
       if (attachedSrc !== streamUrl) {
+        // Wait for the resume position so loadedmetadata can seek to it.
+        try { await resumeReady; } catch { /* fall through with resumePos=0 */ }
+        if (!video.isConnected) return; // player was torn down while waiting
         attachedSrc = streamUrl;
         video.src = streamUrl;
         video.load();
@@ -231,10 +241,22 @@
     }
 
     /* ── Load resume position (server-stored) ── */
+    // This must resolve BEFORE metadata fires, otherwise the resume seek in
+    // the loadedmetadata handler sees resumeLoaded=false and is skipped. On
+    // fast networks the metadata round trip beats an un-awaited progress GET
+    // almost every time, which is why "continue watching" so often restarted
+    // the video. attachStream() awaits this promise (with the timeout acting
+    // as a safety net if the progress endpoint is slow).
+    let resumeResolve;
+    const resumeReady = new Promise((resolve) => { resumeResolve = resolve; });
+    const resumeTimer = setTimeout(() => { resumeLoaded = true; resumeResolve(); }, 4000);
     StudyCoreAPI.getVideoProgress(resourceId).then((p) => {
       resumePos = Number(p.position) || 0;
       resumeLoaded = true;
-    }).catch(() => { resumeLoaded = true; });
+    }).catch(() => { resumeLoaded = true; }).finally(() => {
+      clearTimeout(resumeTimer);
+      resumeResolve();
+    });
 
     function setPlayIcon(playing) {
       const ic = playing ? SC.icon('pause', { size: 30 }) : SC.icon('play', { size: 30 });
@@ -420,20 +442,29 @@
       attachStream();
     });
 
-    // Seek bar: click + drag
+    // Seek bar: click + drag. Handlers are named references on window so
+    // destroy() can remove them — otherwise every player init leaks a pair
+    // of window listeners that keep touching a detached video.
     let seeking = false;
+    let destroyed = false;
     function seekFromEvent(e) {
       const rect = seek.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
       if (video.duration) video.currentTime = pct * video.duration;
     }
-    seek.addEventListener('mousedown', (e) => { seeking = true; seekFromEvent(e); });
-    window.addEventListener('mousemove', (e) => { if (seeking) seekFromEvent(e); });
-    window.addEventListener('mouseup', () => { seeking = false; });
-    seek.addEventListener('touchstart', (e) => { seeking = true; seekFromEvent(e); }, { passive: true });
-    seek.addEventListener('touchmove', (e) => { if (seeking) seekFromEvent(e); }, { passive: true });
-    seek.addEventListener('touchend', () => { seeking = false; });
+    const onSeekMouseDown = (e) => { seeking = true; seekFromEvent(e); };
+    const onWindowMouseMove = (e) => { if (seeking) seekFromEvent(e); };
+    const onWindowMouseUp = () => { seeking = false; };
+    const onSeekTouchStart = (e) => { seeking = true; seekFromEvent(e); };
+    const onSeekTouchMove = (e) => { if (seeking) seekFromEvent(e); };
+    const onSeekTouchEnd = () => { seeking = false; };
+    seek.addEventListener('mousedown', onSeekMouseDown);
+    window.addEventListener('mousemove', onWindowMouseMove);
+    window.addEventListener('mouseup', onWindowMouseUp);
+    seek.addEventListener('touchstart', onSeekTouchStart, { passive: true });
+    seek.addEventListener('touchmove', onSeekTouchMove, { passive: true });
+    seek.addEventListener('touchend', onSeekTouchEnd);
 
     muteBtn.addEventListener('click', () => { video.muted = !video.muted; });
     volume.addEventListener('input', () => { video.volume = Number(volume.value); video.muted = video.volume === 0; });
@@ -488,6 +519,7 @@
     }
     fsBtn.addEventListener('click', toggleFullscreen);
     function syncFsIcon() {
+      if (!shell.isConnected) return;
       const fs = document.fullscreenElement || document.webkitFullscreenElement;
       fsBtn.innerHTML = fs
         ? SC.icon('minimize', { size: 18 })
@@ -498,9 +530,9 @@
     document.addEventListener('webkitfullscreenchange', syncFsIcon);
 
     // Keyboard shortcuts (only when the player is in view)
-    document.addEventListener('keydown', (e) => {
+    const onKeydown = (e) => {
       if (!shell.isConnected) return;
-      if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+      if (/INPUT|TEXTAREA|SELECT/.test((document.activeElement && document.activeElement.tagName) || '')) return;
       const rect = shell.getBoundingClientRect();
       const inView = rect.top < window.innerHeight && rect.bottom > 0;
       if (!inView) return;
@@ -513,15 +545,16 @@
         case 'ArrowUp': e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); video.muted = false; break;
         case 'ArrowDown': e.preventDefault(); video.volume = Math.max(0, video.volume - 0.1); break;
       }
-    });
+    };
+    document.addEventListener('keydown', onKeydown);
 
     shell.addEventListener('mousemove', showUiTransient);
     shell.addEventListener('touchstart', showUiTransient, { passive: true });
 
     // Periodic position saving while playing (store the handle so destroy()
     // can stop it instead of leaving a timer running after teardown).
-    reportTimer = setInterval(() => { if (playing()) reportPosition(); }, 5000);
-    const onBeforeUnload = () => reportPosition();
+    reportTimer = setInterval(() => { if (!destroyed && playing()) reportPosition(); }, 5000);
+    const onBeforeUnload = () => { if (!destroyed) reportPosition(); };
     window.addEventListener('beforeunload', onBeforeUnload);
 
     // Start — probe first (HEAD only) so a 401/403 JSON body never gets
@@ -557,13 +590,21 @@
 
     return {
       destroy() {
+        destroyed = true;
         clearInterval(reportTimer);
         clearMetaTimer();
         clearTimeout(bufferTimer);
+        clearTimeout(uiTimer);
         unlockOrientation();
         window.removeEventListener('beforeunload', onBeforeUnload);
-        video.pause();
+        window.removeEventListener('mousemove', onWindowMouseMove);
+        window.removeEventListener('mouseup', onWindowMouseUp);
+        document.removeEventListener('fullscreenchange', syncFsIcon);
+        document.removeEventListener('webkitfullscreenchange', syncFsIcon);
+        document.removeEventListener('keydown', onKeydown);
+        try { video.pause(); } catch { /* already detached */ }
         video.removeAttribute('src');
+        try { video.load(); } catch { /* nothing loaded */ }
         attachedSrc = '';
         container.innerHTML = '';
       }

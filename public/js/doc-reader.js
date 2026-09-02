@@ -175,6 +175,44 @@
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(str || '').trim());
   }
 
+  // Word documents are converted to HTML by mammoth. The output is trusted
+  // only to be "document-like": a crafted .docx could still carry
+  // <a href="javascript:..."> links or event handler attributes. Strip every
+  // scriptable vector before the HTML is injected into the reader DOM.
+  function sanitizeDocxHtml(raw) {
+    const SAFE_URL = /^(?:https?:|mailto:|tel:|\/|#|[^:]+$)/i;
+    let tpl;
+    try {
+      tpl = new DOMParser().parseFromString(`<div>${raw}</div>`, 'text/html');
+    } catch {
+      // No DOMParser (very old engine): fall back to tag/attribute stripping.
+      return String(raw || '')
+        .replace(/<\s*(script|style|iframe|object|embed|link|meta)[\s\S]*?>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+        .replace(/\son\w+\s*=\s*"[^"]*"/gi, '').replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+        .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+        .trim();
+    }
+    const root = tpl.body && tpl.body.firstElementChild;
+    if (!root) return '';
+    const FORBIDDEN = ['script', 'style', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form'];
+    root.querySelectorAll(FORBIDDEN.join(',')).forEach((el) => el.remove());
+    root.querySelectorAll('*').forEach((el) => {
+      [...el.attributes].forEach((attr) => {
+        const name = attr.name.toLowerCase();
+        if (name.startsWith('on')) el.removeAttribute(attr.name);
+        if ((name === 'href' || name === 'src' || name === 'xlink:href') && !SAFE_URL.test(String(attr.value).trim())) {
+          el.removeAttribute(attr.name);
+        }
+      });
+    });
+    // Hyperlinks should never navigate the StudyCore tab away or run script.
+    root.querySelectorAll('a[href]').forEach((a) => {
+      a.setAttribute('rel', 'noopener noreferrer');
+      if (!a.getAttribute('target')) a.setAttribute('target', '_blank');
+    });
+    return root.innerHTML.trim();
+  }
+
   /**
    * init(host, options)
    *   host        - element to render into
@@ -901,17 +939,16 @@
         }
         if (data.length < 4) throw new Error('empty');
         if (!(data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04)) {
-          // Not a ZIP after all — the type was mis-guessed. Re-sniff and
-          // route to the renderer that actually fits instead of failing.
-          const kind = sniffBytes(data);
-          if (kind === 'pdf') return openPdf({ bytes: data });
-          if (kind === 'text') return openTextWithBytes(data);
-          return showUnrenderable('mismatch');
+          // Not a ZIP after all — the metadata/extension was wrong. Re-sniff
+          // the real bytes and route to the renderer that actually fits, so a
+          // PNG renamed to .docx (or a text file served with a docx mime)
+          // still opens instead of dead-ending at "preview not available".
+          return dispatchFromBytes(data);
         }
         const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
         const out = await mammoth.convertToHtml({ arrayBuffer: ab });
         if (destroyed) return;
-        const html = String(out && out.value || '').replace(/<script[\s\S]*?<\/script>/gi, '').trim();
+        const html = sanitizeDocxHtml(String((out && out.value) || ''));
         if (!html) return showUnrenderable('empty');
         renderDocx(html, out && out.messages);
       } catch (err) {
@@ -954,6 +991,19 @@
       pre.textContent = text;
       scroll.innerHTML = '';
       scroll.appendChild(pre);
+    }
+
+    /* ── Route bytes we already hold to the matching renderer ── */
+    // Used when a path that expected one type (e.g. docx) discovers the file
+    // is actually something else. Images re-open through the URL (the <img>
+    // request carries the session cookie); text/pdf reuse the fetched bytes.
+    function dispatchFromBytes(data) {
+      const kind = sniffBytes(data);
+      if (kind === 'pdf') return openPdf({ bytes: data });
+      if (kind === 'docx') return openDocx(data);
+      if (kind === 'text') return openTextWithBytes(data);
+      if (kind === 'image') return openImage();
+      return showUnrenderable('mismatch');
     }
 
     /* ── Byte-sniff dispatch for ambiguous types ── */
