@@ -27,6 +27,10 @@
     return normalizedRole(user) === 'content_admin';
   }
 
+  function isStudent(user) {
+    return normalizedRole(user) === 'student';
+  }
+
   // All app pages are reachable at fixed root paths (/login.html,
   // /dashboard.html, /pages/...). Absolute paths avoid the class of bug
   // where a relative link resolves against the wrong directory depth.
@@ -232,6 +236,7 @@
     normalizedRole,
     isAdmin,
     isContentAdmin,
+    isStudent,
     getPageLink,
     getDashboardPage,
     fetchSession,

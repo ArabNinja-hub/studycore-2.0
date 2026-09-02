@@ -77,6 +77,10 @@
 
   /* ── State rendering (error / empty / lock) ── */
   function renderState(state) {
+    // Tear down any in-flight reader (its pdf.js ranges/canvases) before
+    // painting an error/lock screen, otherwise the background work keeps
+    // running against a host element whose DOM is about to be replaced.
+    if (reader) { try { reader.destroy(); } catch { /* noop */ } reader = null; }
     const host = $('#viewerHost');
     host.innerHTML = `
       <div class="viewer-state">
@@ -187,10 +191,10 @@
   }
 
   function updateState(s) {
-    const total = s.numPages && s.numPages > 0 ? s.numPages : '–';
-    $('#viewerPageLabel').textContent = `${s.page} / ${total}`;
-    $('#viewerZoomLabel').textContent = `${s.zoom}%`;
-    setToolsEnabled(Boolean(s.numPages && s.numPages > 0));
+    const paged = Boolean(s.numPages && s.numPages > 0);
+    $('#viewerPageLabel').textContent = paged ? `${s.page} / ${s.numPages}` : '';
+    $('#viewerZoomLabel').textContent = paged ? `${s.zoom}%` : '';
+    setToolsEnabled(paged);
   }
 
   function updateSearch(info) {
@@ -352,7 +356,19 @@
       mimeType: inferMime(resource),
       chrome: 'bare',
       onState: updateState,
-      onSearchUpdate: updateSearch
+      onSearchUpdate: updateSearch,
+      // Only the PDF engine has pages, zoom levels and text search. For a
+      // Word doc, image or text file those toolbar controls would appear
+      // enabled but do nothing — reflect the real document type here.
+      onOpen(info) {
+        const isPaged = info && Number(info.pages) > 0;
+        ['#viewerPrev', '#viewerNext', '#viewerPageLabel', '#viewerZoomOut', '#viewerZoomLabel', '#viewerZoomIn', '#viewerFit']
+          .forEach((sel) => { const el = $(sel); if (el) el.hidden = !isPaged; });
+        const searchBtn = $('#viewerSearchBtn');
+        if (searchBtn) searchBtn.hidden = !isPaged;
+        if (!isPaged) setSearchOpen(false);
+        $('#viewerTools').hidden = false;
+      }
     });
   }
 
