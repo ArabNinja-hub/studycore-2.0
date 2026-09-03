@@ -68,7 +68,7 @@
     { id: 'home', label: 'Home', href: '/', icon: 'home' },
     { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'book-open' },
     { id: 'past-papers', label: 'Past Papers', href: '/pages/past-papers.html', icon: 'file-text' },
-    { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'library' }
+{ id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'library' }
   ];
   // Dashboard and Profile are NOT in this list on purpose: renderNavAuth()
   // injects them (plus the avatar/account menu) once the session resolves, and

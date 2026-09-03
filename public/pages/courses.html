@@ -1,134 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Courses | StudyCore</title>
-    <meta name="description" content="Explore StudyCore courses by university, faculty and programme — each course opens with its topics, study notes, video lessons, past papers and your own progress." />
-    <link rel="canonical" href="https://studycore.academy/pages/courses.html" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="StudyCore" />
-    <meta property="og:title" content="University Courses | StudyCore" />
-    <meta property="og:description" content="Courses organised by university, faculty and programme, each with topics, notes, videos and past papers." />
-    <meta property="og:url" content="https://studycore.academy/pages/courses.html" />
-    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
-    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="/css/style.css" />
-  </head>
-  <body data-page="courses">
-    <div id="siteNav"></div>
-    <div id="mobileNavHost"></div>
-
-    <main>
-      <section class="page-hero">
-        <div class="container">
-          <nav class="sc-trail" aria-label="Breadcrumb">
-            <a href="/">StudyCore</a>
-            <span class="sc-trail-sep" data-icon="chevron-right" data-icon-size="13"></span>
-            <span class="sc-trail-current">Courses</span>
-          </nav>
-          <span class="eyebrow" id="coursesEyebrow">StudyCore Courses</span>
-          <h1 id="coursesHeading">Your university, your programme, your courses</h1>
-          <p id="coursesIntro">
-            Every course follows the same clear path — course → topic → lesson → notes, videos and
-            past papers → mark complete. Pick a course to open its home page with everything in one place.
-          </p>
-        </div>
-      </section>
-
-      <section class="section" style="padding-top:30px;">
-        <div class="container">
-          <div class="sc-pp-toolbar">
-            <div class="sc-search-hero" style="flex:1;min-width:0;">
-              <span class="sc-search-lead" data-icon="search" data-icon-size="19"></span>
-              <input type="search" id="courseSearch" placeholder="Search courses, e.g. CH110 or Contract…"
-                     aria-label="Search courses" autocomplete="off" />
-            </div>
-            <a class="btn btn-outline" href="/pages/past-papers.html">
-              <span data-icon="file" data-icon-size="17"></span> Past Papers
-            </a>
-          </div>
-
-          <div id="programBanner"></div>
-
-          <!-- Students see their own programme first, then the full catalogue. -->
-          <div id="myCoursesSection" hidden>
-            <div class="sc-section-head">
-              <div>
-                <span class="eyebrow">My programme</span>
-                <h2 id="myCoursesTitle">My courses</h2>
-                <p id="myCoursesIntro"></p>
-              </div>
-            </div>
-            <div class="sc-course-grid" id="myCoursesGrid" aria-live="polite" aria-busy="true">
-              <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
-              <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
-            </div>
-          </div>
-
-          <div class="sc-section-head" style="margin-top:44px;">
-            <div>
-              <span class="eyebrow">Course catalogue</span>
-              <h2>Browse by university, faculty and programme</h2>
-              <p>Courses are shared across programmes where the syllabus is the same — StudyCore shows the ones that belong to you.</p>
-            </div>
-          </div>
-
-          <div class="sc-tree" id="catalogueTree" aria-live="polite" aria-busy="true">
-            <div class="sc-skeleton-row" style="height:120px;" aria-hidden="true"></div>
-            <div class="sc-skeleton-row" style="height:120px;" aria-hidden="true"></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="section" style="background:var(--bg-alt);">
-        <div class="container">
-          <div class="section-heading">
-            <span class="eyebrow">Inside every course</span>
-            <h2>The same clear structure, every time</h2>
-          </div>
-          <div class="feature-grid">
-            <div class="card card-pad">
-              <div class="card-icon" data-icon="layers"></div>
-              <h3 style="margin-top:14px;">Topics</h3>
-              <p>Each course is organised into focused topics, so you always know what to study next — with progress on every topic.</p>
-            </div>
-            <div class="card card-pad">
-              <div class="card-icon" data-icon="video"></div>
-              <h3 style="margin-top:14px;">Video lessons</h3>
-              <p>Recorded lectures play inside StudyCore with resume, playback speed and completion tracking. (Premium)</p>
-            </div>
-            <div class="card card-pad">
-              <div class="card-icon" data-icon="file-text"></div>
-              <h3 style="margin-top:14px;">Notes &amp; documents</h3>
-              <p>Study notes open in the StudyCore document viewer with page navigation, zoom and in-document search.</p>
-            </div>
-            <div class="card card-pad">
-              <div class="card-icon" data-icon="file"></div>
-              <h3 style="margin-top:14px;">Past papers</h3>
-              <p>Real examination papers filed by year and examination type, ready to practise with before the real thing.</p>
-            </div>
-          </div>
-          <div style="text-align:center;margin-top:40px;">
-            <a class="btn btn-primary" href="/signup.html">Create a Free Account</a>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <div id="siteFooter"></div>
-
-    <script src="/js/icons.js"></script>
-    <script src="/js/api.js"></script>
-    <script src="/js/auth.js"></script>
-    <script src="/js/layout.js"></script>
-    <script src="/js/main.js"></script>
-    <script src="/js/programs.js"></script>
-    <script src="/js/components.js"></script>
-    <script src="/js/scroll-reveal.js"></script>
-    <script src="/js/courses-page.js"></script>
-  </body>
-</html>
+<html lang="en"><head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CBU First-Year Courses | StudyCore</title>
+  <meta name="description" content="Find your Copperbelt University first-year course and study notes, tutorials, videos and past papers." />
+  <link rel="canonical" href="https://studycore.academy/pages/courses.html" /><link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/style.css" /><link rel="stylesheet" href="/css/redesign.css" />
+</head>
+<body data-page="courses"><div id="siteNav"></div><div id="mobileNavHost"></div>
+<main>
+  <section class="sc-courses-intro"><div class="container"><nav class="sc-trail" aria-label="Breadcrumb"><a href="/">StudyCore</a><span>›</span><b>Courses</b></nav><span class="eyebrow">Copperbelt University</span><h1>CBU First Year</h1><p>Find your course, then open a topic to start studying. Everything is organised in one clear place.</p></div></section>
+  <section class="section"><div class="container"><div class="sc-course-toolbar"><div><h2>First-year courses</h2><p>Choose from the courses available on StudyCore.</p></div><label class="sc-course-search"><span data-icon="search" data-icon-size="18"></span><input id="courseSearch" type="search" placeholder="Search by course or code" aria-label="Search courses"></label></div>
+    <div class="sc-first-year-grid sc-course-page-grid" id="courseGrid">
+      <a class="sc-first-course course-chemistry" data-search="ch110 chemistry" href="/course/ch110"><span class="sc-course-symbol" data-icon="flask" data-icon-size="22"></span><span><strong>CH110</strong><b>Chemistry</b><small>Bonding · gases · reactions</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
+      <a class="sc-first-course course-physics" data-search="ph110 physics" href="/course/ph110"><span class="sc-course-symbol" data-icon="atom" data-icon-size="22"></span><span><strong>PH110</strong><b>Physics</b><small>Mechanics · waves · electricity</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
+      <a class="sc-first-course course-maths" data-search="ma110 mathematics maths" href="/course/ma110"><span class="sc-course-symbol" data-icon="calculator" data-icon-size="22"></span><span><strong>MA110</strong><b>Mathematics</b><small>Functions · calculus · problem solving</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
+      <a class="sc-first-course course-biology" data-search="bi110 biology" href="/course/bi110"><span class="sc-course-symbol" data-icon="dna" data-icon-size="22"></span><span><strong>BI110</strong><b>Biology</b><small>Cells · genetics · living systems</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
+      <a class="sc-first-course course-language" data-search="la110 la111 language communication" href="/course/la111"><span class="sc-course-symbol" data-icon="message" data-icon-size="22"></span><span><strong>LA110</strong><b>Language</b><small>Reading · writing · communication</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
+      <a class="sc-first-course course-computing" data-search="cs110 computer science programming" href="/course/cs110"><span class="sc-course-symbol" data-icon="code" data-icon-size="22"></span><span><strong>CS110</strong><b>Computer Science</b><small>Logic · programming · systems</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
+    </div><div class="sc-no-results" id="courseNoResults" hidden>No courses match your search.</div>
+  </div></section>
+  <section class="sc-course-path"><div class="container"><div><span class="eyebrow">How StudyCore is organised</span><h2>Course → Topic → Resource</h2><p>Open a course to find focused topics. Each topic keeps notes, videos, tutorials and resources together. Past papers are easy to find at the bottom of every course.</p></div><a class="btn btn-outline" href="/pages/past-papers.html"><span data-icon="file" data-icon-size="17"></span> Browse Past Papers</a></div></section>
+</main><div id="siteFooter"></div>
+<script src="/js/icons.js"></script><script src="/js/api.js"></script><script src="/js/auth.js"></script><script src="/js/layout.js"></script><script src="/js/scroll-reveal.js"></script><script src="/js/courses-simple.js"></script>
+</body></html>
