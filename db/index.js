@@ -39,8 +39,9 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- University programs / student categories (Law, Business, SNR, Mines,
--- Non-Quota, SICT). A student picks exactly one at registration; that
--- program decides which courses and content they ever see.
+-- Non-Quota, SICT, School of the Built Environment). A student picks exactly
+-- one at registration; that program decides which courses and content they
+-- ever see.
 CREATE TABLE IF NOT EXISTS programs (
   code TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -609,8 +610,9 @@ function migrateBareUuidDocuments() {
 
 migrateBareUuidDocuments();
 
-// Seed the six university programs, the global course catalog and the
-// program→course assignments (Law, Business, SNR, Mines, Non-Quota, SICT).
+// Seed the university programs, the global course catalog and the
+// program→course assignments (Law, Business, SNR, Mines, Non-Quota, SICT,
+// School of the Built Environment).
 // Idempotent — only inserts rows that do not yet exist, so admin-managed
 // programs/courses survive every restart.
 seedProgramCatalog(db);

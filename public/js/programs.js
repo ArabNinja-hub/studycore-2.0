@@ -20,11 +20,13 @@
     SNR:  { name: 'School of Natural Resources', shortName: 'SNR', icon: 'leaf' },
     SMMS: { name: 'School of Mines', shortName: 'Mines', icon: 'shapes', groupName: 'School of Mines / Non-Quota' },
     SMNS: { name: 'Non-Quota', shortName: 'Non-Quota', icon: 'shapes', groupName: 'School of Mines / Non-Quota' },
-    SICT: { name: 'Computer Science / SICT', shortName: 'SICT', icon: 'code' }
+    SICT: { name: 'Computer Science / SICT', shortName: 'SICT', icon: 'code' },
+    SBE:  { name: 'School of the Built Environment', shortName: 'Built Environment', icon: 'home' }
   };
 
-  // The admin program filter order: ALL | LAW | BUSINESS | SNR | MINES | NON-QUOTA | SICT
-  const FILTER_ORDER = ['LAW', 'BS', 'SNR', 'SMMS', 'SMNS', 'SICT'];
+  // The admin program filter order:
+  // ALL | LAW | BUSINESS | SNR | MINES | NON-QUOTA | SICT | BUILT ENVIRONMENT
+  const FILTER_ORDER = ['LAW', 'BS', 'SNR', 'SMMS', 'SMNS', 'SICT', 'SBE'];
 
   function programName(code) {
     if (!code) return 'Unassigned';
