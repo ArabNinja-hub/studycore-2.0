@@ -14,8 +14,6 @@ const authRoutes = require('./routes/auth.routes');
 const resourceRoutes = require('./routes/resources.routes');
 const coursesRoutes = require('./routes/courses.routes');
 const programsRoutes = require('./routes/programs.routes');
-const universitiesRoutes = require('./routes/universities.routes');
-const dashboardRoutes = require('./routes/dashboard.routes');
 const adminRoutes = require('./routes/admin.routes');
 const contentAdminRoutes = require('./routes/content-admin.routes');
 const notificationRoutes = require('./routes/notifications.routes');
@@ -65,12 +63,6 @@ app.use('/api/courses', coursesRoutes);
 // Multi-program platform: program directory, student program/courses,
 // dynamic course home, and admin program/course management.
 app.use('/api/programs', programsRoutes);
-// University → School/Faculty → Programme → Course directory (public, plus
-// Main Admin CRUD for universities and faculties).
-app.use('/api/universities', universitiesRoutes);
-// One aggregated request for the student dashboard (progress, courses,
-// continue-learning, recently viewed, streak, achievements, deadlines).
-app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/content-admin', contentAdminRoutes);
 app.use('/api/notifications', notificationRoutes);

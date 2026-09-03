@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Liquid Navigation — StudyCore</title>
+    <meta name="description" content="A liquid, gooey morphing navigation component built for StudyCore — a sliding indicator that melts between items using an SVG goo filter." />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/liquid-nav.css" />
+  </head>
+  <body data-page="liquid-nav">
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="eyebrow">UI component</span>
+          <h1>Liquid navigation</h1>
+          <p>
+            A 400&times;70 navigation dock with a morphing indicator. The blob slides between
+            items and an SVG <em>goo</em> filter melts the edges together for a liquid,
+            springy feel. Tap an item to watch it flow.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container ln-stage">
+          <!-- ════════════════════════════════════════════════
+               LIQUID NAVIGATION
+               Base block from the provided snippet:
+                 position: relative; width: 400px; height: 70px;
+                 display: flex; justify-content: center; align-items: center;
+               background var() fixed to var(--primary-bg) (defined below).
+               ════════════════════════════════════════════════ -->
+          <navigation class="liquid-nav" id="liquidNav" aria-label="Primary">
+            <ul class="ln-list">
+              <li>
+                <a href="#home" data-ln-label="Home">
+                  <span class="ln-icon" data-ln-icon="home"></span>
+                  <span class="ln-text">Home</span>
+                </a>
+              </li>
+              <li>
+                <a href="#courses" data-ln-label="Courses">
+                  <span class="ln-icon" data-ln-icon="library"></span>
+                  <span class="ln-text">Courses</span>
+                </a>
+              </li>
+              <li>
+                <a href="#resources" data-ln-label="Resources">
+                  <span class="ln-icon" data-ln-icon="file-text"></span>
+                  <span class="ln-text">Resources</span>
+                </a>
+              </li>
+              <li>
+                <a href="#profile" data-ln-label="Profile">
+                  <span class="ln-icon" data-ln-icon="user"></span>
+                  <span class="ln-text">Profile</span>
+                </a>
+              </li>
+              <li>
+                <a href="#settings" data-ln-label="Settings">
+                  <span class="ln-icon" data-ln-icon="settings"></span>
+                  <span class="ln-text">Settings</span>
+                </a>
+              </li>
+            </ul>
+
+            <!-- Gooey indicator layer. The SVG filter is applied ONLY to this
+                 layer so icon/label text stays perfectly crisp. -->
+            <div class="ln-indicator" id="lnIndicator" aria-hidden="true">
+              <span class="ln-blob ln-blob--main"></span>
+              <span class="ln-blob ln-blob--trail ln-blob--trail-a"></span>
+              <span class="ln-blob ln-blob--trail ln-blob--trail-b"></span>
+            </div>
+          </navigation>
+
+          <!-- SVG goo filter (never displayed, only referenced by id) -->
+          <svg class="ln-goo-defs" aria-hidden="true" focusable="false">
+            <defs>
+              <filter id="liquidGoo" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+                <feColorMatrix
+                  in="blur"
+                  mode="matrix"
+                  values="1 0 0 0 0
+                          0 1 0 0 0
+                          0 0 1 0 0
+                          0 0 0 18 -7"
+                  result="goo" />
+                <feBlend in="SourceGraphic" in2="goo" />
+              </filter>
+            </defs>
+          </svg>
+
+          <p class="ln-readout" id="lnReadout" aria-live="polite">
+            Selected: <strong id="lnSelected">Home</strong>
+          </p>
+
+          <div class="ln-notes">
+            <div class="card card-pad">
+              <h3>How the liquid effect works</h3>
+              <ul class="ln-bullets">
+                <li><strong>Base block.</strong> The <code>navigation</code> element is your <code>position: relative; width: 400px; height: 70px</code> flex container, centred with a soft shadow and rounded corners.</li>
+                <li><strong>Goo filter.</strong> An inline SVG <code>feGaussianBlur</code> + <code>feColorMatrix</code> (the classic "goo" recipe) is applied only to the indicator layer.</li>
+                <li><strong>Morphing blob.</strong> A main rounded pill plus two trailing blobs are translated to the active item; the goo filter melts them into one stretching droplet as they move.</li>
+                <li><strong>Spring motion.</strong> A cubic-bezier ease and a short <code>is-moving</code> state scale the trailing blobs for a subtle wobble.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/liquid-nav.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        // Inject the shared StudyCore icon set into the liquid nav slots.
+        document.querySelectorAll('[data-ln-icon]').forEach((el) => {
+          el.innerHTML = SC.icon(el.getAttribute('data-ln-icon'), { size: 22 });
+        });
+      });
+    </script>
+  </body>
+</html>
