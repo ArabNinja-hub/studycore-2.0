@@ -68,6 +68,8 @@ function serializeOwnResource(row) {
     topic: row.topic || '',
     yearLevel: row.year_level || '',
     semester: row.semester || '',
+    examYear: row.exam_year || null,
+    examType: row.exam_type || '',
     fileName: row.file_name || '',
     fileSize: row.file_size || 0,
     mimeType: row.mime_type || '',
@@ -189,6 +191,19 @@ function parseResourceInput(body, existing = null, existingProgramCode = null) {
   const yearLevel = source.yearLevel === undefined
     ? cleanText(existing && existing.year_level, 80)
     : cleanText(source.yearLevel, 80);
+  // Examination metadata only applies to past papers; anything else is cleared
+  // so a note can never appear in the Past Papers year/type filters.
+  const isPastPaper = type && type.category === 'past_paper';
+  const rawExamYear = source.examYear === undefined
+    ? (existing ? existing.exam_year : null)
+    : source.examYear;
+  const parsedExamYear = Number.parseInt(String(rawExamYear === undefined || rawExamYear === null ? '' : rawExamYear).trim(), 10);
+  const examYear = isPastPaper && Number.isFinite(parsedExamYear) && parsedExamYear >= 1900 && parsedExamYear <= 2200
+    ? parsedExamYear
+    : null;
+  const examType = isPastPaper
+    ? (source.examType === undefined ? cleanText(existing && existing.exam_type, 40) : cleanText(source.examType, 40))
+    : null;
   const requestedStatus = source.publishStatus === undefined
     ? (existing ? existing.publish_status : 'published')
     : cleanText(source.publishStatus, 24).toLowerCase();
@@ -210,6 +225,8 @@ function parseResourceInput(body, existing = null, existingProgramCode = null) {
       topic,
       semester: semester || null,
       yearLevel: yearLevel || null,
+      examYear,
+      examType: examType || null,
       publishStatus: requestedStatus
     }
   };
@@ -327,6 +344,8 @@ router.post('/resources', upload.single('file'), (req, res) => {
     topic: parsed.value.topic,
     year_level: parsed.value.yearLevel,
     semester: parsed.value.semester,
+    exam_year: parsed.value.examYear,
+    exam_type: parsed.value.examType,
     tags: null,
     file_name: req.file.originalname,
     stored_name: req.file.key,
@@ -353,13 +372,13 @@ router.post('/resources', upload.single('file'), (req, res) => {
     db.prepare(`
       INSERT INTO resources (
         id, title, description, category, resource_type, subject, course, course_id,
-        target_all, topic, year_level, semester, tags, file_name, stored_name,
+        target_all, topic, year_level, semester, exam_year, exam_type, tags, file_name, stored_name,
         file_size, mime_type, content_hash, external_url, quiz_data, due_date,
         is_premium, pinned, publish_status, uploaded_by, uploader_role,
         uploader_name, uploader_email, uploaded_at, created_at, updated_at
       ) VALUES (
         @id, @title, @description, @category, @resource_type, @subject, @course, @course_id,
-        @target_all, @topic, @year_level, @semester, @tags, @file_name, @stored_name,
+        @target_all, @topic, @year_level, @semester, @exam_year, @exam_type, @tags, @file_name, @stored_name,
         @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date,
         @is_premium, @pinned, @publish_status, @uploaded_by, @uploader_role,
         @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at
@@ -412,6 +431,8 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     topic: parsed.value.topic,
     year_level: parsed.value.yearLevel,
     semester: parsed.value.semester,
+    exam_year: parsed.value.examYear,
+    exam_type: parsed.value.examType,
     publish_status: parsed.value.publishStatus,
     updated_at: now,
     file_name: replacingFile ? req.file.originalname : existing.file_name,
@@ -429,7 +450,8 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
         title = @title, description = @description, category = @category,
         resource_type = @resource_type, subject = @subject, course = @course,
         course_id = @course_id, topic = @topic, year_level = @year_level,
-        semester = @semester, publish_status = @publish_status,
+        semester = @semester, exam_year = @exam_year, exam_type = @exam_type,
+        publish_status = @publish_status,
         updated_at = @updated_at, file_name = @file_name,
         stored_name = @stored_name, file_size = @file_size,
         mime_type = @mime_type, content_hash = @content_hash,

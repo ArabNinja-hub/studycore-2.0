@@ -2,36 +2,37 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StudyCore — Learning Built Around Your Program</title>
-    <meta name="description" content="StudyCore gives every student a program-specific learning space with the right courses, lessons, notes, videos and past papers in one place." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>StudyCore — Your University. Your Courses. Your Success.</title>
+    <meta name="description" content="StudyCore is a university learning platform built around your courses: structured topics, video lessons, study notes, past papers and real progress tracking — all in one place." />
     <link rel="canonical" href="https://studycore.academy/" />
     <meta name="author" content="StudyCore" />
+    <meta name="theme-color" content="#0b2033" />
 
     <!-- Social preview -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="StudyCore" />
-    <meta property="og:title" content="StudyCore — Learning Built Around Your Program" />
-    <meta property="og:description" content="Choose your program and get the right courses, lessons, notes, videos and past papers in one focused learning space." />
+    <meta property="og:title" content="StudyCore — Your University. Your Courses. Your Success." />
+    <meta property="og:description" content="Structured courses, video lessons, study notes and past papers for your university programme — with real progress tracking." />
     <meta property="og:url" content="https://studycore.academy/" />
     <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="StudyCore — Learning Built Around Your Program" />
-    <meta name="twitter:description" content="Your program, your courses and your study resources — organised in one place." />
+    <meta name="twitter:title" content="StudyCore — Your University. Your Courses. Your Success." />
+    <meta name="twitter:description" content="Your programme, your courses and your study resources — organised in one place." />
     <meta name="twitter:image" content="https://studycore.academy/assets/images/og-image.png" />
 
-    <!-- Structured data: Organization + WebSite -->
+    <!-- Structured data: Organization + WebSite (with a real search action) -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
+      "@type": "EducationalOrganization",
       "name": "StudyCore",
       "alternateName": "Study Core",
       "url": "https://studycore.academy/",
       "logo": "https://studycore.academy/assets/logo-icon.jpg",
-      "description": "StudyCore is a program-based university learning platform that shows each student the courses and resources assigned to their program."
+      "description": "StudyCore is a university learning platform that gives every student a programme-specific space for courses, topics, lessons, notes, video learning and past papers."
     }
     </script>
     <script type="application/ld+json">
@@ -41,7 +42,7 @@
       "name": "StudyCore",
       "alternateName": "Study Core",
       "url": "https://studycore.academy/",
-      "description": "A program-based university learning platform with structured courses, lessons, notes, video learning and past papers.",
+      "description": "A university learning platform with structured courses, lessons, notes, video learning and past papers.",
       "potentialAction": {
         "@type": "SearchAction",
         "target": "https://studycore.academy/pages/search.html?q={search_term_string}",
@@ -53,6 +54,8 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body data-page="home">
@@ -60,143 +63,232 @@
     <div id="mobileNavHost"></div>
 
     <main>
-      <!-- Hero: one stage, one message, one primary action -->
-      <section class="hero" id="homeHero">
-        <!-- Decorative floating animated StudyCore background logo -->
-        <div class="hero-bg-visual" aria-hidden="true">
-          <div class="hero-floating-logo-stage" id="heroLogoStage">
-            <div class="hero-floating-logo-track">
-              <div class="hero-floating-logo-element" id="heroLogoElement">
-                <!-- Ambient backlight aura -->
-                <div class="hero-logo-glow"></div>
-                <!-- Subtle orbital rings for futuristic academic depth -->
-                <div class="hero-logo-orbit hero-logo-orbit-1"></div>
-                <div class="hero-logo-orbit hero-logo-orbit-2"></div>
-                <!-- 3D StudyCore floating emblem graphic -->
-                <img
-                  src="/assets/studycore-emblem.png"
-                  alt=""
-                  class="hero-logo-img"
-                  draggable="false"
-                  loading="eager"
-                  decoding="async"
-                />
+      <!-- ── Hero ─────────────────────────────────────────────────────────
+           One message, three clear actions, one academic visual (the
+           course-first learning path). No video, no autoplaying canvas. -->
+      <section class="sc-hero" aria-labelledby="heroTitle">
+        <div class="container">
+          <div class="sc-hero-inner">
+            <div class="sc-hero-copy">
+              <span class="sc-hero-eyebrow" id="heroEyebrow">
+                <span data-icon="graduation-cap" data-icon-size="14"></span> University learning platform
+              </span>
+              <h1 id="heroTitle">Your University.<br />Your Courses.<br /><em>Your Success.</em></h1>
+              <p class="sc-hero-lead" id="heroLead">
+                StudyCore organises your programme into courses, topics and lessons — with video
+                lectures, study notes and past papers that open inside StudyCore, and progress
+                that is tracked as you go.
+              </p>
+              <div class="sc-hero-actions" id="heroActions">
+                <a class="btn btn-primary btn-lg" href="/pages/courses.html">
+                  <span data-icon="library" data-icon-size="18"></span> Explore Courses
+                </a>
+                <a class="btn btn-on-dark btn-lg" href="/pages/past-papers.html">
+                  <span data-icon="file" data-icon-size="18"></span> Browse Past Papers
+                </a>
+                <a class="btn btn-amber btn-lg" id="heroStartCta" href="/signup.html">
+                  <span data-icon="user-plus" data-icon-size="18"></span> Get Started
+                </a>
+              </div>
+              <p class="sc-hero-note">
+                <span data-icon="check-circle" data-icon-size="15"></span>
+                30-day free trial · No card required · Works on any device
+              </p>
+            </div>
+
+            <!-- The learning path IS the product explanation: course-first. -->
+            <aside class="sc-hero-panel" aria-label="How StudyCore is organised">
+              <div class="sc-hero-panel-head">
+                <strong>The StudyCore learning path</strong>
+                <span>Course → Topic → Lesson</span>
+              </div>
+              <ol class="sc-path-list">
+                <li class="sc-path-item">
+                  <span class="sc-path-node" data-icon="school" data-icon-size="15"></span>
+                  <span class="sc-path-label">Choose your university &amp; programme</span>
+                  <span class="sc-path-meta" id="pathPrograms">—</span>
+                </li>
+                <li class="sc-path-item">
+                  <span class="sc-path-node" data-icon="library" data-icon-size="15"></span>
+                  <span class="sc-path-label">Open a course, e.g. CH110 — Chemistry</span>
+                  <span class="sc-path-meta" id="pathCourses">—</span>
+                </li>
+                <li class="sc-path-item">
+                  <span class="sc-path-node" data-icon="layers" data-icon-size="15"></span>
+                  <span class="sc-path-label">Study topic by topic</span>
+                  <span class="sc-path-meta">Topics</span>
+                </li>
+                <li class="sc-path-item is-done">
+                  <span class="sc-path-node" data-icon="play" data-icon-size="15"></span>
+                  <span class="sc-path-label">Read notes &amp; watch lessons in-app</span>
+                  <span class="sc-path-meta">Viewer</span>
+                </li>
+                <li class="sc-path-item is-done">
+                  <span class="sc-path-node" data-icon="file" data-icon-size="15"></span>
+                  <span class="sc-path-label">Practise with past papers</span>
+                  <span class="sc-path-meta">Papers</span>
+                </li>
+                <li class="sc-path-item is-done">
+                  <span class="sc-path-node" data-icon="trending-up" data-icon-size="15"></span>
+                  <span class="sc-path-label">Track progress and complete the course</span>
+                  <span class="sc-path-meta">Progress</span>
+                </li>
+              </ol>
+              <div class="sc-hero-panel-foot">
+                <span>Typical course</span>
+                <span class="sc-mini-progress" aria-hidden="true"><span style="width:72%"></span></span>
+                <span class="sc-mono-num">72%</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Trust strip ────────────────────────────────────────────────── -->
+      <section class="sc-strip" aria-label="StudyCore at a glance">
+        <div class="sc-strip-inner">
+          <div class="sc-strip-cell">
+            <span class="sc-strip-ic" data-icon="school" data-icon-size="19"></span>
+            <span><strong id="statUniversities">—</strong><span>Universities &amp; faculties</span></span>
+          </div>
+          <div class="sc-strip-cell">
+            <span class="sc-strip-ic" data-icon="library" data-icon-size="19"></span>
+            <span><strong id="statCourses">—</strong><span>Courses with lessons</span></span>
+          </div>
+          <div class="sc-strip-cell">
+            <span class="sc-strip-ic" data-icon="file" data-icon-size="19"></span>
+            <span><strong id="statPapers">—</strong><span>Past papers to practise</span></span>
+          </div>
+          <div class="sc-strip-cell">
+            <span class="sc-strip-ic" data-icon="trending-up" data-icon-size="19"></span>
+            <span><strong>30 days</strong><span>Free trial on signup</span></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Your courses ─────────────────────────────────────────────────
+           Signed-in students see their own programme courses with progress.
+           Visitors see the programme catalogue. Either way it is the course-
+           first entry point, not a wall of marketing copy. -->
+      <section class="section" aria-labelledby="catalogTitle">
+        <div class="container">
+          <div class="sc-section-head">
+            <div>
+              <span class="eyebrow" id="catalogEyebrow">Courses</span>
+              <h2 id="catalogTitle">Find your course and start learning</h2>
+              <p id="catalogIntro">Every course opens with its topics, notes, videos and past papers in one place.</p>
+            </div>
+            <a class="sc-section-link" href="/pages/courses.html" id="catalogLink">
+              All courses <span data-icon="arrow-right" data-icon-size="15"></span>
+            </a>
+          </div>
+
+          <div class="sc-course-grid" id="homeCatalog" aria-live="polite" aria-busy="true">
+            <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+            <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+            <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── Past papers: a headline feature, not a footnote ────────────── -->
+      <section class="section" style="background:var(--bg-alt);padding-top:0;" aria-labelledby="papersTitle">
+        <div class="container" style="padding-top:64px;">
+          <div class="sc-section-head">
+            <div>
+              <span class="eyebrow">Past papers</span>
+              <h2 id="papersTitle">Practise with real examination papers</h2>
+              <p>Filter by university, programme, course, year and examination type — then open the paper inside StudyCore.</p>
+            </div>
+            <a class="sc-section-link" href="/pages/past-papers.html">
+              Open past papers <span data-icon="arrow-right" data-icon-size="15"></span>
+            </a>
+          </div>
+
+          <div class="sc-filterbar" aria-hidden="true">
+            <div class="sc-filter-row">
+              <span class="sc-filter-label"><span data-icon="calendar" data-icon-size="14"></span> Year</span>
+              <div class="sc-chips">
+                <span class="sc-chip is-active">All years</span>
+                <span class="sc-chip">2026</span>
+                <span class="sc-chip">2025</span>
+                <span class="sc-chip">2024</span>
+              </div>
+            </div>
+            <div class="sc-filter-row">
+              <span class="sc-filter-label"><span data-icon="list-checks" data-icon-size="14"></span> Examination</span>
+              <div class="sc-chips">
+                <span class="sc-chip is-active">All</span>
+                <span class="sc-chip">Test 1</span>
+                <span class="sc-chip">Test 2</span>
+                <span class="sc-chip">Sessional</span>
+                <span class="sc-chip">Final Exam</span>
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="container">
-          <div class="hero-copy">
-            <span class="eyebrow" id="homeEyebrow">Learning built around your program</span>
-            <h1 id="homeTitle">The right courses.<br />For <em>your program</em>.</h1>
-            <p class="lead" id="homeLead">
-              Choose your university program and StudyCore gives you one focused space for
-              its courses, topic-by-topic lessons, study notes, videos and past papers.
-            </p>
-            <div class="hero-actions">
-              <a class="btn btn-primary btn-lg" id="homePrimaryCta" href="/signup.html">Choose My Program</a>
-              <a class="btn btn-on-dark btn-lg" id="homeSecondaryCta" href="/login.html">Log In</a>
-            </div>
-          </div>
-
-          <div class="hero-stats">
-            <div class="hero-stat"><div class="num" id="programCount">6</div><div class="label">Student programs</div></div>
-            <div class="hero-stat"><div class="num">30<span>-day</span></div><div class="label">Free trial on signup</div></div>
-            <div class="hero-stat"><div class="num">24/7</div><div class="label">Study on any device</div></div>
+          <div class="sc-paper-list" id="homePapers" aria-live="polite">
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
           </div>
         </div>
       </section>
 
-      <!-- Program-aware learning: students see only their assigned courses. -->
-      <section class="section" style="background:var(--bg-alt);" aria-labelledby="homeCatalogTitle">
-        <div class="container">
-          <div class="section-heading">
-            <span class="eyebrow" id="homeCatalogEyebrow">Programs</span>
-            <h2 id="homeCatalogTitle">Choose your program. We organise the rest.</h2>
-            <p id="homeCatalogIntro">Every program has its own course list. Create an account and select yours to get a learning space made for what you actually study.</p>
-          </div>
-          <div class="course-grid" id="homeCatalog" aria-live="polite" aria-busy="true">
-            <div class="card card-pad skeleton" aria-hidden="true" style="min-height:250px;"></div>
-            <div class="card card-pad skeleton" aria-hidden="true" style="min-height:250px;"></div>
-            <div class="card card-pad skeleton" aria-hidden="true" style="min-height:250px;"></div>
-          </div>
-          <div class="support-links" id="homeCatalogLinks">
-            <span class="support-links-label">Already registered?</span>
-            <a class="section-link" href="/login.html">Log in to see your courses <span data-icon="arrow-right" data-icon-size="14"></span></a>
-          </div>
-        </div>
-      </section>
-
-      <!-- How it works: one compact numbered path, no card chrome -->
-      <section class="section">
+      <!-- ── How it works ───────────────────────────────────────────────── -->
+      <section class="section" aria-labelledby="howTitle">
         <div class="container">
           <div class="section-heading">
             <span class="eyebrow">How it works</span>
-            <h2>From your program to exam-ready</h2>
-            <p>Your course list and learning resources stay matched to your program.</p>
+            <h2 id="howTitle">Discover, learn, practise, complete</h2>
+            <p>The same clear path in every course, so you always know what to do next.</p>
           </div>
           <ol class="steps">
             <li class="step">
               <span class="step-num">1</span>
               <div>
-                <strong>Select your program</strong>
-                <p>Choose your faculty or student category when you create your account.</p>
+                <strong>Discover your course</strong>
+                <p>Pick your university, faculty and programme — StudyCore shows only the courses you actually study.</p>
               </div>
             </li>
             <li class="step">
               <span class="step-num">2</span>
               <div>
-                <strong>Open one of your courses</strong>
-                <p>StudyCore shows only the courses assigned to your program.</p>
+                <strong>Select a topic</strong>
+                <p>Topics group the lessons, notes and papers for one part of the syllabus, with progress on each.</p>
               </div>
             </li>
             <li class="step">
               <span class="step-num">3</span>
               <div>
-                <strong>Work the lesson</strong>
-                <p>Watch the video, read the notes, practise with past papers.</p>
+                <strong>Read and watch</strong>
+                <p>Notes open in the StudyCore document viewer; video lessons play in the StudyCore player with resume.</p>
               </div>
             </li>
             <li class="step">
               <span class="step-num">4</span>
               <div>
-                <strong>Track your progress</strong>
-                <p>Mark lessons complete and watch your streaks and completion grow.</p>
+                <strong>Practise and track</strong>
+                <p>Work past papers, mark lessons complete, and watch your streak and course completion grow.</p>
               </div>
             </li>
           </ol>
         </div>
       </section>
 
-      <!-- Premium callout: a single dark CTA panel -->
-      <section class="section" style="padding-top:0;">
+      <!-- ── Premium ────────────────────────────────────────────────────── -->
+      <section class="section" style="padding-top:0;" aria-labelledby="premiumTitle">
         <div class="container">
           <div class="premium-card">
             <span class="badge badge-amber" style="margin-bottom:14px;background:rgba(245,166,35,0.15);color:#ffd080;border-color:rgba(245,166,35,0.4);">StudyCore Premium</span>
-            <h2 style="margin-bottom:10px;">Unlock the full learning experience</h2>
+            <h2 id="premiumTitle" style="margin-bottom:10px;">Unlock the full learning experience</h2>
             <p style="color:rgba(255,255,255,0.75);max-width:620px;margin-bottom:24px;">
               Premium students get video lessons, study notes, tutorial sheets and past papers
-              for their program courses — plus full progress tracking.
+              for their programme courses — plus full progress tracking, bookmarks and a study streak.
             </p>
             <div style="display:flex;gap:14px;flex-wrap:wrap;">
               <a class="btn btn-amber" href="/pages/pricing.html">See Premium</a>
               <a class="btn btn-on-dark" href="/signup.html">Start Free Trial</a>
             </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Quizzes: program-targeted practice -->
-      <section class="section" style="padding-top:0;">
-        <div class="container">
-          <div style="background:linear-gradient(135deg,#0e7568 0%,#0b2033 100%);border-radius:18px;padding:34px 30px;display:flex;gap:22px;align-items:center;flex-wrap:wrap;color:#fff;">
-            <div style="width:54px;height:54px;border-radius:14px;background:rgba(255,255,255,0.12);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><span data-icon="circle-help" data-icon-size="26"></span></div>
-            <div style="flex:1;min-width:240px;">
-              <h2 style="margin:0 0 8px;">Test yourself with Quizzes</h2>
-              <p style="margin:0;color:rgba(255,255,255,0.8);">Content Admins and the StudyCore team post program-targeted quizzes — multiple-choice, word answers, or image questions. Take them any time and watch your best scores improve.</p>
-            </div>
-            <a class="btn btn-amber" href="/quiz.html">Open Quizzes</a>
           </div>
         </div>
       </section>
@@ -210,182 +302,8 @@
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
     <script src="/js/programs.js"></script>
+    <script src="/js/components.js"></script>
     <script src="/js/scroll-reveal.js"></script>
-    <script>
-      document.addEventListener('DOMContentLoaded', async () => {
-        document.querySelectorAll('[data-icon]').forEach((el) => {
-          el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: Number(el.getAttribute('data-icon-size')) || 22 });
-        });
-
-        const catalog = document.getElementById('homeCatalog');
-        const heading = document.getElementById('homeCatalogTitle');
-        const intro = document.getElementById('homeCatalogIntro');
-        const eyebrow = document.getElementById('homeCatalogEyebrow');
-        const links = document.getElementById('homeCatalogLinks');
-
-        function courseCard(course, programName) {
-          const counts = course.counts || {};
-          const progress = course.progress || {};
-          return `
-            <a class="course-card" href="${SCPrograms.courseHref(course)}">
-              <div class="course-card-visual"><span>${SC.icon(course.icon || 'book-open', { size: 54 })}</span></div>
-              <div class="course-card-body">
-                <h3>${escapeHtml(course.code)} <span class="course-name-secondary">${escapeHtml(course.name)}</span></h3>
-                <p>${escapeHtml(programName)} course</p>
-                <div class="course-card-meta">
-                  <span>${SC.icon('video', { size: 14 })} ${counts.videos || 0} videos</span>
-                  <span>${SC.icon('file-text', { size: 14 })} ${(counts.documents || 0) + (counts.tutorials || 0)} notes</span>
-                  <span>${SC.icon('file', { size: 14 })} ${counts.pastPapers || 0} papers</span>
-                </div>
-                <div class="course-card-progress">
-                  <div class="progress-labels"><span>${progress.completed || 0} complete</span><strong>${progress.percent || 0}%</strong></div>
-                  <div class="progress progress-thin"><span style="width:${Math.max(0, Math.min(100, progress.percent || 0))}%"></span></div>
-                </div>
-                <span class="course-card-cta">Open course</span>
-              </div>
-            </a>`;
-        }
-
-        function programCard(program) {
-          const count = Number(program.courseCount || 0);
-          return `
-            <article class="course-card program-showcase-card">
-              <div class="course-card-visual"><span>${SC.icon(program.icon || 'book-open', { size: 54 })}</span></div>
-              <div class="course-card-body">
-                <span class="program-code">${escapeHtml(program.code)}</span>
-                <h3>${escapeHtml(program.name)}</h3>
-                <p>${escapeHtml(program.description || 'A focused course space for students in this program.')}</p>
-                <div class="course-card-meta"><span>${SC.icon('library', { size: 14 })} ${count} course${count === 1 ? '' : 's'}</span></div>
-                <a class="course-card-cta" href="/signup.html">Select this program</a>
-              </div>
-            </article>`;
-        }
-
-        try {
-          const user = await StudyCoreAuth.fetchSession();
-          if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
-            const data = await StudyCoreAPI.myProgram();
-            if (data.program) {
-              const programName = data.program.shortName || data.program.name;
-              eyebrow.textContent = 'My program';
-              heading.textContent = `${data.program.name} — My Courses`;
-              intro.textContent = 'Your homepage is filtered to your program. Open a course and continue with its lessons, notes, videos and past papers.';
-              catalog.innerHTML = data.courses.length
-                ? data.courses.map((course) => courseCard(course, programName)).join('')
-                : emptyState({ icon: 'library', title: 'Courses coming soon', body: 'Your program has no courses yet. They will appear here as soon as the admin adds them.' });
-              links.innerHTML = `<a class="btn btn-primary" href="/dashboard.html">Open my dashboard</a>`;
-              document.getElementById('homeEyebrow').textContent = data.program.name;
-              document.getElementById('homeTitle').innerHTML = `Welcome back.<br /><em>Your courses are ready.</em>`;
-              document.getElementById('homeLead').textContent = `Everything shown here is matched to ${data.program.name}. Pick up where you left off or open one of your courses below.`;
-              document.getElementById('homePrimaryCta').textContent = 'Open My Courses';
-              document.getElementById('homePrimaryCta').href = '#homeCatalog';
-              document.getElementById('homeSecondaryCta').textContent = 'Dashboard';
-              document.getElementById('homeSecondaryCta').href = '/dashboard.html';
-            } else {
-              heading.textContent = 'Select your program to see your courses';
-              intro.textContent = 'Your account is ready. Choose your program from the dashboard and this homepage will become your personal course space.';
-              catalog.innerHTML = emptyState({
-                icon: 'library',
-                title: 'No program selected',
-                body: 'Choose your program so StudyCore can show the correct courses and resources.',
-                cta: '<a class="btn btn-primary" href="/dashboard.html">Choose program</a>'
-              });
-              links.innerHTML = '';
-            }
-          } else if (user && StudyCoreAuth.isAdmin(user)) {
-            eyebrow.textContent = 'Administration';
-            heading.textContent = 'Manage programs and courses';
-            intro.textContent = 'Create programs, assign courses and publish resources from the admin dashboard.';
-            catalog.innerHTML = emptyState({
-              icon: 'settings',
-              title: 'Program management',
-              body: 'Open the admin dashboard to manage the live course catalog.',
-              cta: '<a class="btn btn-primary" href="/admin.html">Open admin dashboard</a>'
-            });
-            links.innerHTML = '';
-          } else if (user && StudyCoreAuth.isContentAdmin(user)) {
-            eyebrow.textContent = 'Content Admin';
-            heading.textContent = 'Your publishing workspace is ready';
-            intro.textContent = 'Upload educational resources, keep your own library organised, and manage only the resources you created.';
-            catalog.innerHTML = emptyState({
-              icon: 'upload',
-              title: 'Content Admin workspace',
-              body: 'Open your dedicated dashboard to publish and manage your own resources.',
-              cta: '<a class="btn btn-primary" href="/content-admin.html">Open Content Admin dashboard</a>'
-            });
-            links.innerHTML = '';
-          } else {
-            const { programs } = await StudyCoreAPI.listPrograms(true);
-            document.getElementById('programCount').textContent = programs.length;
-            catalog.innerHTML = programs.length
-              ? programs.map(programCard).join('')
-              : emptyState({ icon: 'library', title: 'Programs coming soon', body: 'Program enrollment will open soon.' });
-          }
-        } catch (err) {
-          catalog.innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load programs', body: 'Please refresh the page and try again.' });
-        } finally {
-          catalog.setAttribute('aria-busy', 'false');
-        }
-
-        // Home hero decorative floating background logo controller
-        (function initHeroLogo() {
-          const heroEl = document.getElementById('homeHero');
-          const stageEl = document.getElementById('heroLogoStage');
-          const trackEl = heroEl ? heroEl.querySelector('.hero-floating-logo-track') : null;
-          const elemEl = document.getElementById('heroLogoElement');
-          if (!heroEl || !stageEl || !trackEl || !elemEl) return;
-
-          const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          if (prefersReduced) return;
-
-          // Pause animations when hero is scrolled out of view or tab is inactive to preserve performance
-          if ('IntersectionObserver' in window) {
-            const io = new IntersectionObserver(([entry]) => {
-              const isVis = entry.isIntersecting;
-              trackEl.style.animationPlayState = isVis ? 'running' : 'paused';
-              elemEl.style.animationPlayState = isVis ? 'running' : 'paused';
-            }, { threshold: 0.05 });
-            io.observe(heroEl);
-          }
-
-          document.addEventListener('visibilitychange', () => {
-            const state = document.hidden ? 'paused' : 'running';
-            trackEl.style.animationPlayState = state;
-            elemEl.style.animationPlayState = state;
-          });
-
-          // Subtle interactive mouse parallax on desktop devices with fine pointer
-          if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-            let targetX = 0, targetY = 0;
-            let currentX = 0, currentY = 0;
-            let rafId = null;
-
-            function onMouseMove(e) {
-              const rect = heroEl.getBoundingClientRect();
-              if (e.clientY < rect.top || e.clientY > rect.bottom) return;
-              const relX = (e.clientX - rect.left) / rect.width - 0.5;
-              const relY = (e.clientY - rect.top) / rect.height - 0.5;
-              targetX = relX * -22; // subtle shift opposite to mouse
-              targetY = relY * -16;
-            }
-
-            function updateParallax() {
-              currentX += (targetX - currentX) * 0.06;
-              currentY += (targetY - currentY) * 0.06;
-              stageEl.style.setProperty('--parallax-x', `${currentX.toFixed(2)}px`);
-              stageEl.style.setProperty('--parallax-y', `${currentY.toFixed(2)}px`);
-              rafId = requestAnimationFrame(updateParallax);
-            }
-
-            heroEl.addEventListener('mousemove', onMouseMove, { passive: true });
-            heroEl.addEventListener('mouseleave', () => {
-              targetX = 0;
-              targetY = 0;
-            });
-            updateParallax();
-          }
-        })();
-      });
-    </script>
+    <script src="/js/home.js"></script>
   </body>
 </html>

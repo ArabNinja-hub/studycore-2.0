@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Past Papers | StudyCore</title>
+    <meta name="description" content="Browse StudyCore past papers by university, programme, course, year and examination type — Test 1, Test 2, Sessional and final exams, opened inside StudyCore." />
+    <link rel="canonical" href="https://studycore.academy/pages/past-papers.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="Past Papers | StudyCore" />
+    <meta property="og:description" content="Real examination papers filtered by university, programme, course, year and examination type." />
+    <meta property="og:url" content="https://studycore.academy/pages/past-papers.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "StudyCore Past Papers",
+      "url": "https://studycore.academy/pages/past-papers.html",
+      "description": "University examination papers organised by programme, course, year and examination type.",
+      "isPartOf": { "@type": "WebSite", "name": "StudyCore", "url": "https://studycore.academy/" }
+    }
+    </script>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body data-page="past-papers">
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <nav class="sc-trail" aria-label="Breadcrumb">
+            <a href="/">StudyCore</a>
+            <span class="sc-trail-sep" data-icon="chevron-right" data-icon-size="13"></span>
+            <span class="sc-trail-current">Past Papers</span>
+          </nav>
+          <span class="eyebrow">Past papers</span>
+          <h1>Practise with real examination papers</h1>
+          <p>
+            Every past paper is filed under its university, programme, course, year and
+            examination type. Filter down to exactly the paper you need, then open it inside
+            StudyCore — no downloads, no leaving the platform.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:34px;">
+        <div class="container">
+          <!-- Filters. On phones the whole panel collapses behind one button so
+               the paper list is never pushed off screen. -->
+          <div class="sc-pp-toolbar">
+            <div class="sc-search-hero" style="flex:1;min-width:0;">
+              <span class="sc-search-lead" data-icon="search" data-icon-size="19"></span>
+              <input type="search" id="paperSearch" placeholder="Search past papers, e.g. CH110 or Thermochemistry…"
+                     aria-label="Search past papers" autocomplete="off" />
+            </div>
+            <button type="button" class="btn btn-outline sc-pp-filterbtn" id="filterToggle" aria-expanded="false" aria-controls="paperFilters">
+              <span data-icon="list-checks" data-icon-size="17"></span> Filters
+              <span class="sc-pp-filtercount" id="filterCount" hidden></span>
+            </button>
+          </div>
+
+          <div class="sc-filterbar" id="paperFilters">
+            <div class="sc-filter-row">
+              <span class="sc-filter-label"><span data-icon="school" data-icon-size="14"></span> University</span>
+              <div class="sc-chips" id="universityChips"></div>
+            </div>
+            <div class="sc-filter-row">
+              <span class="sc-filter-label"><span data-icon="graduation-cap" data-icon-size="14"></span> Programme</span>
+              <div class="sc-chips" id="programChips"></div>
+            </div>
+            <div class="sc-filter-row">
+              <span class="sc-filter-label"><span data-icon="library" data-icon-size="14"></span> Course</span>
+              <div class="sc-chips" id="courseChips"></div>
+            </div>
+            <div class="sc-filter-row">
+              <span class="sc-filter-label"><span data-icon="calendar" data-icon-size="14"></span> Year</span>
+              <div class="sc-chips" id="yearChips"></div>
+            </div>
+            <div class="sc-filter-row">
+              <span class="sc-filter-label"><span data-icon="list-checks" data-icon-size="14"></span> Examination</span>
+              <div class="sc-chips" id="typeChips"></div>
+            </div>
+            <div class="sc-filter-summary">
+              <span id="resultSummary">Loading past papers…</span>
+              <button type="button" class="sc-clear" id="clearFilters" hidden>
+                <span data-icon="x" data-icon-size="14"></span> Clear filters
+              </button>
+            </div>
+          </div>
+
+          <div class="sc-paper-list" id="paperList" aria-live="polite" aria-busy="true">
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
+          </div>
+
+          <div style="text-align:center;margin-top:26px;" id="loadMoreWrap" hidden>
+            <button class="btn btn-outline" id="loadMoreBtn">Load more past papers</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/programs.js"></script>
+    <script src="/js/components.js"></script>
+    <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/past-papers.js"></script>
+  </body>
+</html>
