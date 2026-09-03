@@ -1,100 +1,204 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Course Directory | StudyCore</title>
-  <meta name="description" content="Browse StudyCore's university course directory by university, school, programme and year." />
-  <link rel="canonical" href="https://studycore.academy/pages/courses.html" />
-  <link rel="icon" href="/favicon.ico" />
-  <link rel="stylesheet" href="/css/style.css" />
-  <link rel="stylesheet" href="/css/redesign.css" />
-</head>
-<body data-page="courses">
-  <div id="siteNav"></div>
-  <div id="mobileNavHost"></div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Courses | StudyCore</title>
+    <meta name="description" content="Explore StudyCore university courses: Mathematics, Physics, Chemistry, Biology, Programming and Communication Skills — each with structured lessons, study notes, video learning and past papers." />
+    <link rel="canonical" href="https://studycore.academy/pages/courses.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StudyCore" />
+    <meta property="og:title" content="University Courses | StudyCore" />
+    <meta property="og:description" content="Six university-level courses with structured lessons, study notes, video learning and past papers." />
+    <meta property="og:url" content="https://studycore.academy/pages/courses.html" />
+    <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Course",
+      "name": "StudyCore University Courses",
+      "url": "https://studycore.academy/pages/courses.html",
+      "description": "University-level courses on StudyCore covering Mathematics, Physics, Chemistry, Biology, Programming and Communication Skills.",
+      "hasCourseInstance": [
+        { "@type": "CourseInstance", "name": "Mathematics", "url": "https://studycore.academy/pages/subjects/mathematics.html" },
+        { "@type": "CourseInstance", "name": "Physics", "url": "https://studycore.academy/pages/subjects/physics.html" },
+        { "@type": "CourseInstance", "name": "Chemistry", "url": "https://studycore.academy/pages/subjects/chemistry.html" },
+        { "@type": "CourseInstance", "name": "Biology", "url": "https://studycore.academy/pages/subjects/biology.html" },
+        { "@type": "CourseInstance", "name": "Programming", "url": "https://studycore.academy/pages/subjects/programming.html" },
+        { "@type": "CourseInstance", "name": "Communication Skills", "url": "https://studycore.academy/pages/subjects/communication.html" }
+      ]
+    }
+    </script>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body data-page="courses">
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
 
-  <main>
-    <!-- Directory hero: an explicit hierarchy makes the catalogue feel like
-         an LMS rather than a flat collection of subject tiles. -->
-    <section class="sc-directory-hero">
-      <div class="container">
-        <nav class="sc-trail" aria-label="Breadcrumb">
-          <a href="/">StudyCore</a>
-          <span class="sc-trail-sep" aria-hidden="true"><span data-icon="chevron-right" data-icon-size="13"></span></span>
-          <span class="sc-trail-current" aria-current="page">Course directory</span>
-        </nav>
-        <div class="sc-directory-hero-grid">
-          <div>
-            <span class="sc-hero-eyebrow"><span data-icon="library" data-icon-size="14"></span> University learning library</span>
-            <h1>Find the course you need to move forward.</h1>
-            <p>Browse by university, school, programme and year. Open a course to find its topics, lessons, tutorials, notes and past papers.</p>
-          </div>
-          <div class="sc-directory-hero-card">
-            <span class="sc-directory-hero-card-icon" data-icon="layers" data-icon-size="20"></span>
-            <div><strong>One clear learning path</strong><span>Programme → Course → Topic → Lesson</span></div>
+    <main>
+      <section class="page-hero">
+        <div class="container">
+          <span class="eyebrow">StudyCore Courses</span>
+          <h1 id="coursesHeading">University courses, structured the way you study</h1>
+          <p id="coursesIntro">
+            Every StudyCore course follows the same clear path: course → topic → lesson → video,
+            notes and past papers → mark complete. Pick a course to open its home page with
+            everything in one place.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="container">
+          <div id="programHeader" style="display:none;margin-bottom:24px;"></div>
+          <div class="course-grid" id="courseGrid">
+            <!-- Program courses are rendered here for logged-in students
+                 (GET /api/programs/mine). Anonymous visitors see the static
+                 subject catalog below the grid via the public fallback. -->
           </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="section sc-directory-section">
-      <div class="container">
-        <!-- Signed-in learners see their own programme first. It is hidden for
-             visitors and shown by courses-page.js after the session resolves. -->
-        <section id="myCoursesSection" hidden aria-labelledby="coursesHeading">
-          <div class="sc-directory-my-banner" id="programBanner"></div>
-          <div class="sc-section-head">
-            <div>
-              <span class="eyebrow" id="coursesEyebrow">My programme</span>
-              <h2 id="coursesHeading">Your courses</h2>
-              <p id="coursesIntro">Your programme courses will appear here.</p>
+      <section class="section" style="background:var(--bg-alt);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Inside every course</span>
+            <h2>The same clear structure, every time</h2>
+          </div>
+          <div class="feature-grid">
+            <div class="card card-pad"><div class="card-icon" data-icon="layers"></div><h3 style="margin-top:14px;">Topics</h3><p>Each course is organised into focused topics, so you always know what to study next.</p></div>
+            <div class="card card-pad"><div class="card-icon" data-icon="video"></div><h3 style="margin-top:14px;">Video lessons</h3><p>Core topics include recorded lessons you watch inside StudyCore — with resume and completion tracking. (Premium)</p></div>
+            <div class="card card-pad"><div class="card-icon" data-icon="file"></div><h3 style="margin-top:14px;">Notes &amp; past papers</h3><p>Every topic pairs theory with study notes and exam papers for real practice.</p></div>
+          </div>
+          <div style="text-align:center;margin-top:40px;">
+            <a class="btn btn-primary" href="/signup.html">Create a Free Account</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/programs.js"></script>
+    <script src="/js/scroll-reveal.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 }); });
+
+        const user = await StudyCoreAuth.fetchSession();
+
+        if (user && StudyCoreAuth.isContentAdmin(user)) {
+          window.location.replace('/content-admin.html');
+        } else if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
+          // Logged-in student: show ONLY the courses in their program.
+          renderProgramCourses(user);
+        } else if (user && StudyCoreAuth.isAdmin(user)) {
+          renderAdminView();
+        } else {
+          // Anonymous visitor: keep the public subject catalog.
+          renderPublicCatalog();
+        }
+      });
+
+      // Fallback static subject cards for anonymous visitors.
+      const PUBLIC_SUBJECTS = [
+        { slug: 'mathematics', name: 'Mathematics', desc: 'Functions, calculus, algebra and problem-solving.' },
+        { slug: 'physics', name: 'Physics', desc: 'Mechanics, waves, electricity and modern physics.' },
+        { slug: 'chemistry', name: 'Chemistry', desc: 'Atoms, bonding, reactions and quantitative chemistry.' },
+        { slug: 'biology', name: 'Biology', desc: 'Cells, genetics, physiology and living systems.' },
+        { slug: 'programming', name: 'Programming', desc: 'Programming fundamentals, data structures and logic.' },
+        { slug: 'communication', name: 'Communication Skills', desc: 'Writing, speaking, presentations and clarity.' }
+      ];
+
+      function renderPublicCatalog() {
+        document.getElementById('coursesHeading').textContent = 'University courses, structured the way you study';
+        const grid = document.getElementById('courseGrid');
+        grid.innerHTML = PUBLIC_SUBJECTS.map((c) => `
+          <a class="course-card" href="/pages/subjects/${c.slug}.html" data-course="${c.slug}">
+            <div class="course-card-visual"><span style="width:54px;height:54px;display:inline-flex;">${SC.icon(SC.courseIcon(c.slug), { size: 54 })}</span></div>
+            <div class="course-card-body">
+              <h3>${c.name}</h3>
+              <p>${c.desc}</p>
+              <div class="course-card-meta"><span data-course-counts>Create an account to see your program's courses</span></div>
+              <span class="course-card-cta">View course</span>
             </div>
-            <a class="sc-section-link" href="/dashboard.html">Open dashboard <span data-icon="arrow-right" data-icon-size="15"></span></a>
-          </div>
-          <div class="sc-course-grid" id="myCoursesGrid" aria-live="polite" aria-busy="true">
-            <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
-            <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
-          </div>
-        </section>
+          </a>`).join('');
+      }
 
-        <div class="sc-directory-toolbar">
-          <div>
-            <span class="eyebrow">Explore the catalogue</span>
-            <h2>University courses</h2>
-            <p>Search by course code, title or subject, then open a course hub.</p>
-          </div>
-          <label class="sc-search-hero sc-directory-search" for="courseSearch">
-            <span class="sc-search-lead" data-icon="search" data-icon-size="18"></span>
-            <input id="courseSearch" type="search" autocomplete="off" placeholder="Search courses, for example CH110" aria-label="Search courses" />
-            <span class="sc-home-search-shortcut">/</span>
-          </label>
-        </div>
+      function programCourseCard(course, programName) {
+        const counts = course.counts || {};
+        const percent = (course.progress && course.progress.percent) || 0;
+        const done = (course.progress && course.progress.completed) || 0;
+        return `
+          <a class="course-card" href="${SCPrograms.courseHref(course)}">
+            <div class="course-card-visual"><span style="width:54px;height:54px;display:inline-flex;">${SC.icon(course.icon || 'book-open', { size: 54 })}</span></div>
+            <div class="course-card-body">
+              <h3>${escapeHtml(course.code)} <span style="color:var(--muted);font-weight:500;font-size:0.9em;">${escapeHtml(course.name)}</span></h3>
+              <p>${escapeHtml(programName)} course.</p>
+              <div class="course-card-meta">
+                <span>${SC.icon('video', { size: 14 })} ${counts.videos || 0} videos</span>
+                <span>${SC.icon('file-text', { size: 14 })} ${counts.documents || 0} notes</span>
+                <span>${SC.icon('file', { size: 14 })} ${counts.pastPapers || 0} papers</span>
+              </div>
+              <div class="course-card-progress">
+                <div class="progress-labels"><span>${done} complete</span><strong>${percent}%</strong></div>
+                <div class="progress progress-thin"><span style="width:${percent}%"></span></div>
+              </div>
+              <span class="course-card-cta">Open course</span>
+            </div>
+          </a>`;
+      }
 
-        <div id="catalogueTree" class="sc-tree" aria-live="polite" aria-busy="true">
-          <div class="sc-skeleton-row sc-skeleton-directory" aria-hidden="true"></div>
-        </div>
-      </div>
-    </section>
+      async function renderProgramCourses(user) {
+        const grid = document.getElementById('courseGrid');
+        try {
+          const data = await StudyCoreAPI.myProgram();
+          if (!data.program) {
+            document.getElementById('coursesHeading').textContent = 'Choose your program';
+            grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+              <div class="empty-icon">${SC.icon('library', { size: 28 })}</div>
+              <h3>Select your program to see your courses</h3>
+              <p>Your program determines which courses, notes, videos and announcements you can access.</p>
+              <a class="btn btn-primary" href="/dashboard.html">Go to dashboard</a>
+            </div>`;
+            return;
+          }
+          document.getElementById('coursesHeading').textContent = `${data.program.name} — My Courses`;
+          document.getElementById('coursesIntro').textContent =
+            'These are the courses available for your program. Work through topics, watch lessons, read notes and attempt past papers — everything is filtered to your program.';
+          document.getElementById('programHeader').style.display = '';
+          document.getElementById('programHeader').innerHTML = `
+            <div class="program-banner" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+              <span class="card-icon" style="width:52px;height:52px;">${SC.icon(data.program.icon || 'book-open', { size: 24 })}</span>
+              <div>
+                <strong style="font-size:1.05rem;">${escapeHtml(data.program.name)}</strong>
+                <div style="color:var(--muted);font-size:0.9rem;">${data.courses.length} course${data.courses.length === 1 ? '' : 's'} in your program${data.program.groupName ? ' · ' + escapeHtml(data.program.groupName) : ''}</div>
+              </div>
+            </div>`;
+          grid.innerHTML = data.courses.length
+            ? data.courses.map((c) => programCourseCard(c, data.program.shortName || data.program.name)).join('')
+            : emptyState({ icon: 'library', title: 'Courses coming soon', body: 'Your program has no courses yet — the admin adds them from the dashboard.' });
+        } catch (err) {
+          grid.innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load courses', body: escapeHtml(err.message) });
+        }
+      }
 
-    <section class="sc-directory-footer-cta">
-      <div class="container">
-        <div><span class="eyebrow">New to StudyCore?</span><h2>Choose your programme and make the library yours.</h2><p>Create an account to see your programme first, save progress and continue where you left off.</p></div>
-        <a class="btn btn-teal" href="/signup.html">Create a free account <span data-icon="arrow-right" data-icon-size="16"></span></a>
-      </div>
-    </section>
-  </main>
-
-  <div id="siteFooter"></div>
-
-  <script src="/js/icons.js"></script>
-  <script src="/js/api.js"></script>
-  <script src="/js/auth.js"></script>
-  <script src="/js/layout.js"></script>
-  <script src="/js/main.js"></script>
-  <script src="/js/programs.js"></script>
-  <script src="/js/components.js"></script>
-  <script src="/js/scroll-reveal.js"></script>
-  <script src="/js/courses-page.js"></script>
-</body>
+      function renderAdminView() {
+        document.getElementById('coursesHeading').textContent = 'Programs & Courses';
+        document.getElementById('courseGrid').innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+          <div class="empty-icon">${SC.icon('settings', { size: 28 })}</div>
+          <h3>Manage programs and courses from the admin dashboard</h3>
+          <p>Create programs, add courses, upload content and target it to one, several or all programs.</p>
+          <a class="btn btn-primary" href="/admin.html">Open admin dashboard</a>
+        </div>`;
+      }
+    </script>
+  </body>
 </html>

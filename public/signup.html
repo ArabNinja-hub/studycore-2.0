@@ -100,10 +100,6 @@
             opt.textContent = p.groupName ? `${p.name} (${p.groupName})` : p.name;
             sel.appendChild(opt);
           });
-          const requestedProgram = new URLSearchParams(window.location.search).get('program');
-          if (requestedProgram && [...sel.options].some((option) => option.value === requestedProgram.toUpperCase())) {
-            sel.value = requestedProgram.toUpperCase();
-          }
         } catch {
           // If the list can't load, registration still surfaces the server's
           // "select your program" error rather than submitting a bad program.

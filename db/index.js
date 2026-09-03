@@ -3,7 +3,6 @@ const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { DatabaseSync } = require('node:sqlite');
 const { seedProgramCatalog } = require('../lib/programs');
-const { seedUniversityCatalog } = require('../lib/universities');
 const { ROLES } = require('../lib/roles');
 
 // On Render, set DATA_DIR to the mounted persistent disk's path (e.g.
@@ -610,134 +609,10 @@ function migrateBareUuidDocuments() {
 
 migrateBareUuidDocuments();
 
-// ---------------------------------------------------------------------------
-// Multi-university architecture (additive, idempotent)
-//
-//   University → School/Faculty → Programme → Year → Course → Topic → Lesson
-//
-// StudyCore was originally built around one institution's student categories
-// (the `programs` table). Those programs are kept exactly as they are — every
-// existing row, link and permission rule still works — but they now hang off
-// a real university and faculty so a second institution can be added from the
-// admin dashboard with no code change and no data migration.
-// ---------------------------------------------------------------------------
-
-// A course needs its own description (shown on the course page hero and in
-// public course hubs). Nullable — an existing course simply shows none.
-try {
-  db.exec('ALTER TABLE courses ADD COLUMN description TEXT');
-} catch {
-  // column already exists - fine
-}
-
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS universities (
-      id TEXT PRIMARY KEY,
-      code TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL,
-      short_name TEXT,
-      country TEXT,
-      city TEXT,
-      icon TEXT DEFAULT 'school',
-      description TEXT,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    )
-  `);
-} catch {
-  // already exists - fine
-}
-
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS faculties (
-      id TEXT PRIMARY KEY,
-      code TEXT NOT NULL,
-      university_id TEXT REFERENCES universities(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      short_name TEXT,
-      icon TEXT DEFAULT 'library',
-      description TEXT,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      UNIQUE(university_id, code)
-    )
-  `);
-  db.exec('CREATE INDEX IF NOT EXISTS idx_faculties_university ON faculties(university_id)');
-} catch {
-  // already exists - fine
-}
-
-// Link programs to their university + faculty. Both are nullable so an
-// existing program keeps working before it is assigned, and the seeded
-// catalog assigns them on first boot.
-try {
-  db.exec('ALTER TABLE programs ADD COLUMN university_id TEXT REFERENCES universities(id) ON DELETE SET NULL');
-} catch {
-  // column already exists - fine
-}
-try {
-  db.exec('ALTER TABLE programs ADD COLUMN faculty_id TEXT REFERENCES faculties(id) ON DELETE SET NULL');
-} catch {
-  // column already exists - fine
-}
-try {
-  db.exec('ALTER TABLE programs ADD COLUMN year_count INTEGER NOT NULL DEFAULT 1');
-} catch {
-  // column already exists - fine
-}
-// Which year of study a course is taught in, for a given program.
-// "Year 1" / "Year 2" / ... — nullable so existing links stay unassigned.
-try {
-  db.exec('ALTER TABLE program_courses ADD COLUMN year_level TEXT');
-} catch {
-  // column already exists - fine
-}
-
-// Examination metadata for past papers, so students can filter by year and
-// examination type (Test 1 / Test 2 / Sessional / Final Exam) instead of
-// guessing from the title. Nullable: every pre-existing past paper keeps
-// working and simply shows up under "All".
-try {
-  db.exec('ALTER TABLE resources ADD COLUMN exam_year INTEGER');
-} catch {
-  // column already exists - fine
-}
-try {
-  db.exec('ALTER TABLE resources ADD COLUMN exam_type TEXT');
-} catch {
-  // column already exists - fine
-}
-try {
-  db.exec('CREATE INDEX IF NOT EXISTS idx_resources_exam ON resources(category, exam_year, exam_type)');
-} catch {
-  // already exists - fine
-}
-
-// Per-student view history. Powers "Recently viewed" on the dashboard and
-// "continue reading/watching" everywhere. Only resource ids the student was
-// already authorized to open are ever recorded.
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS resource_views (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-      viewed_at TEXT NOT NULL,
-      UNIQUE(user_id, resource_id)
-    )
-  `);
-  db.exec('CREATE INDEX IF NOT EXISTS idx_resource_views_user ON resource_views(user_id, viewed_at DESC)');
-} catch {
-  // already exists - fine
-}
-
 // Seed the six university programs, the global course catalog and the
 // program→course assignments (Law, Business, SNR, Mines, Non-Quota, SICT).
 // Idempotent — only inserts rows that do not yet exist, so admin-managed
 // programs/courses survive every restart.
-seedUniversityCatalog(db);
 seedProgramCatalog(db);
 
 function seedAdmin() {

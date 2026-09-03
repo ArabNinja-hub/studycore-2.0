@@ -81,11 +81,7 @@ test('global navigation keeps videos within the course hierarchy', () => {
   const navBlock = layout.match(/const NAV_LINKS = \[(.*?)\n  \];/s)?.[1] || '';
   assert.match(navBlock, /label: 'Courses'/);
   assert.match(navBlock, /label: 'Resources'/);
-  // Home IS a top-level destination now — the brief fixes the bar at
-  // Home | Courses | Past Papers | Resources | Dashboard | Profile.
-  assert.match(navBlock, /label: 'Home'/);
-  // Videos and quizzes stay inside a course / behind Resources, never as
-  // their own top-level destination.
+  assert.doesNotMatch(navBlock, /label: 'Home'/);
   assert.doesNotMatch(navBlock, /label: 'Video Lessons'/);
   assert.doesNotMatch(layout.match(/function renderMobileNav\(\).*?\n  }/s)?.[0] || '', /> Video Lessons</);
 });
@@ -142,121 +138,58 @@ test('document reader is view-only and uses on-demand PDF ranges', () => {
   assert.doesNotMatch(resourceRoutes, /disposition:\s*['"]attachment['"]|INSERT INTO downloads/);
 });
 
-test('homepage is course-first and never ships the obsolete subject cards', () => {
+test('homepage is program-aware and never ships the obsolete subject cards', () => {
   const indexHtml = read('public/index.html');
-  const homeJs = read('public/js/home.js');
-  const componentsJs = read('public/js/components.js');
   const revealJs = read('public/js/scroll-reveal.js');
 
-  // The homepage renders its cards through the shared component library and
-  // the student's real programme, so it can never fall back to the six
-  // hardcoded legacy subject cards again.
-  assert.match(indexHtml, /id="homeCatalog"/);
-  assert.match(indexHtml, /\/js\/components\.js/);
-  assert.match(indexHtml, /\/js\/home\.js/);
-  assert.match(homeJs, /StudyCoreAPI\.myProgram\(\)/);
-  assert.match(homeJs, /SCUi\.courseCard\(/);
-  assert.match(homeJs, /\/api\/universities\?courses=1/);
-  assert.doesNotMatch(indexHtml, /data-course="(mathematics|physics|chemistry|biology|programming|communication)"/);
-  assert.doesNotMatch(homeJs, /\/pages\/subjects\//);
-  assert.match(componentsJs, /function courseCard\(/);
+  // The homepage program/course cards participate in the same shared scroll
+  // reveal as every other card grid, so they fly in as the student scrolls.
+  assert.doesNotMatch(indexHtml, /id="homeCatalog"[^>]*data-no-scroll-reveal/);
+  assert.match(indexHtml, /StudyCoreAPI\.myProgram\(\)/);
+  assert.match(indexHtml, /StudyCoreAPI\.listPrograms\(true\)/);
+  assert.match(indexHtml, /data\.courses\.map\(\(course\) => courseCard/);
+  assert.match(indexHtml, /Choose your program\. We organise the rest\./);
+  assert.doesNotMatch(indexHtml, /data-course="(?:mathematics|physics|chemistry|biology|programming|communication)"/);
+  assert.doesNotMatch(indexHtml, /Pick a course and start learning/);
   assert.match(revealJs, /closest\('\[data-no-scroll-reveal\]'\)/);
-
-  // No duplicated ids on the homepage.
-  const ids = [...indexHtml.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(new Set(ids).size, ids.length, 'duplicate HTML id on the homepage');
 });
 
-test('homepage hero states the platform promise and offers the three core CTAs', () => {
+test('hero section contains decorative animated background logo behind content', () => {
   const indexHtml = read('public/index.html');
   const css = read('public/css/style.css');
   const layout = read('public/js/layout.js');
 
-  // The headline the platform is built around.
-  assert.match(indexHtml, /Your University\./);
-  assert.match(indexHtml, /Your Courses\./);
-  assert.match(indexHtml, /<em>Your Success\.<\/em>/);
-  assert.match(indexHtml, /<title>StudyCore — Your University\. Your Courses\. Your Success\.<\/title>/);
+  // Decorative element in hero background with aria-hidden
+  assert.match(indexHtml, /<div class="hero-bg-visual" aria-hidden="true">/);
+  assert.match(indexHtml, /hero-floating-logo-stage/);
+  assert.match(indexHtml, /hero-floating-logo-track/);
+  assert.match(indexHtml, /hero-floating-logo-element/);
+  assert.match(indexHtml, /src="\/assets\/studycore-emblem\.png"/);
 
-  // The three required actions, each pointing somewhere real.
-  assert.match(indexHtml, /href="\/pages\/courses\.html"[^>]*>[\s\S]{0,120}Explore Courses/);
-  assert.match(indexHtml, /href="\/pages\/past-papers\.html"[^>]*>[\s\S]{0,120}Browse Past Papers/);
-  assert.match(indexHtml, /id="heroStartCta" href="\/signup\.html"/);
-
-  // Past papers are a headline feature on the homepage, not a footer link.
-  assert.match(indexHtml, /id="homePapers"/);
-
-  // No emoji anywhere in the markup or the shared components.
-  assert.doesNotMatch(indexHtml, /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
-  assert.doesNotMatch(read('public/js/components.js'), /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
-
-  // No autoplaying video background: the hero is CSS only.
-  assert.doesNotMatch(indexHtml, /<video/i);
-  assert.doesNotMatch(indexHtml, /<iframe/i);
-
-  // Main StudyCore navbar branding remains intact and not replaced.
+  // Main StudyCore navbar branding remains intact and not replaced
   assert.match(layout, /<a href="\/" class="nav-brand" aria-label="StudyCore home">/);
 
-  // Hero styling is layered behind the content and honours reduced motion.
-  assert.match(css, /\.sc-hero::before\s*\{[^}]*position:\s*absolute/);
-  assert.match(css, /\.sc-hero-inner\s*\{[^}]*position:\s*relative/);
-  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
-});
+  // Asset exists
+  assert.equal(fs.existsSync(path.join(ROOT, 'public', 'assets', 'studycore-emblem.png')), true);
 
-test('global navigation follows the course-first model', () => {
-  const layout = read('public/js/layout.js');
-  // Scope strictly to the NAV_LINKS array — a slice that ran to
-  // `function currentPage()` would also swallow BNAV_LINKS below it.
-  const navBlock = layout.match(/const NAV_LINKS = \[(.*?)\n  \];/s)?.[1] || '';
-  assert.ok(navBlock.length > 0, 'NAV_LINKS array was located');
+  // CSS Z-index layering: background visual is behind container foreground content
+  assert.match(css, /\.hero-bg-visual\s*\{[^}]*position:\s*absolute/);
+  assert.match(css, /\.hero-bg-visual\s*\{[^}]*z-index:\s*1/);
+  assert.match(css, /\.hero \.container\s*\{[^}]*position:\s*relative/);
+  assert.match(css, /\.hero \.container\s*\{[^}]*z-index:\s*2/);
 
-  // The brief fixes the bar at exactly six destinations:
-  //   Home | Courses | Past Papers | Resources | Dashboard | Profile
-  // The first four are declared statically; Dashboard and Profile are injected
-  // by renderNavAuth() once the session resolves (which also hides Profile for
-  // admins). Declaring them in NAV_LINKS as well would show them to signed-out
-  // visitors and render them twice for students.
-  for (const [id, href] of [
-    ['home', '/'],
-    ['courses', '/pages/courses.html'],
-    ['past-papers', '/pages/past-papers.html'],
-    ['resources', '/pages/resources.html']
-  ]) {
-    assert.match(navBlock, new RegExp(`id: '${id}'[^}]*href: '${href.replace(/\//g, '\\/')}'`), `${id} is in the main navigation`);
-  }
+  // Entrance and continuous float animations
+  assert.match(css, /@keyframes heroLogoEntrance/);
+  assert.match(css, /@keyframes heroLogoFloat/);
+  assert.match(css, /animation:\s*heroLogoEntrance/);
+  assert.match(css, /animation:\s*heroLogoFloat/);
 
-  // NAV_LINKS must hold ONLY those four — nothing else crowds the bar.
-  const navIds = [...navBlock.matchAll(/id: '([a-z-]+)'/g)].map((m) => m[1]);
-  assert.deepEqual(navIds, ['home', 'courses', 'past-papers', 'resources'],
-    `NAV_LINKS holds exactly the four public destinations (got: ${navIds.join(', ')})`);
+  // Mobile scaling and repositioning
+  assert.match(css, /@media \(max-width:\s*640px\)[\s\S]*?\.hero-floating-logo-stage/);
+  assert.match(css, /@media \(max-width:\s*480px\)[\s\S]*?\.hero-floating-logo-stage/);
 
-  // Announcements and About moved to the footer; they are still reachable.
-  assert.doesNotMatch(navBlock, /id: 'announcements'/, 'announcements is not a top-level destination');
-  assert.doesNotMatch(navBlock, /id: 'about'/, 'about is not a top-level destination');
-  assert.match(layout, /\/pages\/announcements\.html/, 'announcements still reachable');
-  assert.match(layout, /\/pages\/about\.html/, 'about still reachable');
-
-  // Quizzes stay reachable (nothing is removed) but no longer compete with
-  // Courses as a top-level destination.
-  assert.doesNotMatch(navBlock, /\/quiz\.html/);
-  assert.match(layout, /href: '\/quiz\.html'/, 'quizzes remain reachable from Resources');
-
-  // Search, Dashboard and Profile are in the bar for signed-in users.
-  assert.match(layout, /id="navSearchBtn"/);
-  assert.match(layout, /nav-link-account/);
-  assert.match(layout, /\$\{dashboard\}#profile/);
-  assert.doesNotMatch(navBlock, /id: 'dashboard'/, 'dashboard is injected by renderNavAuth, not declared here');
-
-  // Mobile gets a persistent bottom navigation with five destinations.
-  assert.match(layout, /const BNAV_LINKS = \[/);
-  // The bar is created imperatively, so the class lands on `className`, not in
-  // a class="" attribute string.
-  assert.match(layout, /className = 'sc-bnav'/);
-  assert.match(layout, /class="sc-bnav-inner"/);
-  assert.equal(occurrences(layout, /id: 'home', label: 'Home', href: '\/'/g) >= 1, true);
-
-  // The obsolete per-page dock markup is gone from the stylesheet.
-  assert.doesNotMatch(read('public/css/style.css'), /\.mob-dock\s*\{/);
+  // Prefers-reduced-motion accessibility
+  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.hero-floating-logo-track/);
 });
 
 test('application JavaScript parses successfully', () => {

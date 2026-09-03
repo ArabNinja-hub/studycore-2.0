@@ -56,32 +56,12 @@
   const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k';
   const SITE = 'https://studycore.academy/';
 
-  // Global navigation — exactly what the brief asks for and nothing more:
-  //
-  //   Home | Courses | Past Papers | Resources | Dashboard | Profile
-  //
-  // A CBU first-year should be able to name every item on this bar. Everything
-  // else that used to sit here is still reachable, just not competing for
-  // space: Announcements and About live in the footer, Quizzes behind the
-  // Resources page, and the account menu still carries every signed-in link.
   const NAV_LINKS = [
-    { id: 'home', label: 'Home', href: '/', icon: 'home' },
-    { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'book-open' },
-    { id: 'past-papers', label: 'Past Papers', href: '/pages/past-papers.html', icon: 'file-text' },
-{ id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'library' }
-  ];
-  // Dashboard and Profile are NOT in this list on purpose: renderNavAuth()
-  // injects them (plus the avatar/account menu) once the session resolves, and
-  // it also hides Profile for admins. Declaring them here as well would show
-  // them to signed-out visitors and render them twice for students.
-
-  // Mobile bottom bar: the five actions a first-year reaches for most.
-  const BNAV_LINKS = [
-    { id: 'home', label: 'Home', href: '/', icon: 'home' },
-    { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'book-open' },
-    { id: 'search', label: 'Search', href: '/pages/search.html', icon: 'search' },
-    { id: 'past-papers', label: 'Papers', href: '/pages/past-papers.html', icon: 'file-text' },
-    { id: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: 'layout-dashboard' }
+    { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
+    { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text' },
+    { id: 'quizzes', label: 'Quizzes', href: '/quiz.html', icon: 'circle-help' },
+    { id: 'announcements', label: 'Announcements', href: '/pages/announcements.html', icon: 'bell' },
+    { id: 'about', label: 'About', href: '/pages/about.html', icon: 'info' }
   ];
 
   function currentPage() {
@@ -98,10 +78,7 @@
 
   function isActive(id) {
     const page = currentPage();
-    if (id === 'home') return page === 'home';
     if (id === 'courses') return ['courses', 'course', 'lesson', 'videos'].includes(page);
-    if (id === 'past-papers') return page === 'past-papers';
-    if (id === 'dashboard') return page === 'dashboard';
     return page === id;
   }
 
@@ -191,11 +168,10 @@
 
   function resourcesDropdownHtml() {
     const items = [
-      { href: '/pages/past-papers.html', icon: 'file', title: 'Past Papers', desc: 'Browse by university, programme, course, year and examination type' },
-      { href: '/pages/resources.html?type=document', icon: 'file-text', title: 'Study Notes', desc: 'Concise lecture summaries read inside StudyCore' },
-      { href: '/pages/resources.html?type=tutorial', icon: 'book-open', title: 'Tutorial Sheets', desc: 'Step-by-step problem sets and practice sheets' },
-      { href: '/pages/courses.html', icon: 'video', title: 'Video Lessons', desc: 'Structured lectures inside each course hub' },
-      { href: '/quiz.html', icon: 'circle-help', title: 'Quizzes', desc: 'Programme-targeted practice questions and tests' }
+      { href: '/pages/resources.html?type=past_paper', icon: 'file', title: 'Past Papers', desc: 'Real exam papers with solutions & mark schemes' },
+      { href: '/pages/resources.html?type=document', icon: 'file-text', title: 'Study Notes', desc: 'Concise lecture summaries & revision sheets' },
+      { href: '/pages/courses.html', icon: 'video', title: 'Video Lessons', desc: 'Structured lectures inside course hubs' },
+      { href: '/pages/resources.html?type=tutorial', icon: 'book-open', title: 'Tutorial Sheets', desc: 'Step-by-step problem sets & practice sheets' }
     ];
 
     const cards = items.map((it) => `
@@ -468,23 +444,9 @@
     if (!slot) return;
     const user = await StudyCoreAuth.fetchSession();
     if (user) {
-      const role = StudyCoreAuth.normalizedRole(user);
-      const dashboard = StudyCoreAuth.getDashboardPage(user);
-      // Dashboard and Profile are first-class destinations in the bar (the
-      // spec asks for both). The avatar remains the account menu, so Premium,
-      // billing and Log Out stay one click away without crowding the island.
-      const page = currentPage();
-      const onDashboard = page === 'dashboard' || page === 'admin' || page === 'content-admin';
-      const onProfile = page === 'dashboard' && location.hash === '#profile';
-      const dashboardLink = `<a class="nav-link nav-link-account${onDashboard ? ' active' : ''}" href="${dashboard}"${onDashboard ? ' aria-current="page"' : ''}>
-          <span>${SC.icon('layout-dashboard', { size: 16 })}</span><span>Dashboard</span>
-        </a>`;
-      const profileLink = role === 'content_admin' || role === 'admin'
-        ? ''
-        : `<a class="nav-link nav-link-account${onProfile ? ' active' : ''}" href="${dashboard}#profile" aria-label="Profile"${onProfile ? ' aria-current="page"' : ''}>
-             <span>${SC.icon('user', { size: 16 })}</span><span>Profile</span>
-           </a>`;
-      slot.innerHTML = `${dashboardLink}${profileLink}${accountMenuHtml(user)}`;
+      // No standalone Dashboard button in the bar: the avatar menu is the
+      // single desktop entry point (keeps the island compact on PC/tablet).
+      slot.innerHTML = accountMenuHtml(user);
       bindAccountMenu();
     } else {
       slot.innerHTML = `
@@ -521,16 +483,20 @@
     }
     const activeAttrs = (id) => isActive(id) ? ' class="active" aria-current="page"' : '';
 
-    // The course accordion starts as a short loading row and is replaced with
-    // the student's real program courses by updateCoursesDropdownForUser().
-    // A signed-out visitor sees the public university/programme catalogue link
-    // instead of a hardcoded list of six legacy subjects.
-    // A student never navigates a university → faculty → programme hierarchy.
-    // The one link here goes straight to their courses.
-    const subjectLinks = `
-      <a href="/pages/courses.html" class="mobile-sub-link">
-        ${SC.icon('book-open', { size: 16 })} Browse all my courses
-      </a>`;
+    const subjectList = [
+      { slug: 'mathematics', name: 'Mathematics', icon: 'calculator' },
+      { slug: 'physics', name: 'Physics', icon: 'atom' },
+      { slug: 'chemistry', name: 'Chemistry', icon: 'flask' },
+      { slug: 'biology', name: 'Biology', icon: 'dna' },
+      { slug: 'programming', name: 'Programming', icon: 'code' },
+      { slug: 'communication', name: 'Communication Skills', icon: 'message' }
+    ];
+
+    const subjectLinks = subjectList.map((s) => `
+      <a href="/pages/subjects/${s.slug}.html" class="mobile-sub-link">
+        ${SC.icon(s.icon, { size: 16 })} ${s.name}
+      </a>
+    `).join('');
     const mobileSearchHtml = globalSearchEnabled()
       ? `<div class="mobile-nav-search-wrap" style="--idx:0">
           <button type="button" class="mobile-search-pill" id="mobileSearchBtn" data-close-mobile>
@@ -577,7 +543,7 @@
           </div>
           <div class="mobile-accordion-body">
             <div class="mobile-accordion-content">
-              <a href="/pages/past-papers.html" class="mobile-sub-link">${SC.icon('file', { size: 16 })} Past Papers</a>
+              <a href="/pages/resources.html?type=past_paper" class="mobile-sub-link">${SC.icon('file', { size: 16 })} Past Papers</a>
               <a href="/pages/resources.html?type=document" class="mobile-sub-link">${SC.icon('file-text', { size: 16 })} Study Notes</a>
               <a href="/pages/resources.html?type=tutorial" class="mobile-sub-link">${SC.icon('book-open', { size: 16 })} Tutorial Sheets</a>
             </div>
@@ -592,10 +558,7 @@
 
         <div class="mobile-nav-divider" style="--idx:9"></div>
         <div class="mobile-nav-label" style="--idx:10">Practice</div>
-        <a href="/pages/past-papers.html"${activeAttrs('past-papers')} style="--idx:11">
-          ${SC.icon('file', { size: 20 })} <span>Past Papers</span>
-        </a>
-        <a href="/quiz.html"${activeAttrs('quizzes')} style="--idx:11">
+        <a href="/quiz.html"${activeAttrs('quizzes')} style="--idx:11" id="mobileNavQuizzesLink">
           ${SC.icon('circle-help', { size: 20 })} <span>Quizzes</span>
         </a>
         <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:12">
@@ -1304,72 +1267,85 @@
      Main-Admin accounts (Content Admin uses its own workspace chrome, and
      guests keep the simpler drawer). Full-screen pages such as the document
      viewer keep the whole screen for reading. */
-  /* ── Mobile bottom navigation ────────────────
-     Five persistent destinations, thumb-reachable, one tap from any page.
-     It replaces the old per-page "dock" that changed its own meaning on the
-     dashboard: a nav bar whose items change under your thumb is harder to use
-     than one that never moves. Full-screen reading pages (the document viewer)
-     and the Content Admin workspace keep the whole screen instead.
-     Hidden above 760px, where the desktop bar already carries these links. */
-  const BNAV_HIDDEN_PAGES = ['viewer', 'content-admin'];
+  const MOB_TOP_PAGES = {
+    home: ['home', 'dashboard', 'admin'],
+    courses: ['courses', 'course', 'lesson', 'videos'],
+    resources: ['resources', 'viewer'],
+    quizzes: ['quizzes'],
+    announcements: ['announcements']
+  };
 
-  function bnavIsCurrent(id) {
-    if (id === 'profile') return false; // the dashboard item already owns that page
-    return isActive(id);
+  function dockIsCurrent(key) {
+    const page = currentPage();
+    return (MOB_TOP_PAGES[key] || []).indexOf(page) !== -1;
+  }
+
+  function dockGlyph(label, icon) {
+    return `<span class="mob-dock-ic">${SC.icon(icon, { size: 21 })}</span><span class="mob-dock-lb">${label}</span>`;
+  }
+
+  function dockItem(label, icon, opts) {
+    const o = opts || {};
+    if (o.href) {
+      return `<a class="mob-dock-item${o.active ? ' active' : ''}" href="${o.href}"${o.active ? ' aria-current="page"' : ''}>${dockGlyph(label, icon)}</a>`;
+    }
+    const target = o.scroll || 'top';
+    return `<a class="mob-dock-item" href="#${target === 'top' ? '' : target}" data-scroll="${target}">${dockGlyph(label, icon)}</a>`;
   }
 
   function teardownMobileDock() {
     const host = document.getElementById('mobDockHost');
     if (host) host.remove();
-    document.body.classList.remove('sc-has-bnav', 'has-mobtabs');
+    document.body.classList.remove('has-mobtabs');
   }
 
   function renderMobileDock(user) {
-    // Full-screen surfaces keep every pixel for reading/authoring.
-    if (BNAV_HIDDEN_PAGES.indexOf(currentPage()) !== -1) { teardownMobileDock(); return; }
-
     const role = user ? StudyCoreAuth.normalizedRole(user) : '';
-    const dashboard = user ? StudyCoreAuth.getDashboardPage(user) : '/dashboard.html';
+    // Only signed-in student & Main-Admin accounts get the dock.
+    if (!user || (role !== 'student' && role !== 'admin')) { teardownMobileDock(); return; }
+    // Keep the whole screen for full-screen reading / dedicated workspaces.
+    if (currentPage() === 'viewer' || currentPage() === 'content-admin') { teardownMobileDock(); return; }
 
-    // Guests get the public catalogue instead of account pages they cannot open.
-    const links = user
-      ? BNAV_LINKS.map((l) => (l.id === 'dashboard' || l.id === 'profile') ? { ...l, href: l.id === 'dashboard' ? dashboard : `${dashboard}#profile` } : l)
-      : [
-          { id: 'home', label: 'Home', href: '/', icon: 'home' },
-          { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'book-open' },
-          { id: 'past-papers', label: 'Papers', href: '/pages/past-papers.html', icon: 'file-text' },
-          { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'library' },
-          { id: 'account', label: 'Log In', href: '/login.html', icon: 'user' }
-        ];
-
-    // Main Admin and Content Admin work in one long dashboard, so their bar
-    // offers that page's sections instead of dead student links.
-    const adminLinks = role === 'admin' ? [
-      { id: 'admin-home', label: 'Overview', href: '#', icon: 'home', scroll: 'top' },
-      { id: 'admin-content', label: 'Content', href: '#', icon: 'file-text', scroll: 'adminResourceTableWrap' },
-      { id: 'admin-unis', label: 'Universities', href: '#', icon: 'school', scroll: 'adminUniversitySection' },
-      { id: 'admin-users', label: 'Students', href: '#', icon: 'users', scroll: 'usersList' },
-      { id: 'admin-pay', label: 'Payments', href: '#', icon: 'wallet', scroll: 'paymentsList' }
-    ] : null;
-
-    const items = adminLinks || links;
+    const page = currentPage();
+    let items;
+    if (page === 'dashboard') {
+      // A student's dashboard is one long page: offer section shortcuts.
+      items = [
+        dockItem('Overview', 'home', { scroll: 'top' }),
+        dockItem('Continue', 'play', { scroll: 'continueSlot' }),
+        dockItem('Courses', 'library', { scroll: 'myCoursesList' }),
+        dockItem('Premium', 'crown', { scroll: 'premium' }),
+        dockItem('Profile', 'user', { scroll: 'profile' })
+      ];
+    } else if (page === 'admin') {
+      // The Main-Admin dashboard is one long page: offer section shortcuts.
+      items = [
+        dockItem('Overview', 'home', { scroll: 'top' }),
+        dockItem('Announce', 'bell', { scroll: 'announcementForm' }),
+        dockItem('Content', 'file-text', { scroll: 'adminResourceTableWrap' }),
+        dockItem('Students', 'users', { scroll: 'usersList' }),
+        dockItem('Payments', 'wallet', { scroll: 'paymentsList' })
+      ];
+    } else {
+      // Top-level destinations for this account across the whole site.
+      const homeHref = role === 'admin' ? '/admin.html' : '/dashboard.html';
+      items = [
+        dockItem('Home', 'home', { href: homeHref, active: dockIsCurrent('home') }),
+        dockItem('Courses', 'library', { href: '/pages/courses.html', active: dockIsCurrent('courses') }),
+        dockItem('Quizzes', 'circle-help', { href: '/quiz.html', active: dockIsCurrent('quizzes') }),
+        dockItem('Announcements', 'bell', { href: '/pages/announcements.html', active: dockIsCurrent('announcements') })
+      ];
+    }
 
     let host = document.getElementById('mobDockHost');
     if (!host) {
       host = document.createElement('nav');
       host.id = 'mobDockHost';
-      host.className = 'sc-bnav';
-      host.setAttribute('aria-label', 'Main navigation');
+      host.className = 'mob-dock';
+      host.setAttribute('aria-label', 'Quick navigation');
       document.body.appendChild(host);
     }
-    host.innerHTML = `<div class="sc-bnav-inner">${items.map((l) => {
-      const current = l.scroll ? false : bnavIsCurrent(l.id);
-      return `<a class="sc-bnav-item" href="${l.href}"${l.scroll ? ` data-scroll="${l.scroll}"` : ''}${current ? ' aria-current="page"' : ''}>
-        <span class="sc-bnav-ic">${SC.icon(l.icon, { size: 21 })}</span>
-        <span>${escapeHtml(l.label)}</span>
-      </a>`;
-    }).join('')}</div>`;
-
+    host.innerHTML = `<div class="mob-dock-inner">${items.join('')}</div>`;
     host.querySelectorAll('[data-scroll]').forEach((a) => {
       a.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1379,7 +1355,7 @@
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
-    document.body.classList.add('sc-has-bnav');
+    document.body.classList.add('has-mobtabs');
   }
 
   function ensureMobileMeta() {

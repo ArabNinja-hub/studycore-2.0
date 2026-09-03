@@ -31,22 +31,6 @@ const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
 // general/platform resource (e.g. an all-programs "Study Skills Guide"):
 // perfectly valid, it just shows up via program targeting rather than on a
 // course home. Video lessons must still declare a term.
-// Examination metadata only applies to past papers. Anything else is cleared,
-// so a document can never end up in the Past Papers year/type filters.
-function parseExamYear(value, category) {
-  if (category && category !== 'past_paper') return null;
-  const n = Number.parseInt(String(value === undefined || value === null ? '' : value).trim(), 10);
-  if (!Number.isFinite(n)) return null;
-  if (n < 1900 || n > 2200) return null;
-  return n;
-}
-
-function cleanExamType(value, category) {
-  if (category && category !== 'past_paper') return null;
-  const v = String(value === undefined || value === null ? '' : value).trim().slice(0, 40);
-  return v || null;
-}
-
 function validateCoursePlacement(category, subject, semester, courseId) {
   if (!COURSE_CONTENT_CATEGORIES.has(category)) return null;
   if (category === 'video' && !(courseId || subject)) {
@@ -123,8 +107,6 @@ function serializeResource(row) {
     topic: row.topic || null,
     yearLevel: row.year_level,
     semester: row.semester,
-    examYear: row.exam_year || null,
-    examType: row.exam_type || null,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     fileName: row.file_name,
     fileSize: row.file_size,
@@ -176,13 +158,11 @@ function resourceWithUploader(resourceId) {
 // Program filter: ?program=LAW shows content targeted at LAW OR all-programs;
 // ?program=LAW&scope=exact shows ONLY content specifically targeting LAW.
 router.get('/resources', (req, res) => {
-  const { category, subject, search, sort = 'newest', publishStatus, program, scope, examYear, examType } = req.query;
+  const { category, subject, search, sort = 'newest', publishStatus, program, scope } = req.query;
   const clauses = [];
   const params = {};
   if (category) { clauses.push('category = @category'); params.category = category; }
   if (subject) { clauses.push('subject = @subject'); params.subject = subject; }
-  if (examYear) { clauses.push('exam_year = @examYear'); params.examYear = Number(examYear); }
-  if (examType) { clauses.push('exam_type = @examType'); params.examType = examType; }
   if (publishStatus) { clauses.push('publish_status = @publishStatus'); params.publishStatus = publishStatus; }
   if (program) {
     const code = String(program).toUpperCase();
@@ -215,7 +195,7 @@ router.get('/resources', (req, res) => {
 });
 
 router.post('/resources', upload.single('file'), (req, res) => {
-  const { title, description, category, subject, course, courseId, topic, yearLevel, semester, examYear, examType, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
+  const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   if (!title || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
   if (!category) return res.status(400).json({ message: 'Category is required.' });
@@ -284,8 +264,6 @@ router.post('/resources', upload.single('file'), (req, res) => {
     topic: (topic || '').trim() || null,
     year_level: yearLevel || null,
     semester: semester || null,
-    exam_year: parseExamYear(examYear, category),
-    exam_type: cleanExamType(examType, category),
     tags: tags || null,
     pinned: pinned === 'true' || pinned === '1' ? 1 : 0,
     file_name: req.file ? req.file.originalname : null,
@@ -309,10 +287,10 @@ router.post('/resources', upload.single('file'), (req, res) => {
   };
 
   db.prepare(`
-    INSERT INTO resources (id, title, description, category, resource_type, subject, course, course_id, target_all, topic, year_level, semester, exam_year, exam_type, tags,
+    INSERT INTO resources (id, title, description, category, resource_type, subject, course, course_id, target_all, topic, year_level, semester, tags,
       file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status,
       uploaded_by, uploader_role, uploader_name, uploader_email, uploaded_at, created_at, updated_at)
-    VALUES (@id, @title, @description, @category, @resource_type, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @exam_year, @exam_type, @tags,
+    VALUES (@id, @title, @description, @category, @resource_type, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @tags,
       @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status,
       @uploaded_by, @uploader_role, @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at)
   `).run(row);
@@ -331,7 +309,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
 
-  const { title, description, category, subject, course, courseId, topic, yearLevel, semester, examYear, examType, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
+  const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   const effectiveCategory = category ?? existing.category;
 
@@ -415,8 +393,6 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     topic: topic === undefined ? existing.topic : ((topic || '').trim() || null),
     year_level: yearLevel ?? existing.year_level,
     semester: semester ?? existing.semester,
-    exam_year: parseExamYear(examYear === undefined ? existing.exam_year : examYear, category ?? existing.category),
-    exam_type: cleanExamType(examType === undefined ? existing.exam_type : examType, category ?? existing.category),
     tags: tags ?? existing.tags,
     pinned: pinned === undefined ? existing.pinned : (pinned === 'true' || pinned === '1' ? 1 : 0),
     external_url: (category ?? existing.category) === 'video' ? null : (externalUrl ?? existing.external_url),
@@ -430,7 +406,7 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
 
   db.prepare(`
     UPDATE resources SET title=@title, description=@description, category=@category, resource_type=@resource_type, subject=@subject, course=@course,
-      course_id=@course_id, topic=@topic, year_level=@year_level, semester=@semester, exam_year=@exam_year, exam_type=@exam_type, tags=@tags, external_url=@external_url,
+      course_id=@course_id, topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url,
       quiz_data=@quiz_data, due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status,
       updated_at=@updated_at, file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type,
       content_hash=@content_hash
