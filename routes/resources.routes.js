@@ -22,6 +22,8 @@ function serializeResource(row) {
     topic: row.topic || null,
     yearLevel: row.year_level,
     semester: row.semester,
+    examYear: row.exam_year || null,
+    examType: row.exam_type || null,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     fileName: row.file_name,
     fileSize: row.file_size,
@@ -56,6 +58,22 @@ function serializeResource(row) {
 //
 // The client never decides any of this - it only reflects it.
 // ---------------------------------------------------------------------------
+
+// Per-student view history (one row per student per resource, refreshed on
+// every open). Called only AFTER the program and subscription checks pass, so
+// the history can never contain something the student was not allowed to open.
+function recordView(userId, resourceId) {
+  try {
+    db.prepare(`
+      INSERT INTO resource_views (id, user_id, resource_id, viewed_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, resource_id) DO UPDATE SET viewed_at = excluded.viewed_at
+    `).run(`rv-${uuidv4()}`, userId, resourceId, new Date().toISOString());
+  } catch (err) {
+    // History is a convenience, never a reason to fail a request.
+    console.warn('StudyCore: could not record resource view:', err.message);
+  }
+}
 
 function accessFor(user) {
   const now = Date.now();
@@ -507,6 +525,11 @@ async function handleStream(req, res) {
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   if (!row.stored_name && !row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
   if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
+  // The document viewer opens PDFs with range requests, so the stream (not the
+  // metadata endpoint) is the reliable "the student actually opened this"
+  // signal. Recording it here keeps "recently viewed" accurate for both the
+  // viewer and the video player.
+  recordView(req.user.id, row.id);
   await streamStoredObject(req, res, row.stored_name, {
     filename: row.file_name || row.stored_name,
     mimeType: inferMime(row),
@@ -677,12 +700,277 @@ router.get('/search', attachUser, (req, res) => {
     }));
   }
 
+  // 4) Past papers matching the query — a first-class result group, because
+  // practising with real exams is a primary StudyCore workflow.
+  let pastPapers = [];
+  if (user) {
+    const ppVis = resourceVisibilityClause(user, 'resources', 'searchPpProgram');
+    const ppRows = db.prepare(`
+      SELECT resources.*, c.code AS course_code, c.name AS course_name, c.slug AS course_slug
+      FROM resources
+      LEFT JOIN courses c ON c.id = resources.course_id
+      WHERE resources.publish_status = 'published' AND resources.category = 'past_paper'
+        ${ppVis.clause ? `AND ${ppVis.clause}` : ''}
+        AND (resources.title LIKE @q OR resources.description LIKE @q OR resources.topic LIKE @q
+             OR resources.tags LIKE @q OR resources.subject LIKE @q OR c.code LIKE @q OR c.name LIKE @q)
+      ORDER BY (resources.exam_year IS NULL), resources.exam_year DESC, resources.exam_type ASC
+      LIMIT @limit
+    `).all({ q: ql, limit, ...ppVis.params });
+
+    const completed = new Set(
+      db.prepare('SELECT resource_id FROM lesson_progress WHERE user_id = ?').all(user.id).map((r) => r.resource_id)
+    );
+    pastPapers = ppRows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      category: 'past_paper',
+      subject: row.subject,
+      topic: row.topic || null,
+      examYear: row.exam_year || null,
+      examType: row.exam_type || null,
+      courseCode: row.course_code || null,
+      courseName: row.course_name || null,
+      courseSlug: row.course_slug || null,
+      completed: completed.has(row.id),
+      locked: canAccess(row, access) ? null : lockReason(row, access)
+    }));
+  }
+
+  const countOf = (category) => results.filter((r) => r.category === category).length;
+
   res.json({
     query: q,
     courses,
     topics,
     results,
+    pastPapers,
+    counts: {
+      courses: courses.length,
+      topics: topics.length,
+      notes: countOf('document') + countOf('tutorial'),
+      videos: countOf('video'),
+      pastPapers: pastPapers.length,
+      resources: results.length
+    },
     authenticated: Boolean(user)
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PAST PAPERS — the dedicated browsing endpoint
+//
+//   University → Programme → Course → Year → Examination type
+//
+// Faceted: each facet list is computed on the set filtered by every OTHER
+// dimension, so picking "2025" still shows which exam types exist in 2025
+// instead of collapsing the whole list. Public (anonymous visitors can browse
+// the catalogue); the `locked` flag keeps the real access rules honest.
+// ---------------------------------------------------------------------------
+router.get('/past-papers', attachUser, (req, res) => {
+  const user = req.user ? db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id) : null;
+  const access = user ? accessFor(user) : { premium: false, trial: false };
+
+  const universityId = String(req.query.university || '').trim();
+  const program = String(req.query.program || '').trim().toUpperCase();
+  const courseKey = String(req.query.course || '').trim();
+  const year = String(req.query.year || '').trim();
+  const examType = String(req.query.type || '').trim();
+  const q = String(req.query.q || '').trim();
+
+  const courseRow = courseKey ? resolveCourse(courseKey) : null;
+  if (courseKey && !courseRow) return res.status(404).json({ message: 'Course not found.' });
+
+  const vis = user ? resourceVisibilityClause(user, 'r', 'ppProgram') : { clause: 'r.target_all = 1', params: {} };
+
+  const params = {};
+  // Only bind the visibility parameter when the clause actually uses it —
+  // node:sqlite rejects a named parameter that appears in no SQL.
+  if (vis.clause) Object.assign(params, vis.params);
+
+  // Named clause parts so a facet can be recomputed with its own dimension
+  // removed. `base` is always applied; each dimension is optional.
+  const base = [`r.publish_status = 'published'`, `r.category = 'past_paper'`];
+  if (vis.clause) base.push(vis.clause);
+  const dims = {};
+
+  if (program) {
+    dims.program = `(
+      EXISTS (SELECT 1 FROM program_courses pc WHERE pc.course_id = r.course_id AND pc.program_code = @program)
+      OR (r.course_id IS NULL AND (r.target_all = 1 OR EXISTS (
+        SELECT 1 FROM resource_programs rp WHERE rp.resource_id = r.id AND rp.program_code = @program
+      )))
+    )`;
+    params.program = program;
+  }
+  if (universityId) {
+    dims.university = `EXISTS (
+      SELECT 1 FROM program_courses pcu
+      JOIN programs pu ON pu.code = pcu.program_code
+      LEFT JOIN faculties fu ON fu.id = pu.faculty_id
+      LEFT JOIN universities uu ON uu.id = COALESCE(pu.university_id, fu.university_id)
+      WHERE pcu.course_id = r.course_id AND (uu.id = @universityId OR uu.code = @universityId)
+    )`;
+    params.universityId = universityId;
+  }
+  if (courseRow) { dims.course = 'r.course_id = @courseId'; params.courseId = courseRow.id; }
+  if (q) {
+    dims.q = '(r.title LIKE @q OR r.description LIKE @q OR r.topic LIKE @q OR r.tags LIKE @q)';
+    params.q = `%${q}%`;
+  }
+  if (year) { dims.year = 'r.exam_year = @year'; params.year = Number(year); }
+  if (examType) { dims.type = 'r.exam_type = @examType'; params.examType = examType; }
+
+  // Each query binds only the parameters its own SQL actually contains —
+  // node:sqlite rejects a named parameter that appears nowhere in the statement.
+  const dimParams = { program: 'program', university: 'universityId', course: 'courseId', q: 'q', year: 'year', type: 'examType' };
+  const where = (exclude = []) => {
+    const active = Object.entries(dims).filter(([k]) => !exclude.includes(k));
+    const sql = `WHERE ${[...base, ...active.map(([, v]) => v)].join(' AND ')}`;
+    const bound = { ...params };
+    for (const key of Object.values(dimParams)) delete bound[key];
+    for (const [k] of active) bound[dimParams[k]] = params[dimParams[k]];
+    if (!vis.clause) delete bound.ppProgram;
+    return { sql, bound };
+  };
+
+  const joins = `
+    FROM resources r
+    LEFT JOIN courses c ON c.id = r.course_id
+    LEFT JOIN program_courses pc2 ON pc2.course_id = r.course_id
+    LEFT JOIN programs p2 ON p2.code = pc2.program_code
+    LEFT JOIN faculties f2 ON f2.id = p2.faculty_id
+    LEFT JOIN universities u2 ON u2.id = COALESCE(p2.university_id, f2.university_id)
+  `;
+
+  const project = `
+    SELECT r.*, c.code AS course_code, c.name AS course_name, c.slug AS course_slug, c.icon AS course_icon,
+           p2.name AS program_name, p2.short_name AS program_short_name,
+           f2.name AS faculty_name, u2.name AS university_name, u2.code AS university_code
+    ${joins}
+  `;
+
+  const completed = user
+    ? new Set(db.prepare('SELECT resource_id FROM lesson_progress WHERE user_id = ?').all(user.id).map((x) => x.resource_id))
+    : new Set();
+
+  const serialize = (row) => ({
+    ...serializeResource(row),
+    courseCode: row.course_code || null,
+    courseName: row.course_name || null,
+    courseSlug: row.course_slug || null,
+    courseIcon: row.course_icon || null,
+    programName: row.program_short_name || row.program_name || null,
+    facultyName: row.faculty_name || null,
+    universityName: row.university_name || null,
+    universityCode: row.university_code || null,
+    completed: completed.has(row.id),
+    locked: user ? (canAccess(row, access) ? null : lockReason(row, access)) : 'login'
+  });
+
+  // Results (a paper attached to a course shared by two programs would
+  // otherwise appear twice because of the program join used for the facets).
+  const limit = Math.min(Number(req.query.pageSize) || 24, 100);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const all = where();
+  const total = db.prepare(`SELECT COUNT(DISTINCT r.id) AS c ${joins} ${all.sql}`).get(all.bound).c;
+  const rows = db.prepare(`
+    ${project} ${all.sql}
+    GROUP BY r.id
+    ORDER BY (r.exam_year IS NULL), r.exam_year DESC, r.exam_type ASC, r.created_at DESC
+    LIMIT ${limit} OFFSET ${(page - 1) * limit}
+  `).all(all.bound);
+
+  // Facets — each computed with its own dimension removed from the filter, so
+  // picking "2025" still shows which exam types exist in 2025.
+  const facet = (exclude) => where(exclude);
+  const fy = facet(['year']);
+  const years = db.prepare(`
+    SELECT r.exam_year AS value, COUNT(DISTINCT r.id) AS count
+    ${joins} ${fy.sql} AND r.exam_year IS NOT NULL
+    GROUP BY r.exam_year ORDER BY r.exam_year DESC
+  `).all(fy.bound);
+  const ft = facet(['type']);
+  const types = db.prepare(`
+    SELECT r.exam_type AS value, COUNT(DISTINCT r.id) AS count
+    ${joins} ${ft.sql} AND r.exam_type IS NOT NULL AND r.exam_type != ''
+    GROUP BY r.exam_type ORDER BY r.exam_type ASC
+  `).all(ft.bound);
+  const fc = facet(['course']);
+  const courses = db.prepare(`
+    SELECT r.course_id AS id, c.code AS code, c.name AS name, c.slug AS slug, c.icon AS icon,
+           COUNT(DISTINCT r.id) AS count
+    ${joins} ${fc.sql} AND r.course_id IS NOT NULL
+    GROUP BY r.course_id ORDER BY c.code ASC
+  `).all(fc.bound);
+  const fp = facet(['program']);
+  const programsFacet = db.prepare(`
+    SELECT p2.code AS code, p2.name AS name, p2.short_name AS short_name, COUNT(DISTINCT r.id) AS count
+    ${joins} ${fp.sql} AND p2.code IS NOT NULL
+    GROUP BY p2.code ORDER BY p2.name ASC
+  `).all(fp.bound);
+  const fu = facet(['university']);
+  const universitiesFacet = db.prepare(`
+    SELECT u2.code AS code, u2.name AS name, u2.short_name AS short_name, COUNT(DISTINCT r.id) AS count
+    ${joins} ${fu.sql} AND u2.id IS NOT NULL
+    GROUP BY u2.code ORDER BY u2.name ASC
+  `).all(fu.bound);
+
+  res.json({
+    papers: rows.map(serialize),
+    total,
+    page,
+    pageSize: limit,
+    filters: { university: universityId || null, program: program || null, course: courseKey || null, year: year || null, type: examType || null, q: q || null },
+    facets: {
+      years: years.map((r) => ({ value: r.value, count: r.count })),
+      types: types.map((r) => ({ value: r.value, count: r.count })),
+      courses: courses.map((r) => ({ id: r.id, code: r.code, name: r.name, slug: r.slug, icon: r.icon, count: r.count })),
+      programs: programsFacet.map((r) => ({ code: r.code, name: r.name, shortName: r.short_name || r.name, count: r.count })),
+      universities: universitiesFacet.map((r) => ({ code: r.code, name: r.name, shortName: r.short_name || r.name, count: r.count }))
+    },
+    authenticated: Boolean(user),
+    access: user ? { premium: access.premium, trial: access.trial } : { premium: false, trial: false }
+  });
+});
+
+// ---- Recently viewed ------------------------------------------------------
+// Per-student view history powering "Continue reading / watching" and the
+// dashboard's recently-viewed rail. Only resources the student was authorized
+// to open are ever recorded (see recordView below), so this list can never
+// leak content another program should not see.
+router.get('/recently-viewed', requireAuth, gate, (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 8, 24);
+  const rows = db.prepare(`
+    SELECT rv.viewed_at, resources.*, c.code AS course_code, c.name AS course_name, c.slug AS course_slug
+    FROM resource_views rv
+    JOIN resources ON resources.id = rv.resource_id
+    LEFT JOIN courses c ON c.id = resources.course_id
+    WHERE rv.user_id = ? AND resources.publish_status = 'published'
+    ORDER BY rv.viewed_at DESC
+    LIMIT ?
+  `).all(req.user.id, limit);
+
+  const completed = new Set(
+    db.prepare('SELECT resource_id FROM lesson_progress WHERE user_id = ?').all(req.user.id).map((r) => r.resource_id)
+  );
+  const positions = new Map(
+    db.prepare('SELECT resource_id, position, duration FROM video_progress WHERE user_id = ?')
+      .all(req.user.id).map((r) => [r.resource_id, r])
+  );
+
+  res.json({
+    resources: rows.map((row) => ({
+      ...serializeResource(row),
+      courseCode: row.course_code || null,
+      courseName: row.course_name || null,
+      courseSlug: row.course_slug || null,
+      viewedAt: row.viewed_at,
+      completed: completed.has(row.id),
+      videoPosition: positions.has(row.id) ? positions.get(row.id).position : undefined,
+      videoDuration: positions.has(row.id) ? positions.get(row.id).duration : undefined,
+      locked: canAccess(row, req.access) ? null : lockReason(row, req.access)
+    }))
   });
 });
 
@@ -692,6 +980,7 @@ router.get('/:id', requireAuth, gate, (req, res) => {
   if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
   db.prepare('UPDATE resources SET view_count = view_count + 1 WHERE id = ?').run(row.id);
+  recordView(req.user.id, row.id);
 
   if (row.category === 'announcement' && req.user) {
     try {

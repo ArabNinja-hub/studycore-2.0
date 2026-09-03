@@ -65,6 +65,9 @@
 
     // Programs (multi-program platform)
     listPrograms: (counts) => request(`/api/programs${counts ? '?counts=1' : ''}`),
+    // One call for the whole student dashboard: programme, its first-year
+    // courses, overall progress, recent activity and announcements.
+    dashboard: () => request('/api/dashboard'),
     myProgram: () => request('/api/programs/mine'),
     programCourseHome: (key) => request(`/api/programs/course/${encodeURIComponent(key)}`),
     programLessonFlow: (id) => request(`/api/programs/lesson/${encodeURIComponent(id)}`),

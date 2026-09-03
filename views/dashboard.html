@@ -4,9 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Dashboard | StudyCore</title>
+    <meta name="description" content="Your Copperbelt University first-year courses, progress and recent activity." />
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="/css/style.css" />
   </head>
   <body data-page="dashboard">
@@ -16,72 +20,66 @@
     <main>
       <section class="section-tight" style="padding-top:36px;">
         <div class="container">
-          <!-- Welcome hero -->
-          <div class="dash-hero">
-            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;min-width:0;">
+
+          <!-- ── 1. Welcome ─────────────────────────────────────────────
+               Name + context. Nothing else: no streak flames, no badges,
+               no stat tiles. A first-year should be able to read this in
+               one second and move on to their courses.                 -->
+          <div class="sc-welcome">
+            <div class="sc-welcome-top">
               <span id="dashAvatarSlot"></span>
               <div style="min-width:0;">
                 <h1 id="dashName">Welcome back</h1>
-                <p id="dashSub" style="margin-top:2px;"></p>
+                <p id="dashSub"></p>
               </div>
+              <div class="sc-welcome-actions" id="dashHeroActions"></div>
             </div>
-            <div class="dash-hero-actions" id="dashHeroActions"></div>
           </div>
 
-          <!-- Access status banner -->
+          <!-- Access status (trial / premium / expired) — functional, so it
+               stays, but it is the only banner on the page. -->
           <div id="statusBannerSlot" style="margin-top:20px;"></div>
 
-          <!-- Continue learning -->
-          <div id="continueSlot" style="margin-top:20px;"></div>
-
-          <div class="dash-grid" style="margin-top:20px;">
-            <!-- My courses -->
-            <div class="card dash-section span-7">
-              <div class="dash-section-head">
-                <h3>My Courses</h3>
-                <a href="/pages/courses.html">View all</a>
+          <!-- ── 2. My Courses ──────────────────────────────────────────
+               The heart of the dashboard. Only the student's own
+               programme's first-year courses ever appear here.        -->
+          <div style="margin-top:30px;">
+            <div class="sc-section-head">
+              <div>
+                <h2 style="margin:0;">My Courses</h2>
+                <p id="myCoursesSub" class="sc-small sc-muted" style="margin:4px 0 0;"></p>
               </div>
-              <div id="myCoursesList"><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div></div>
+              <a class="sc-section-link" href="/pages/courses.html">All courses <span data-icon="arrow-right" data-icon-size="15"></span></a>
             </div>
-
-            <!-- Streak + quick stats -->
-            <div class="span-5" style="display:flex;flex-direction:column;gap:20px;">
-              <div class="card dash-stat" id="streakCard">
-                <span class="card-icon" id="streakIcon" style="width:50px;height:50px;"></span>
-                <div>
-                  <div class="stat-value" id="streakValue">—</div>
-                  <div class="stat-label">Day study streak</div>
-                </div>
-              </div>
-              <div class="card dash-stat" id="lessonsCard">
-                <span class="card-icon" id="lessonsIcon" style="width:50px;height:50px;"></span>
-                <div>
-                  <div class="stat-value" id="lessonsValue">—</div>
-                  <div class="stat-label">Lessons completed</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Achievements -->
-            <div class="card dash-section span-12">
-              <div class="dash-section-head">
-                <h3>Achievements</h3>
-              </div>
-              <div class="achievement-grid" id="achievementsGrid"></div>
-            </div>
-
-            <!-- Recent activity + recommended -->
-            <div class="card dash-section span-6">
-              <div class="dash-section-head"><h3>Recent Activity</h3></div>
-              <div id="activityList"><div class="skeleton skeleton-row" style="height:56px;"></div><div class="skeleton skeleton-row" style="height:56px;"></div></div>
-            </div>
-            <div class="card dash-section span-6">
-              <div class="dash-section-head"><h3>Recommended For You</h3></div>
-              <div id="recommendedList"><div class="skeleton skeleton-row" style="height:56px;"></div></div>
+            <div class="sc-course-grid" id="myCoursesList" aria-live="polite" aria-busy="true">
+              <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+              <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+              <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
             </div>
           </div>
 
-          <!-- Premium section -->
+          <!-- ── 3. Recent Activity + My Progress ─────────────────────── -->
+          <div class="dash-grid" style="margin-top:34px;">
+            <div class="card dash-section span-7">
+              <div class="dash-section-head">
+                <h3>Recent Activity</h3>
+                <a href="/pages/resources.html">Resources</a>
+              </div>
+              <div class="sc-list" id="recentList">
+                <div class="sc-skeleton-row" aria-hidden="true"></div>
+                <div class="sc-skeleton-row" aria-hidden="true"></div>
+              </div>
+            </div>
+
+            <div class="card dash-section span-5">
+              <div class="dash-section-head"><h3>My Progress</h3></div>
+              <div id="progressSummaryBox">
+                <div class="sc-skeleton-row" aria-hidden="true"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Premium ──────────────────────────────────────────────── -->
           <div id="premium" style="margin-top:36px;scroll-margin-top:100px;">
             <div class="premium-card" id="premiumPanel">
               <div class="skeleton skeleton-text w60" style="background:rgba(255,255,255,0.1);"></div>
@@ -89,8 +87,11 @@
             </div>
           </div>
 
-          <!-- Profile -->
+          <!-- ── Account: profile, password, programme, referral ──────── -->
           <div id="profile" style="margin-top:36px;scroll-margin-top:100px;">
+            <div class="sc-section-head">
+              <div><h2 style="margin:0;">Account</h2></div>
+            </div>
             <div class="dash-grid">
               <div class="card dash-section span-6">
                 <div class="dash-section-head"><h3>Profile</h3></div>
@@ -105,44 +106,25 @@
                   </div>
                 </div>
                 <form id="profileForm" class="upload-form" style="gap:12px;">
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label for="profileName">Full name</label>
-                      <input id="profileName" type="text" required />
-                    </div>
-                    <div class="form-group">
-                      <label for="profileSchool">School</label>
-                      <input id="profileSchool" type="text" placeholder="e.g. UNZA" />
-                    </div>
-                  </div>
-                  <div class="form-row">
-                    <div class="form-group">
-                      <label for="profileGrade">Grade / Year</label>
-                      <input id="profileGrade" type="text" placeholder="e.g. Year 2" />
-                    </div>
-                    <div class="form-group">
-                      <label for="profileLevel">Learning level</label>
-                      <select id="profileLevel">
-                        <option value="tertiary">University / Tertiary</option>
-                        <option value="secondary">Secondary school</option>
-                      </select>
-                    </div>
+                  <div class="form-group">
+                    <label for="profileName">Full name</label>
+                    <input id="profileName" type="text" required autocomplete="name" />
                   </div>
                   <button class="btn btn-primary" type="submit">Save changes</button>
                 </form>
 
-                <!-- Program (comes from the backend/database) -->
-                <div id="programSelectCard" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
-                  <h3 style="font-size:1rem;margin-bottom:6px;">My Program</h3>
-                  <p style="font-size:0.86rem;color:var(--muted);margin-bottom:10px;">
-                    Your program determines the courses, notes, videos, past papers and announcements you can access.
-                    Changing it switches you to that program’s platform.
+                <!-- Programme: chosen at signup, changeable here. This is the
+                     one setting that decides which courses a student sees. -->
+                <div id="programSelectCard" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+                  <h3 style="font-size:1rem;margin-bottom:6px;">My Programme</h3>
+                  <p class="sc-small sc-muted" style="margin-bottom:12px;">
+                    Your programme decides which courses, notes, videos and past papers you see.
                   </p>
                   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
                     <select id="programSelect" style="min-width:240px;"></select>
-                    <button class="btn btn-outline btn-sm" id="programSaveBtn" type="button">Update program</button>
+                    <button class="btn btn-outline btn-sm" id="programSaveBtn" type="button">Update programme</button>
                   </div>
-                  <div id="myCoursesSummary" style="margin-top:12px;font-size:0.86rem;color:var(--muted);"></div>
+                  <div id="myCoursesSummary" class="sc-small sc-muted" style="margin-top:12px;"></div>
                 </div>
               </div>
 
@@ -171,15 +153,15 @@
                   </div>
                   <button class="btn btn-outline" type="submit">Update password</button>
                 </form>
-                <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);">
+                <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
                   <h3 style="font-size:1rem;margin-bottom:8px;">Invite a friend</h3>
-                  <div id="referralArea" style="font-size:0.88rem;"></div>
+                  <div id="referralArea" class="sc-small"></div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Announcements + bookmarks -->
+          <!-- ── Announcements + bookmarks (existing features, kept) ──── -->
           <div class="dash-grid" style="margin-top:36px;">
             <div class="card dash-section span-6">
               <div class="dash-section-head">
@@ -195,6 +177,7 @@
               <div id="bookmarkList" style="display:flex;flex-direction:column;gap:12px;"><div class="skeleton skeleton-row" style="height:64px;"></div></div>
             </div>
           </div>
+
         </div>
       </section>
     </main>
@@ -207,6 +190,7 @@
     <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
     <script src="/js/programs.js"></script>
+    <script src="/js/components.js"></script>
     <script src="/js/scroll-reveal.js"></script>
     <script src="/js/dashboard.js"></script>
   </body>
