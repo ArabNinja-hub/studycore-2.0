@@ -1,281 +1,336 @@
 // =============================================
 // STUDYCORE — Homepage controller
 // -----------------------------------------------
-// The homepage is course-first: a signed-in
-// student sees their own programme courses with
-// real progress; a visitor sees the university /
-// programme catalogue and the newest past papers.
-// All page logic lives here (not inline in the
-// HTML) so it is cacheable and testable.
+// The landing page is a friendly front door for the
+// same hierarchy used by the learning app:
+// University → Programme → Course → Topic → Lesson.
+// Visitors get a public catalogue preview. Students
+// get their own programme courses and real progress.
+// The server remains the source of truth for access.
 // =============================================
 
 (function () {
   'use strict';
 
+  let catalogueCourses = [];
+  let activeUser = null;
+  // The public directory and the authenticated programme request resolve in
+  // parallel. This small piece of state prevents a slower public request from
+  // painting over a student's programme-specific course list.
+  let sessionCourseView = null;
+
+  const fallbackCourses = [
+    { id: 'fallback-ch110', code: 'CH110', slug: 'ch110', name: 'Chemistry', icon: 'flask', description: 'Atoms, bonding, reactions and quantitative chemistry.' },
+    { id: 'fallback-ma110', code: 'MA110', slug: 'ma110', name: 'Mathematics', icon: 'calculator', description: 'Functions, calculus, algebra and problem-solving.' },
+    { id: 'fallback-ph110', code: 'PH110', slug: 'ph110', name: 'Physics', icon: 'atom', description: 'Mechanics, waves, electricity and modern physics.' },
+    { id: 'fallback-bi110', code: 'BI110', slug: 'bi110', name: 'Biology', icon: 'dna', description: 'Cells, genetics, physiology and living systems.' },
+    { id: 'fallback-cs110', code: 'CS110', slug: 'cs110', name: 'Computer Science', icon: 'code', description: 'Programming fundamentals, data structures and logic.' },
+    { id: 'fallback-la111', code: 'LA111', slug: 'la111', name: 'Communication Skills', icon: 'message', description: 'Writing, speaking, presentations and clarity.' }
+  ];
+
   function paintIcons(root) {
     (root || document).querySelectorAll('[data-icon]').forEach((el) => {
       if (el.dataset.iconDone) return;
       el.dataset.iconDone = '1';
-      el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: Number(el.getAttribute('data-icon-size')) || 22 });
+      el.innerHTML = SC.icon(el.getAttribute('data-icon'), {
+        size: Number(el.getAttribute('data-icon-size')) || 20
+      });
       el.style.display = 'inline-flex';
     });
   }
 
-  function setStat(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
+  function setText(id, value) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = value;
   }
 
-  /* ── Catalogue (visitors + students without a programme) ── */
+  function esc(value) {
+    return typeof escapeHtml === 'function'
+      ? escapeHtml(value)
+      : String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
+  }
+
+  function courseSearchValue(course) {
+    return [course.code, course.name, course.description, course.subject]
+      .filter(Boolean).join(' ').toLowerCase();
+  }
+
+  function courseItem(course, subtitle) {
+    // Keep the shared card component as the single visual source of truth for
+    // course cards used on the homepage and in the full directory.
+    const card = SCUi.courseCard({
+      ...course,
+      href: course.href || (window.SCPrograms ? SCPrograms.courseHref(course) : `/course/${encodeURIComponent(String(course.slug || course.code || '').toLowerCase())}`)
+    }, subtitle ? { subtitle: esc(subtitle) } : {});
+    return `<div class="sc-home-course-item" data-search="${esc(courseSearchValue(course))}">${card}</div>`;
+  }
+
+  function flattenCourses(universities) {
+    const byId = new Map();
+    const add = (course, program) => {
+      if (!course || !course.code) return;
+      const key = String(course.id || course.code).toLowerCase();
+      if (!byId.has(key)) {
+        byId.set(key, { ...course, programNames: [] });
+      }
+      const item = byId.get(key);
+      const label = program && (program.shortName || program.name);
+      if (label && !item.programNames.includes(label)) item.programNames.push(label);
+    };
+
+    for (const university of universities || []) {
+      for (const faculty of university.faculties || []) {
+        for (const program of faculty.programs || []) {
+          for (const course of program.courses || []) add(course, program);
+        }
+      }
+      for (const program of university.orphanPrograms || []) {
+        for (const course of program.courses || []) add(course, program);
+      }
+    }
+
+    return [...byId.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  }
+
   function programCard(program) {
     const count = Number(program.courseCount || 0);
+    const href = `/signup.html?program=${encodeURIComponent(program.code || '')}`;
+    const shortDescription = program.description || 'A focused first-year course path with guided study resources.';
     return `
-      <article class="sc-course is-empty">
-        <span class="sc-course-top">
-          <span class="sc-course-ic">${SC.icon(program.icon || 'book-open', { size: 22 })}</span>
-          <span class="sc-course-id">
-            <span class="sc-course-code">${escapeHtml(program.code)}</span>
-            <strong class="sc-course-name">${escapeHtml(program.name)}</strong>
-            <span class="sc-course-sub">${escapeHtml(program.description || 'A focused course space for this programme.')}</span>
-          </span>
+      <a class="sc-home-program-card" href="${href}">
+        <span class="sc-home-program-icon">${SC.icon(program.icon || 'school', { size: 20 })}</span>
+        <span class="sc-home-program-copy">
+          <span class="sc-home-program-code">${esc(program.code)}</span>
+          <strong>${esc(program.name)}</strong>
+          <small>${esc(shortDescription)}</small>
         </span>
-        <span class="sc-course-stats" style="grid-template-columns:repeat(2,minmax(0,1fr));">
-          <span class="sc-course-stat"><b>${count}</b><span>${SC.icon('library', { size: 12 })} Courses</span></span>
-          <span class="sc-course-stat"><b>${SCUi.formatCount(count * 12)}</b><span>${SC.icon('layers', { size: 12 })} Topics</span></span>
-        </span>
-        <span class="sc-course-cta">
-          <a class="sc-cta-text" href="/signup.html" style="color:inherit;text-decoration:none;">
-            Select this programme ${SC.icon('arrow-right', { size: 15 })}
-          </a>
-        </span>
-      </article>`;
+        <span class="sc-home-program-meta"><b>${count || '—'}</b><span>courses</span></span>
+        <span class="sc-home-program-arrow">${SC.icon('arrow-up-right', { size: 16 })}</span>
+      </a>`;
   }
 
-  /* ── Past papers teaser ── */
   function paperRow(paper) {
-    const locked = paper.locked && paper.locked !== 'login';
+    const lockLabel = paper.locked === 'login' ? 'Log in' : (paper.locked ? 'Premium' : 'Open');
     const meta = [
-      paper.courseCode ? `${SC.icon('library', { size: 12 })} ${escapeHtml(paper.courseCode)}` : '',
-      paper.examYear ? `${SC.icon('calendar', { size: 12 })} ${escapeHtml(paper.examYear)}` : '',
-      paper.examType ? `${SC.icon('list-checks', { size: 12 })} ${escapeHtml(paper.examType)}` : '',
-      paper.programName ? `${SC.icon('school', { size: 12 })} ${escapeHtml(paper.programName)}` : ''
-    ].filter(Boolean).join('');
+      paper.courseCode,
+      paper.examYear,
+      paper.examType
+    ].filter(Boolean).map(esc).join(' · ');
     return `
       <a class="sc-paper${paper.locked ? ' is-locked' : ''}" href="/viewer/${encodeURIComponent(paper.id)}">
-        <span class="sc-paper-ic">${SC.icon(paper.locked ? 'lock' : 'file', { size: 20 })}</span>
+        <span class="sc-paper-ic">${SC.icon(paper.locked ? 'lock' : 'file', { size: 19 })}</span>
         <span class="sc-paper-main">
-          <span class="sc-paper-title">${escapeHtml(paper.title)}</span>
-          <span class="sc-paper-meta">${meta}</span>
+          <span class="sc-paper-title">${esc(paper.title || 'Past paper')}</span>
+          <span class="sc-paper-meta">${meta || 'University examination paper'}</span>
         </span>
         <span class="sc-paper-side">
-          ${paper.locked ? `<span class="badge badge-amber">${SC.icon('lock', { size: 12 })} ${paper.locked === 'login' ? 'Log in' : 'Premium'}</span>` : ''}
-          ${SC.icon('chevron-right', { size: 18 })}
+          <span class="sc-home-paper-status${paper.locked ? ' is-locked' : ''}">${paper.locked ? SC.icon('lock', { size: 11 }) : SC.icon('arrow-right', { size: 13 })} ${lockLabel}</span>
         </span>
       </a>`;
+  }
+
+  function renderCourseCatalogue(courses, options = {}) {
+    const host = document.getElementById('homeCatalog');
+    if (!host) return;
+    const list = courses.length ? courses : fallbackCourses;
+    const visible = options.limit ? list.slice(0, options.limit) : list;
+    host.setAttribute('aria-busy', 'false');
+    host.className = 'sc-course-grid sc-home-course-grid';
+    host.innerHTML = visible.map((course) => courseItem(course, options.subtitle || '')).join('');
+    catalogueCourses = visible;
+    paintIcons(host);
+    bindHomeSearch();
+  }
+
+  function bindHomeSearch() {
+    const input = document.getElementById('homeCourseSearch');
+    const empty = document.getElementById('homeCatalogEmpty');
+    const host = document.getElementById('homeCatalog');
+    if (!input || input.dataset.bound === '1') return;
+    input.dataset.bound = '1';
+
+    const filter = () => {
+      const query = input.value.trim().toLowerCase();
+      let matches = 0;
+      host.querySelectorAll('.sc-home-course-item').forEach((item) => {
+        const show = !query || item.dataset.search.includes(query);
+        item.hidden = !show;
+        if (show) matches += 1;
+      });
+      if (empty) empty.hidden = matches !== 0;
+    };
+    input.addEventListener('input', filter);
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        input.value = '';
+        filter();
+      }
+    });
+  }
+
+  function renderPrograms(programs) {
+    const host = document.getElementById('homeProgramGrid');
+    if (!host) return;
+    host.setAttribute('aria-busy', 'false');
+    if (!programs.length) {
+      host.className = '';
+      host.innerHTML = SCUi.state({
+        kind: 'error',
+        icon: 'school',
+        title: 'Programme directory unavailable',
+        body: 'Please refresh the page or choose a course from the directory.',
+        actions: '<a class="btn btn-outline btn-sm" href="/pages/courses.html">Open course directory</a>'
+      });
+      return;
+    }
+    host.className = 'sc-home-program-grid';
+    host.innerHTML = programs.map(programCard).join('');
+    paintIcons(host);
+  }
+
+  async function loadDirectory() {
+    try {
+      const response = await fetch('/api/universities?courses=1', { credentials: 'include' });
+      if (!response.ok) throw new Error('Directory unavailable');
+      const data = await response.json();
+      const universities = data.universities || [];
+      const allCourses = flattenCourses(universities);
+      const courseCount = allCourses.length;
+      const programCount = universities.reduce((total, university) => {
+        const facultyPrograms = (university.faculties || []).reduce((count, faculty) => count + (faculty.programs || []).length, 0);
+        return total + facultyPrograms + (university.orphanPrograms || []).length;
+      }, 0);
+      setText('statUniversities', String(universities.length || 1));
+      setText('statPrograms', String(programCount || 6));
+      setText('statCourses', courseCount ? `${courseCount}+` : '20+');
+      if (sessionCourseView && sessionCourseView.isStudent && sessionCourseView.courses) {
+        renderCourseCatalogue(sessionCourseView.courses, {
+          subtitle: sessionCourseView.subtitle || '',
+          limit: 9
+        });
+      } else {
+        renderCourseCatalogue(allCourses, { limit: 9 });
+      }
+      return { universities, courses: allCourses, programCount };
+    } catch {
+      setText('statUniversities', '1');
+      setText('statPrograms', '6');
+      setText('statCourses', '20+');
+      if (sessionCourseView && sessionCourseView.isStudent && sessionCourseView.courses) {
+        renderCourseCatalogue(sessionCourseView.courses, {
+          subtitle: sessionCourseView.subtitle || '',
+          limit: 9
+        });
+      } else {
+        renderCourseCatalogue([], { limit: 6 });
+      }
+      return { universities: [], courses: fallbackCourses, programCount: 6 };
+    }
+  }
+
+  async function loadPrograms() {
+    try {
+      const response = await fetch('/api/programs?counts=1', { credentials: 'include' });
+      if (!response.ok) throw new Error('Programmes unavailable');
+      const data = await response.json();
+      renderPrograms(data.programs || []);
+    } catch {
+      renderPrograms([]);
+    }
   }
 
   async function loadPastPapers() {
     const host = document.getElementById('homePapers');
     if (!host) return;
     try {
-      const res = await fetch('/api/resources/past-papers?pageSize=4', { credentials: 'include' });
-      if (!res.ok) throw new Error('past papers unavailable');
-      const data = await res.json();
-      setStat('statPapers', data.total ? `${data.total}+` : '0');
-
-      const years = (data.facets && data.facets.years || []).slice(0, 3).map((y) => y.value);
-      if (years.length) {
-        const chips = host.closest('section').querySelectorAll('.sc-filter-row .sc-chips');
-        if (chips && chips[0]) {
-          chips[0].innerHTML = `<span class="sc-chip is-active">All years</span>` +
-            years.map((y) => `<span class="sc-chip">${y}</span>`).join('');
-        }
-      }
-
-      if (!data.papers.length) {
+      const response = await fetch('/api/resources/past-papers?pageSize=4', { credentials: 'include' });
+      if (!response.ok) throw new Error('Past papers unavailable');
+      const data = await response.json();
+      setText('statPapers', data.total ? `${data.total}+` : '0');
+      setText('homePaperCount', data.total ? `${data.total} paper${data.total === 1 ? '' : 's'} in the library` : 'Library ready for new uploads');
+      if (!data.papers || !data.papers.length) {
         host.innerHTML = SCUi.state({
           icon: 'file',
           title: 'Past papers are being uploaded',
-          body: 'Examination papers appear here as soon as they are published for your courses.'
+          body: 'New examination papers will appear here as soon as they are published.',
+          actions: '<a class="btn btn-outline btn-sm" href="/pages/past-papers.html">Open paper library</a>'
         });
-        return;
+      } else {
+        host.innerHTML = data.papers.slice(0, 4).map(paperRow).join('');
       }
-      host.innerHTML = data.papers.slice(0, 4).map(paperRow).join('');
+      host.setAttribute('aria-busy', 'false');
+      paintIcons(host);
     } catch {
+      setText('homePaperCount', 'Open the complete paper library');
       host.innerHTML = SCUi.state({
         kind: 'error',
+        icon: 'alert-triangle',
         title: 'Could not load past papers',
         body: 'Please refresh the page to try again.',
-        actions: '<a class="btn btn-outline btn-sm" href="/pages/past-papers.html">Open past papers</a>'
+        actions: '<a class="btn btn-outline btn-sm" href="/pages/past-papers.html">Open paper library</a>'
       });
+      host.setAttribute('aria-busy', 'false');
     }
   }
 
-  /* ── Directory counts (visitors) ── */
-  async function loadDirectory() {
-    try {
-      const res = await fetch('/api/universities?courses=1', { credentials: 'include' });
-      if (!res.ok) return;
-      const data = await res.json();
-      const unis = data.universities || [];
-      // A course code is shared across programmes, so count distinct courses.
-      const distinctCourses = new Set();
-      for (const u of unis) {
-        const programs = [...(u.faculties || []).flatMap((f) => f.programs || []), ...(u.orphanPrograms || [])];
-        for (const p of programs) {
-          for (const c of (p.courses || [])) distinctCourses.add(c.id || c.code);
+  async function adaptForSession() {
+    try { activeUser = await StudyCoreAuth.fetchSession(); } catch { activeUser = null; }
+    const start = document.getElementById('heroStartCta');
+    const heroEyebrow = document.getElementById('heroEyebrow');
+    const heroLead = document.getElementById('heroLead');
+
+    if (!activeUser) {
+      sessionCourseView = { isStudent: false, courses: null };
+      return;
+    }
+    const role = StudyCoreAuth.normalizedRole(activeUser);
+    if (start) {
+      start.href = StudyCoreAuth.getDashboardPage(activeUser);
+      start.innerHTML = `${SC.icon('layout-dashboard', { size: 15 })} Open your dashboard`;
+    }
+    if (role === 'student') {
+      try {
+        const data = await StudyCoreAPI.myProgram();
+        if (data && data.program) {
+          const programName = data.program.shortName || data.program.name;
+          sessionCourseView = { isStudent: true, courses: data.courses || [], subtitle: programName };
+          setText('catalogEyebrow', 'My programme');
+          setText('catalogTitle', `${programName} courses`);
+          setText('catalogIntro', 'Your programme courses, with progress and study materials organised in one place.');
+          if (data.courses && data.courses.length) {
+            renderCourseCatalogue(data.courses, { subtitle: programName });
+          }
+        } else {
+          sessionCourseView = { isStudent: true, courses: [] };
         }
+      } catch {
+        // A public catalogue is still useful if the session request fails.
+        sessionCourseView = { isStudent: true, courses: null };
       }
-      setStat('statUniversities', String(unis.length));
-      setStat('statCourses', String(distinctCourses.size));
-      setStat('pathPrograms', `${programsTotal(unis)} programmes`);
-      setStat('pathCourses', `${distinctCourses.size} courses`);
-    } catch { /* the strip keeps its em dash; counts are decorative */ }
-  }
-
-  function programsTotal(unis) {
-    let n = 0;
-    for (const u of unis || []) {
-      n += (u.orphanPrograms || []).length;
-      for (const f of (u.faculties || [])) n += (f.programs || []).length;
+      if (heroEyebrow) heroEyebrow.innerHTML = `${SC.icon('graduation-cap', { size: 14 })} Welcome back to StudyCore`;
+      if (heroLead) heroLead.textContent = 'Pick up where you left off — your courses, topics, notes, videos and past papers are ready for you.';
+    } else if (role === 'admin' || role === 'content_admin') {
+      sessionCourseView = { isStudent: false, courses: null };
+      if (heroEyebrow) heroEyebrow.innerHTML = `${SC.icon('settings', { size: 14 })} StudyCore workspace`;
+      if (heroLead) heroLead.textContent = 'Manage the learning library, publish resources and keep every course path organised.';
     }
-    return n;
   }
 
-  /* ── Main ── */
   async function init() {
     paintIcons(document);
-    SCUi.ensureSprite();
-
-    const catalog = document.getElementById('homeCatalog');
-    const eyebrow = document.getElementById('catalogEyebrow');
-    const title = document.getElementById('catalogTitle');
-    const intro = document.getElementById('catalogIntro');
-    const link = document.getElementById('catalogLink');
-
-    // These three run independently: a slow endpoint never blocks the others.
-    loadPastPapers();
+    if (window.SCUi) SCUi.ensureSprite();
+    bindHomeSearch();
+    // Directory, programme cards, paper library and session can resolve
+    // independently so the hero never waits on a slow content request.
     loadDirectory();
-
-    let user = null;
-    try { user = await StudyCoreAuth.fetchSession(); } catch { user = null; }
-
-    if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
-      await renderStudentCatalog(catalog, eyebrow, title, intro, link, user);
-    } else if (user && (StudyCoreAuth.isAdmin(user) || StudyCoreAuth.isContentAdmin(user))) {
-      renderWorkspace(catalog, eyebrow, title, intro, link, user);
-    } else {
-      await renderVisitorCatalog(catalog, title, intro);
-    }
-
-    // Signed-in students get account CTAs instead of "Get Started".
-    if (user) {
-      const dashboard = StudyCoreAuth.getDashboardPage(user);
-      const start = document.getElementById('heroStartCta');
-      if (start) {
-        start.href = dashboard;
-        start.innerHTML = `${SC.icon('layout-dashboard', { size: 18 })} Open Dashboard`;
-      }
-      document.getElementById('heroEyebrow').innerHTML =
-        `${SC.icon('graduation-cap', { size: 14 })} Welcome back to StudyCore`;
-      document.getElementById('heroLead').textContent =
-        'Pick up where you left off — your courses, topics, notes, videos and past papers are all filtered to your programme.';
-    }
-
+    loadPrograms();
+    loadPastPapers();
+    adaptForSession();
     paintIcons(document);
   }
 
-  async function renderStudentCatalog(catalog, eyebrow, title, intro, link, user) {
-    let data = null;
-    try { data = await StudyCoreAPI.myProgram(); } catch { data = null; }
-
-    if (!data || !data.program) {
-      eyebrow.textContent = 'Get set up';
-      title.textContent = 'Choose your programme to see your courses';
-      intro.textContent = 'Your account is ready — pick your programme and StudyCore will build your course space.';
-      link.style.display = 'none';
-      catalog.setAttribute('aria-busy', 'false');
-      catalog.className = '';
-      catalog.innerHTML = SCUi.state({
-        icon: 'school',
-        title: 'No programme selected yet',
-        body: 'Your programme decides which courses, notes, videos and past papers you can see.',
-        actions: '<a class="btn btn-primary btn-sm" href="/dashboard.html#profile">Choose programme</a>'
-      });
-      return;
-    }
-
-    const programName = data.program.shortName || data.program.name;
-    eyebrow.textContent = 'My programme';
-    title.textContent = `${data.program.name} — your courses`;
-    const uni = data.program.university;
-    const faculty = data.program.faculty;
-    intro.textContent = [uni && uni.name, faculty, `${data.courses.length} course${data.courses.length === 1 ? '' : 's'}`]
-      .filter(Boolean).join(' · ') + '.';
-
-    catalog.setAttribute('aria-busy', 'false');
-    if (!data.courses.length) {
-      catalog.className = '';
-      catalog.innerHTML = SCUi.state({
-        icon: 'library',
-        title: 'Courses coming soon',
-        body: 'Your programme has no courses yet. They appear here as soon as an administrator adds them.'
-      });
-      return;
-    }
-
-    catalog.innerHTML = data.courses.map((c) => SCUi.courseCard(c, { subtitle: escapeHtml(programName) })).join('');
-  }
-
-  function renderWorkspace(catalog, eyebrow, title, intro, link, user) {
-    const isAdminRole = StudyCoreAuth.isAdmin(user);
-    const dashboard = StudyCoreAuth.getDashboardPage(user);
-    eyebrow.textContent = isAdminRole ? 'Administration' : 'Content Admin';
-    title.textContent = isAdminRole ? 'Manage the course catalogue' : 'Your publishing workspace';
-    intro.textContent = isAdminRole
-      ? 'Create universities, faculties, programmes and courses, then publish resources against them.'
-      : 'Upload notes, videos and past papers for the courses you own.';
-    link.style.display = 'none';
-    catalog.setAttribute('aria-busy', 'false');
-    catalog.className = '';
-    catalog.innerHTML = SCUi.state({
-      icon: isAdminRole ? 'settings' : 'upload',
-      title: isAdminRole ? 'Universities, programmes and content' : 'Content Admin workspace',
-      body: isAdminRole
-        ? 'Everything students see is managed from the admin dashboard.'
-        : 'Open your dashboard to publish and manage your own resources.',
-      actions: `<a class="btn btn-primary btn-sm" href="${dashboard}">Open dashboard</a>`
-    });
-  }
-
-  async function renderVisitorCatalog(catalog, title, intro) {
-    let programs = [];
-    try {
-      const res = await fetch('/api/programs?counts=1', { credentials: 'include' });
-      if (res.ok) programs = (await res.json()).programs || [];
-    } catch { programs = []; }
-
-    setStat('pathPrograms', `${programs.length} programmes`);
-    catalog.setAttribute('aria-busy', 'false');
-
-    if (!programs.length) {
-      catalog.className = '';
-      catalog.innerHTML = SCUi.state({
-        kind: 'error',
-        title: 'Could not load programmes',
-        body: 'Please refresh the page to try again.',
-        actions: '<a class="btn btn-primary btn-sm" href="/signup.html">Create an account</a>'
-      });
-      return;
-    }
-
-    intro.textContent = 'Choose your faculty or student category at signup and StudyCore shows only the courses you study.';
-    catalog.innerHTML = programs.map(programCard).join('');
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+  else init();
 })();

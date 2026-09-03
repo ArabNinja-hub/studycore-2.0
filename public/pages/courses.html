@@ -1,25 +1,100 @@
 <!DOCTYPE html>
-<html lang="en"><head>
-  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CBU First-Year Courses | StudyCore</title>
-  <meta name="description" content="Find your Copperbelt University first-year course and study notes, tutorials, videos and past papers." />
-  <link rel="canonical" href="https://studycore.academy/pages/courses.html" /><link rel="icon" href="/favicon.ico" />
-  <link rel="stylesheet" href="/css/style.css" /><link rel="stylesheet" href="/css/redesign.css" />
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Course Directory | StudyCore</title>
+  <meta name="description" content="Browse StudyCore's university course directory by university, school, programme and year." />
+  <link rel="canonical" href="https://studycore.academy/pages/courses.html" />
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/redesign.css" />
 </head>
-<body data-page="courses"><div id="siteNav"></div><div id="mobileNavHost"></div>
-<main>
-  <section class="sc-courses-intro"><div class="container"><nav class="sc-trail" aria-label="Breadcrumb"><a href="/">StudyCore</a><span>›</span><b>Courses</b></nav><span class="eyebrow">Copperbelt University</span><h1>CBU First Year</h1><p>Find your course, then open a topic to start studying. Everything is organised in one clear place.</p></div></section>
-  <section class="section"><div class="container"><div class="sc-course-toolbar"><div><h2>First-year courses</h2><p>Choose from the courses available on StudyCore.</p></div><label class="sc-course-search"><span data-icon="search" data-icon-size="18"></span><input id="courseSearch" type="search" placeholder="Search by course or code" aria-label="Search courses"></label></div>
-    <div class="sc-first-year-grid sc-course-page-grid" id="courseGrid">
-      <a class="sc-first-course course-chemistry" data-search="ch110 chemistry" href="/course/ch110"><span class="sc-course-symbol" data-icon="flask" data-icon-size="22"></span><span><strong>CH110</strong><b>Chemistry</b><small>Bonding · gases · reactions</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-      <a class="sc-first-course course-physics" data-search="ph110 physics" href="/course/ph110"><span class="sc-course-symbol" data-icon="atom" data-icon-size="22"></span><span><strong>PH110</strong><b>Physics</b><small>Mechanics · waves · electricity</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-      <a class="sc-first-course course-maths" data-search="ma110 mathematics maths" href="/course/ma110"><span class="sc-course-symbol" data-icon="calculator" data-icon-size="22"></span><span><strong>MA110</strong><b>Mathematics</b><small>Functions · calculus · problem solving</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-      <a class="sc-first-course course-biology" data-search="bi110 biology" href="/course/bi110"><span class="sc-course-symbol" data-icon="dna" data-icon-size="22"></span><span><strong>BI110</strong><b>Biology</b><small>Cells · genetics · living systems</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-      <a class="sc-first-course course-language" data-search="la110 la111 language communication" href="/course/la111"><span class="sc-course-symbol" data-icon="message" data-icon-size="22"></span><span><strong>LA110</strong><b>Language</b><small>Reading · writing · communication</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-      <a class="sc-first-course course-computing" data-search="cs110 computer science programming" href="/course/cs110"><span class="sc-course-symbol" data-icon="code" data-icon-size="22"></span><span><strong>CS110</strong><b>Computer Science</b><small>Logic · programming · systems</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-    </div><div class="sc-no-results" id="courseNoResults" hidden>No courses match your search.</div>
-  </div></section>
-  <section class="sc-course-path"><div class="container"><div><span class="eyebrow">How StudyCore is organised</span><h2>Course → Topic → Resource</h2><p>Open a course to find focused topics. Each topic keeps notes, videos, tutorials and resources together. Past papers are easy to find at the bottom of every course.</p></div><a class="btn btn-outline" href="/pages/past-papers.html"><span data-icon="file" data-icon-size="17"></span> Browse Past Papers</a></div></section>
-</main><div id="siteFooter"></div>
-<script src="/js/icons.js"></script><script src="/js/api.js"></script><script src="/js/auth.js"></script><script src="/js/layout.js"></script><script src="/js/scroll-reveal.js"></script><script src="/js/courses-simple.js"></script>
-</body></html>
+<body data-page="courses">
+  <div id="siteNav"></div>
+  <div id="mobileNavHost"></div>
+
+  <main>
+    <!-- Directory hero: an explicit hierarchy makes the catalogue feel like
+         an LMS rather than a flat collection of subject tiles. -->
+    <section class="sc-directory-hero">
+      <div class="container">
+        <nav class="sc-trail" aria-label="Breadcrumb">
+          <a href="/">StudyCore</a>
+          <span class="sc-trail-sep" aria-hidden="true"><span data-icon="chevron-right" data-icon-size="13"></span></span>
+          <span class="sc-trail-current" aria-current="page">Course directory</span>
+        </nav>
+        <div class="sc-directory-hero-grid">
+          <div>
+            <span class="sc-hero-eyebrow"><span data-icon="library" data-icon-size="14"></span> University learning library</span>
+            <h1>Find the course you need to move forward.</h1>
+            <p>Browse by university, school, programme and year. Open a course to find its topics, lessons, tutorials, notes and past papers.</p>
+          </div>
+          <div class="sc-directory-hero-card">
+            <span class="sc-directory-hero-card-icon" data-icon="layers" data-icon-size="20"></span>
+            <div><strong>One clear learning path</strong><span>Programme → Course → Topic → Lesson</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section sc-directory-section">
+      <div class="container">
+        <!-- Signed-in learners see their own programme first. It is hidden for
+             visitors and shown by courses-page.js after the session resolves. -->
+        <section id="myCoursesSection" hidden aria-labelledby="coursesHeading">
+          <div class="sc-directory-my-banner" id="programBanner"></div>
+          <div class="sc-section-head">
+            <div>
+              <span class="eyebrow" id="coursesEyebrow">My programme</span>
+              <h2 id="coursesHeading">Your courses</h2>
+              <p id="coursesIntro">Your programme courses will appear here.</p>
+            </div>
+            <a class="sc-section-link" href="/dashboard.html">Open dashboard <span data-icon="arrow-right" data-icon-size="15"></span></a>
+          </div>
+          <div class="sc-course-grid" id="myCoursesGrid" aria-live="polite" aria-busy="true">
+            <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+            <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+          </div>
+        </section>
+
+        <div class="sc-directory-toolbar">
+          <div>
+            <span class="eyebrow">Explore the catalogue</span>
+            <h2>University courses</h2>
+            <p>Search by course code, title or subject, then open a course hub.</p>
+          </div>
+          <label class="sc-search-hero sc-directory-search" for="courseSearch">
+            <span class="sc-search-lead" data-icon="search" data-icon-size="18"></span>
+            <input id="courseSearch" type="search" autocomplete="off" placeholder="Search courses, for example CH110" aria-label="Search courses" />
+            <span class="sc-home-search-shortcut">/</span>
+          </label>
+        </div>
+
+        <div id="catalogueTree" class="sc-tree" aria-live="polite" aria-busy="true">
+          <div class="sc-skeleton-row sc-skeleton-directory" aria-hidden="true"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sc-directory-footer-cta">
+      <div class="container">
+        <div><span class="eyebrow">New to StudyCore?</span><h2>Choose your programme and make the library yours.</h2><p>Create an account to see your programme first, save progress and continue where you left off.</p></div>
+        <a class="btn btn-teal" href="/signup.html">Create a free account <span data-icon="arrow-right" data-icon-size="16"></span></a>
+      </div>
+    </section>
+  </main>
+
+  <div id="siteFooter"></div>
+
+  <script src="/js/icons.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/programs.js"></script>
+  <script src="/js/components.js"></script>
+  <script src="/js/scroll-reveal.js"></script>
+  <script src="/js/courses-page.js"></script>
+</body>
+</html>
