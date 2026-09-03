@@ -4,64 +4,266 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StudyCore — Your University. Your Courses. Your Success.</title>
-  <meta name="description" content="Notes, past papers, tutorials and videos for Copperbelt University first-year students." />
+  <meta name="description" content="StudyCore brings university courses, guided tutorials, study notes, video lessons and past papers together in one focused learning space." />
   <link rel="canonical" href="https://studycore.academy/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="StudyCore" />
+  <meta property="og:title" content="StudyCore — Your University. Your Courses. Your Success." />
+  <meta property="og:description" content="A focused university learning platform for courses, tutorials, notes, video lessons and past papers." />
+  <meta property="og:url" content="https://studycore.academy/" />
+  <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
   <link rel="icon" href="/favicon.ico" />
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/redesign.css" />
 </head>
 <body data-page="home">
-  <div id="siteNav"></div><div id="mobileNavHost"></div>
+  <div id="siteNav"></div>
+  <div id="mobileNavHost"></div>
+
   <main>
-    <section class="sc-new-hero">
-      <div class="container sc-new-hero-inner">
-        <div class="sc-new-hero-copy">
-          <span class="sc-new-kicker"><span data-icon="school" data-icon-size="15"></span> Copperbelt University · First Year</span>
-          <h1>Study smarter.<br><span>Start with your course.</span></h1>
-          <p>Notes, past papers, tutorials and videos — organised by course, so you can focus on studying.</p>
-          <div class="sc-new-actions"><a class="btn btn-primary btn-lg" href="/pages/courses.html"><span data-icon="book-open" data-icon-size="18"></span> Explore Courses</a><a class="btn btn-outline btn-lg" href="/login.html">Login</a></div>
-          <div hidden><a id="heroStartCta" href="/signup.html">Get Started</a><a href="/pages/past-papers.html">Browse Past Papers</a></div>
+    <!-- A calm, course-first hero: the visual language borrows Moodle's clear
+         learning promise and the tutorial-library feel of Mighty Axon, while
+         keeping StudyCore's university focus and brand. -->
+    <section class="sc-hero sc-home-hero">
+      <div class="container sc-hero-inner">
+        <div class="sc-home-hero-copy">
+          <span class="sc-hero-eyebrow" id="heroEyebrow">
+            <span data-icon="school" data-icon-size="14"></span>
+            Copperbelt University · First Year
+          </span>
+          <h1>Your University.<br />Your Courses.<br /><em>Your Success.</em></h1>
+          <p class="sc-hero-lead" id="heroLead">
+            Learn in one focused space. Find the right course, open a topic and work through
+            clear tutorials, study notes, video lessons and past papers.
+          </p>
+          <div class="sc-hero-actions">
+            <a class="btn btn-teal btn-lg" href="/pages/courses.html">
+              <span data-icon="book-open" data-icon-size="18"></span> Explore Courses
+            </a>
+            <a class="btn btn-on-dark btn-lg" href="/pages/past-papers.html">
+              <span data-icon="file-text" data-icon-size="18"></span> Browse Past Papers
+            </a>
+          </div>
+          <div class="sc-home-hero-links">
+            <a id="heroStartCta" href="/signup.html" class="sc-home-start-link">
+              <span class="sc-home-start-icon" data-icon="arrow-right" data-icon-size="15"></span>
+              Start your free 30-day trial
+            </a>
+            <span class="sc-home-hero-note"><span data-icon="check-circle" data-icon-size="15"></span> Notes and past papers available during your trial</span>
+          </div>
         </div>
-        <div class="sc-new-hero-map" aria-label="StudyCore learning path">
-          <div class="sc-map-label">Your study path</div>
-          <div class="sc-map-step"><span class="sc-map-number">01</span><span><b>Choose a course</b><small>CH110 · Chemistry</small></span></div>
-          <div class="sc-map-line"></div>
-          <div class="sc-map-step"><span class="sc-map-number">02</span><span><b>Open a topic</b><small>Chemical Bonding</small></span></div>
-          <div class="sc-map-line"></div>
-          <div class="sc-map-step"><span class="sc-map-number">03</span><span><b>Study the resource</b><small>Notes · videos · tutorials</small></span></div>
+
+        <div class="sc-hero-panel sc-home-path-panel" aria-label="How StudyCore is organised">
+          <div class="sc-hero-panel-head">
+            <strong>Your learning path</strong>
+            <span>Simple by design</span>
+          </div>
+          <ol class="sc-path-list">
+            <li class="sc-path-item is-done">
+              <span class="sc-path-node"><span data-icon="library" data-icon-size="15"></span></span>
+              <span class="sc-path-label">Choose a course</span>
+              <span class="sc-path-meta">CH110</span>
+            </li>
+            <li class="sc-path-item is-done">
+              <span class="sc-path-node"><span data-icon="layers" data-icon-size="15"></span></span>
+              <span class="sc-path-label">Open a topic</span>
+              <span class="sc-path-meta">Bonding</span>
+            </li>
+            <li class="sc-path-item">
+              <span class="sc-path-node"><span data-icon="play" data-icon-size="15"></span></span>
+              <span class="sc-path-label">Study the lesson</span>
+              <span class="sc-path-meta">Video · Notes</span>
+            </li>
+            <li class="sc-path-item">
+              <span class="sc-path-node"><span data-icon="check-circle" data-icon-size="15"></span></span>
+              <span class="sc-path-label">Track your progress</span>
+              <span class="sc-path-meta">Your pace</span>
+            </li>
+          </ol>
+          <div class="sc-home-panel-callout">
+            <span class="sc-home-callout-icon" data-icon="sparkles" data-icon-size="16"></span>
+            <span><b>Everything stays together</b><small>Course → Topic → Lesson</small></span>
+          </div>
+        </div>
+      </div>
+      <div class="sc-home-hero-orb sc-home-orb-one" aria-hidden="true"></div>
+      <div class="sc-home-hero-orb sc-home-orb-two" aria-hidden="true"></div>
+    </section>
+
+    <!-- Lightweight proof / orientation strip, like an LMS dashboard summary. -->
+    <section class="sc-strip sc-home-stats" aria-label="StudyCore at a glance">
+      <div class="container sc-strip-inner">
+        <div class="sc-strip-cell">
+          <span class="sc-strip-ic" data-icon="globe" data-icon-size="19"></span>
+          <span><strong id="statUniversities">1</strong><span>university catalogue</span></span>
+        </div>
+        <div class="sc-strip-cell">
+          <span class="sc-strip-ic" data-icon="school" data-icon-size="19"></span>
+          <span><strong id="statPrograms">6</strong><span>first-year programmes</span></span>
+        </div>
+        <div class="sc-strip-cell">
+          <span class="sc-strip-ic" data-icon="book-open" data-icon-size="19"></span>
+          <span><strong id="statCourses">20+</strong><span>courses to explore</span></span>
+        </div>
+        <div class="sc-strip-cell">
+          <span class="sc-strip-ic" data-icon="file-text" data-icon-size="19"></span>
+          <span><strong id="statPapers">—</strong><span>past papers and exams</span></span>
         </div>
       </div>
     </section>
 
-    <section class="sc-new-tools section-tight">
-      <div class="container"><div class="sc-tools-intro"><span class="eyebrow">Everything in one place</span><h2>Built for the way you study</h2></div>
-        <div class="sc-tool-list">
-          <div><span class="sc-tool-icon" data-icon="file-text" data-icon-size="20"></span><b>Course Notes</b><small>Clear, focused material</small></div>
-          <div><span class="sc-tool-icon" data-icon="file" data-icon-size="20"></span><b>Past Papers</b><small>Practise with real exams</small></div>
-          <div><span class="sc-tool-icon" data-icon="book-open" data-icon-size="20"></span><b>Tutorials</b><small>Work through problems</small></div>
-          <div><span class="sc-tool-icon" data-icon="video" data-icon-size="20"></span><b>Videos</b><small>Learn at your pace</small></div>
-          <div><span class="sc-tool-icon" data-icon="library" data-icon-size="20"></span><b>Study Resources</b><small>Find what you need quickly</small></div>
+    <!-- Course directory preview -->
+    <section class="section sc-home-catalog" id="course-library" aria-labelledby="catalogTitle">
+      <div class="container">
+        <div class="sc-section-head sc-home-section-head">
+          <div>
+            <span class="eyebrow" id="catalogEyebrow">Course library</span>
+            <h2 id="catalogTitle">Start with a course</h2>
+            <p id="catalogIntro">Browse the courses in the StudyCore learning library. Each one opens into topics, lessons and practice material.</p>
+          </div>
+          <a class="sc-section-link" id="catalogLink" href="/pages/courses.html">View the full directory <span data-icon="arrow-right" data-icon-size="15"></span></a>
+        </div>
+
+        <div class="sc-home-catalog-tools">
+          <label class="sc-search-hero sc-home-search" for="homeCourseSearch">
+            <span class="sc-search-lead" data-icon="search" data-icon-size="18"></span>
+            <input id="homeCourseSearch" type="search" autocomplete="off" placeholder="Search courses by name or code" aria-label="Search courses by name or code" />
+            <span class="sc-home-search-shortcut">/</span>
+          </label>
+          <div class="sc-home-quick-links" aria-label="Study resource shortcuts">
+            <a href="/pages/resources.html?type=document"><span data-icon="file-text" data-icon-size="15"></span> Notes</a>
+            <a href="/pages/resources.html?type=tutorial"><span data-icon="book-open" data-icon-size="15"></span> Tutorials</a>
+            <a href="/pages/videos.html"><span data-icon="video" data-icon-size="15"></span> Video lessons</a>
+          </div>
+        </div>
+
+        <div id="homeCatalog" class="sc-course-grid sc-home-course-grid" aria-live="polite" aria-busy="true">
+          <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+          <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+          <div class="sc-skeleton-row sc-skeleton-card" aria-hidden="true"></div>
+        </div>
+        <div id="homeCatalogEmpty" class="sc-state" hidden>
+          <span class="sc-state-ic"><span data-icon="search" data-icon-size="23"></span></span>
+          <h3>No courses match that search</h3>
+          <p>Try a course code such as CH110, or clear the search to browse the catalogue.</p>
         </div>
       </div>
     </section>
 
-    <section class="section sc-new-courses" aria-labelledby="firstYearTitle"><div class="container">
-      <div class="sc-new-section-head"><div><span class="eyebrow">CBU First Year</span><h2 id="firstYearTitle">Your courses</h2><p>Choose a course to find its topics, notes, videos and past papers.</p></div><a class="section-link" href="/pages/courses.html">View all courses <span data-icon="arrow-right" data-icon-size="15"></span></a></div>
-      <div class="sc-first-year-grid">
-        <a class="sc-first-course course-chemistry" href="/course/ch110"><span class="sc-course-symbol" data-icon="flask" data-icon-size="22"></span><span><strong>CH110</strong><b>Chemistry</b><small>Bonding · gases · reactions</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-        <a class="sc-first-course course-physics" href="/course/ph110"><span class="sc-course-symbol" data-icon="atom" data-icon-size="22"></span><span><strong>PH110</strong><b>Physics</b><small>Mechanics · waves · electricity</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-        <a class="sc-first-course course-maths" href="/course/ma110"><span class="sc-course-symbol" data-icon="calculator" data-icon-size="22"></span><span><strong>MA110</strong><b>Mathematics</b><small>Functions · calculus · problem solving</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-        <a class="sc-first-course course-biology" href="/course/bi110"><span class="sc-course-symbol" data-icon="dna" data-icon-size="22"></span><span><strong>BI110</strong><b>Biology</b><small>Cells · genetics · living systems</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-        <a class="sc-first-course course-language" href="/course/la111"><span class="sc-course-symbol" data-icon="message" data-icon-size="22"></span><span><strong>LA110</strong><b>Language</b><small>Reading · writing · communication</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
-        <a class="sc-first-course course-computing" href="/course/cs110"><span class="sc-course-symbol" data-icon="code" data-icon-size="22"></span><span><strong>CS110</strong><b>Computer Science</b><small>Logic · programming · systems</small></span><span class="sc-course-arrow" data-icon="arrow-up-right" data-icon-size="17"></span></a>
+    <!-- The resource model is made explicit, inspired by a tutorial platform's
+         easy-to-scan content categories. -->
+    <section class="sc-home-resource-band" aria-labelledby="resourceBandTitle">
+      <div class="container sc-home-resource-grid">
+        <div class="sc-home-resource-intro">
+          <span class="eyebrow">One study space</span>
+          <h2 id="resourceBandTitle">Everything you need to move forward.</h2>
+          <p>From the first explanation to exam-day practice, your study materials are organised around the course you are taking.</p>
+          <a class="btn btn-outline btn-sm" href="/pages/resources.html">Browse all resources <span data-icon="arrow-right" data-icon-size="15"></span></a>
+        </div>
+        <div class="sc-home-resource-links">
+          <a class="sc-home-resource-link is-notes" href="/pages/resources.html?type=document">
+            <span class="sc-home-resource-icon" data-icon="file-text" data-icon-size="21"></span>
+            <span><strong>Study notes</strong><small>Read concise explanations inside StudyCore.</small></span>
+            <span data-icon="arrow-up-right" data-icon-size="16"></span>
+          </a>
+          <a class="sc-home-resource-link is-tutorials" href="/pages/resources.html?type=tutorial">
+            <span class="sc-home-resource-icon" data-icon="list-checks" data-icon-size="21"></span>
+            <span><strong>Tutorial sheets</strong><small>Work through problems step by step.</small></span>
+            <span data-icon="arrow-up-right" data-icon-size="16"></span>
+          </a>
+          <a class="sc-home-resource-link is-videos" href="/pages/videos.html">
+            <span class="sc-home-resource-icon" data-icon="video" data-icon-size="21"></span>
+            <span><strong>Video lessons</strong><small>Watch when it suits your schedule.</small></span>
+            <span data-icon="arrow-up-right" data-icon-size="16"></span>
+          </a>
+          <a class="sc-home-resource-link is-papers" href="/pages/past-papers.html">
+            <span class="sc-home-resource-icon" data-icon="file" data-icon-size="21"></span>
+            <span><strong>Past papers</strong><small>Practise with real university exams.</small></span>
+            <span data-icon="arrow-up-right" data-icon-size="16"></span>
+          </a>
+        </div>
       </div>
-    </div></section>
+    </section>
+
+    <!-- Programme browser -->
+    <section class="section sc-home-programmes" aria-labelledby="programmesTitle">
+      <div class="container">
+        <div class="sc-section-head sc-home-section-head">
+          <div>
+            <span class="eyebrow">Choose your path</span>
+            <h2 id="programmesTitle">Browse by programme</h2>
+            <p>Pick the programme that matches your first year. StudyCore then keeps your course space focused.</p>
+          </div>
+          <a class="sc-section-link" href="/signup.html">Choose at signup <span data-icon="arrow-right" data-icon-size="15"></span></a>
+        </div>
+        <div id="homeProgramGrid" class="sc-home-program-grid" aria-live="polite" aria-busy="true">
+          <div class="sc-skeleton-row sc-skeleton-program" aria-hidden="true"></div>
+          <div class="sc-skeleton-row sc-skeleton-program" aria-hidden="true"></div>
+          <div class="sc-skeleton-row sc-skeleton-program" aria-hidden="true"></div>
+          <div class="sc-skeleton-row sc-skeleton-program" aria-hidden="true"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Dynamic past-paper teaser keeps the public landing page connected to
+         the real repository rather than using made-up exam content. -->
+    <section class="section-tight sc-home-papers" aria-labelledby="papersTitle">
+      <div class="container">
+        <div class="sc-section-head sc-home-section-head">
+          <div>
+            <span class="eyebrow">Practice library</span>
+            <h2 id="papersTitle">Latest past papers</h2>
+            <p>Filter by university, programme, course, year and examination type.</p>
+          </div>
+          <a class="sc-section-link" href="/pages/past-papers.html">Open past papers <span data-icon="arrow-right" data-icon-size="15"></span></a>
+        </div>
+        <div class="sc-home-paper-shell">
+          <div class="sc-home-paper-heading"><span><span data-icon="file" data-icon-size="16"></span> Recent uploads</span><span id="homePaperCount">Loading library…</span></div>
+          <div id="homePapers" class="sc-paper-list" aria-live="polite" aria-busy="true">
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
+            <div class="sc-skeleton-row" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- A concise three-step explanation answers the first-time learner's
+         question before the final sign-up prompt. -->
+    <section class="section sc-home-how" aria-labelledby="howTitle">
+      <div class="container">
+        <div class="sc-home-how-heading">
+          <span class="eyebrow">How StudyCore works</span>
+          <h2 id="howTitle">Less searching. More studying.</h2>
+        </div>
+        <div class="sc-home-steps">
+          <article class="sc-home-step"><span class="sc-home-step-number">01</span><span class="sc-home-step-icon" data-icon="target" data-icon-size="20"></span><h3>Find your course</h3><p>Browse the university directory or search by course code.</p></article>
+          <article class="sc-home-step"><span class="sc-home-step-number">02</span><span class="sc-home-step-icon" data-icon="layers" data-icon-size="20"></span><h3>Learn topic by topic</h3><p>Open a lesson, read the notes or practise with a tutorial.</p></article>
+          <article class="sc-home-step"><span class="sc-home-step-number">03</span><span class="sc-home-step-icon" data-icon="trending-up" data-icon-size="20"></span><h3>Keep your progress</h3><p>Mark lessons complete and return exactly where you left off.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="sc-home-final-cta">
+      <div class="container sc-home-final-inner">
+        <div><span class="eyebrow">Build your study routine</span><h2>Ready to make this semester count?</h2><p>Join StudyCore and bring your courses, tutorials, notes and past papers into one place.</p></div>
+        <div class="sc-home-final-actions"><a class="btn btn-teal btn-lg" href="/signup.html">Create your free account <span data-icon="arrow-right" data-icon-size="16"></span></a><a class="btn btn-on-dark" href="/pages/about.html">Learn about StudyCore</a></div>
+      </div>
+    </section>
   </main>
+
   <div id="siteFooter"></div>
-  <!-- Compatibility hooks retained for the existing live catalogue/reveal stack. The visible home is intentionally the simpler CBU-first surface. -->
-  <div id="homeCatalog" hidden></div><div id="homePapers" hidden></div>
-  <!-- StudyCore — Your University. Your Courses. <em>Your Success.</em> -->
-  <script src="/js/icons.js"></script><script src="/js/api.js"></script><script src="/js/auth.js"></script><script src="/js/layout.js"></script><script src="/js/scroll-reveal.js"></script>
-  <!-- <script src="/js/components.js"></script><script src="/js/home.js"></script> -->
-  <script src="/js/home-simple.js"></script>
-</body></html>
+
+  <script src="/js/icons.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/layout.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/programs.js"></script>
+  <script src="/js/components.js"></script>
+  <script src="/js/scroll-reveal.js"></script>
+  <script src="/js/home.js"></script>
+  <!-- Compatibility entry point retained for integrations that load the small
+       icon-only home controller independently. -->
+  <!-- <script src="/js/home-simple.js"></script> -->
+</body>
+</html>
