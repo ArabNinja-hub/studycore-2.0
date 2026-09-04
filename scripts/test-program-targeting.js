@@ -18,6 +18,9 @@ const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studycore-program-tar
 process.env.DATA_DIR = testDataDir;
 process.env.ADMIN_EMAIL = 'admin@targeting-test.com';
 process.env.ADMIN_PASSWORD = 'Targeting-Pass-1';
+// Mandatory startup secrets (no dev fallbacks) - test-only values.
+process.env.JWT_SECRET = 'test-only-studycore-jwt-secret-0123456789';
+process.env.CONTENT_ADMIN_ACCESS_CODE = 'content-admin-test-access-code';
 
 const db = require('../db');
 const { createToken, COOKIE_NAME } = require('../middleware/auth');

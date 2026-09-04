@@ -22,12 +22,49 @@ const quizRoutes = require('./routes/quiz.routes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Stop advertising the framework (X-Powered-By: Express).
+app.disable('x-powered-by');
+
 app.set('trust proxy', 1);
 
-app.use(cors({ origin: true, credentials: true }));
+// ---- CORS ------------------------------------------------------------------
+// The entire frontend is served SAME-ORIGIN by this process, so normal
+// browser traffic carries no cross-origin Origin header and is unaffected.
+// CORS exists only for explicitly trusted external origins. Arbitrary
+// origins must never receive Access-Control-Allow-Origin with credentials -
+// that would let any site read the victim's authenticated responses.
+const DEFAULT_CORS_ORIGINS = [
+  'https://studycore.academy',
+  'https://www.studycore.academy'
+];
+const allowedOrigins = new Set([
+  ...DEFAULT_CORS_ORIGINS,
+  ...String(process.env.CORS_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean)
+]);
+
+app.use(cors({
+  origin(origin, callback) {
+    // No Origin header => same-origin request, curl, or a native app: fine.
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.has(origin)) return callback(null, true);
+    // Rejected with a 403 in the error handler - no ACAO header is ever
+    // sent for an unknown origin, so the browser blocks the response.
+    return callback(new Error('CORS_ORIGIN_NOT_ALLOWED'));
+  },
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(cookieParser());
 app.use(securityHeaders);
+
+// ---------------------------------------------------------------------------
+// Rate limiting (per client IP; see middleware/security.js for the
+// single-instance vs. multi-instance notes). The existing auth limits are
+// kept as-is; the additions below protect the other sensitive
+// state-changing endpoints. Deliberately NO global limit - ordinary student
+// browsing of public pages must never be throttled.
+// ---------------------------------------------------------------------------
 
 // Brute-force protection: 20 attempts per minute per IP is generous for a
 // real user who mistypes a password, but stops automated credential guessing.
@@ -44,6 +81,29 @@ app.use(['/api/auth/register-content-admin', '/api/auth/content-admin/register']
 // password is still verified server-side; this just stops credential
 // guessing by IP).
 app.use('/api/auth/password', authRateLimit);
+// Payment submission: a student makes at most a couple of requests per
+// session; 10 per 15 minutes blocks scripted payment spam.
+const paymentLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+app.use('/api/auth/subscribe', paymentLimit);
+// Profile changes: 20 per hour is plenty for a real user correcting details.
+const profileLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 20 });
+app.use('/api/auth/profile', profileLimit);
+// Uploads are the most expensive request type (large bodies, storage I/O):
+// 30 per 15 minutes per IP is generous for a Content Admin publishing a
+// batch of notes and hostile to an automated upload flood.
+const uploadLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+app.use(['/api/admin/resources', '/api/content-admin/resources', '/api/quiz/image'], uploadLimit);
+// Avatar uploads: 10 per hour per IP.
+const avatarLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10 });
+app.use('/api/auth/avatar', avatarLimit);
+// Sensitive admin / Content Admin API surfaces: the dashboards make at most
+// a handful of calls per interaction, so these limits are wide enough for
+// real workflow but stop a compromised session being used at machine speed.
+const adminApiLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 300 });
+app.use('/api/admin', adminApiLimit);
+const contentAdminApiLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 150 });
+app.use('/api/content-admin', contentAdminApiLimit);
+
 app.use('/api/auth', authRoutes);
 
 // Public site config. Official WhatsApp links live in .env so the owner can
@@ -185,18 +245,58 @@ app.get('*', (req, res) => {
 });
 
 // ---- Error handling ---------------------------------------------------------
+// Internal errors (SQLite, filesystem, R2/AWS, stacks, paths) NEVER reach
+// the client: they are logged server-side and the client receives only a
+// generic message. Client-facing validation errors are the only errors that
+// carry a human message, and they must explicitly opt in by setting
+// `statusCode` (4xx) + `message` in our own code (e.g. upload file filters).
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({ message: `File is too large. Max allowed size is ${process.env.MAX_UPLOAD_MB || 2000}MB.` });
+      return res.status(413).json({ message: 'File is too large.' });
     }
-    return res.status(400).json({ message: err.message });
+    return res.status(400).json({ message: 'Invalid upload request.' });
   }
+
+  // Unknown CORS origin (raised in the cors() origin callback above).
+  if (err && err.message === 'CORS_ORIGIN_NOT_ALLOWED') {
+    return res.status(403).json({ message: 'Origin not allowed by CORS policy.' });
+  }
+
+  // Our own validation errors (e.g. rejected file type) set an explicit
+  // 4xx statusCode AND a userSafe marker; their messages are written for
+  // users, not for logs. Errors from third-party middleware (e.g. the JSON
+  // body parser) are never relayed - only their status code is.
+  if (err && err.userSafe && Number.isInteger(err.statusCode) && err.statusCode >= 400 && err.statusCode < 500) {
+    return res.status(err.statusCode).json({ message: err.message });
+  }
+
+  // Malformed request body from the JSON body parser: generic 400 (or 413
+  // when the payload exceeds the size limit), never the parser's own
+  // error text.
+  if (err && err.type && String(err.type).startsWith('entity.')) {
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ message: 'Request body is too large.' });
+    }
+    return res.status(400).json({ message: 'Invalid request body.' });
+  }
+
+  // Everything else: log the full error server-side, answer generically.
   if (err) {
     console.error(err);
-    return res.status(400).json({ message: err.message || 'Something went wrong.' });
+    if (res.headersSent) return next(err);
+    return res.status(500).json({ message: 'Something went wrong. Please try again.' });
   }
   next();
+});
+
+// Express 4 does not forward rejected promises from async route handlers to
+// the error middleware above; without this net, one unexpected throw (e.g. a
+// SQLite constraint hit by a race) would crash the whole server - a trivial
+// denial of service. Log and keep serving; the failed request times out on
+// the client side instead of taking down every other user.
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
 });
 
 // Exporting the configured app keeps the production server unchanged while

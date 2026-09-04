@@ -390,24 +390,35 @@ router.get('/:id/manage', requireAuth, requireRole(...AUTHOR_ROLES), (req, res) 
 // ── Image upload (posted by admin / Content Admin) ──
 // Images are streamed to the same bucket as every other upload; only the key
 // (never a public URL) is stored on the question. Served back via GET /image/:key.
+// Only inert raster types are accepted: SVG is deliberately excluded because
+// a same-origin image/svg+xml response can carry active content
+// (scripts/foreignObject) - a stored XSS vector when rendered in the quiz.
+const QUIZ_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
 router.post('/image', requireAuth, requireRole(...AUTHOR_ROLES), upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'Choose an image to upload.' });
   const mime = String(req.file.mimetype || '').toLowerCase();
-  if (!/^image\//.test(mime)) {
+  if (!QUIZ_IMAGE_MIMES.has(mime)) {
     storage.deleteObject(req.file.key).catch(() => {});
-    return res.status(400).json({ message: 'Quiz images must be image files (JPG, PNG, WebP, GIF).' });
+    return res.status(400).json({ message: 'Quiz images must be PNG, JPEG, WebP or GIF files.' });
   }
   return res.status(201).json({ key: req.file.key });
 });
 
 // Serve a quiz image. Session-gated (the quiz surface is for signed-in users
 // only); safeKey() rejects any non-issued key, so traversal is impossible.
+// Only known-safe raster types are ever rendered: SVG and any other type is
+// refused, so a legacy object from before the raster-only upload rule can
+// never execute active content on this origin.
 router.get('/image/:key', requireAuth, (req, res) => {
   const key = normalizeKey(req.params.key);
   if (!key) return res.status(400).json({ message: 'Invalid image reference.' });
   storage.headObject(key).then(async (meta) => {
+    const type = String(meta.contentType || '').trim().toLowerCase().split(';')[0].trim();
+    if (!QUIZ_IMAGE_MIMES.has(type)) {
+      return res.status(404).json({ message: 'Image not found.' });
+    }
     const object = await storage.getObject(key);
-    const type = meta.contentType || 'application/octet-stream';
     res.setHeader('Content-Type', type);
     res.setHeader('Cache-Control', 'private, max-age=300');
     res.setHeader('X-Content-Type-Options', 'nosniff');

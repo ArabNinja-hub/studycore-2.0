@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { createToken, setAuthCookie, clearAuthCookie, requireAuth, requireRole, attachUser } = require('../middleware/auth');
-const { avatarUpload } = require('../middleware/upload');
+const { avatarUpload, resolveMaxUploadMb } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const { validProgramCode } = require('../lib/program-access');
 const {
@@ -43,12 +43,18 @@ function normalizeProgramCode(value) {
   return validProgramCode(value);
 }
 
-// The authorization code is intentionally server-only. Deployments may set
-// CONTENT_ADMIN_ACCESS_CODE as an environment secret; the required platform
-// value remains the fallback so an existing installation works without any
-// frontend configuration. It is never returned, stored, logged or embedded
-// in a browser asset.
-const CONTENT_ADMIN_ACCESS_CODE = process.env.CONTENT_ADMIN_ACCESS_CODE || 'Studycore2026#';
+// The authorization code is intentionally server-only. It is never returned,
+// stored, logged or embedded in a browser asset. There is deliberately NO
+// hard-coded fallback: the production source must not contain a real Content
+// Admin access code, so a deployment without the environment variable fails
+// at startup instead of opening a public registration path.
+const CONTENT_ADMIN_ACCESS_CODE = process.env.CONTENT_ADMIN_ACCESS_CODE;
+
+if (!CONTENT_ADMIN_ACCESS_CODE) {
+  throw new Error(
+    'FATAL: CONTENT_ADMIN_ACCESS_CODE environment variable is required.'
+  );
+}
 
 function validContentAdminAccessCode(value) {
   const expected = Buffer.from(CONTENT_ADMIN_ACCESS_CODE, 'utf8');
@@ -410,7 +416,7 @@ router.post('/subscribe', requireAuth, requireRole(ROLES.STUDENT), (req, res) =>
 
 router.get('/config', requireAuth, (req, res) => {
   res.json({
-    maxUploadMB: Number(process.env.MAX_UPLOAD_MB || 2000)
+    maxUploadMB: resolveMaxUploadMb()
   });
 });
 

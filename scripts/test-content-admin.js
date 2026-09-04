@@ -13,6 +13,9 @@ const test = require('node:test');
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studycore-content-admin-'));
 process.env.DATA_DIR = testDataDir;
 process.env.CONTENT_ADMIN_ACCESS_CODE = 'content-admin-test-access-code';
+// JWT_SECRET is mandatory at startup (no dev fallback) - this suite provides
+// its own fixed, test-only secret.
+process.env.JWT_SECRET = 'test-only-studycore-jwt-secret-0123456789';
 
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');

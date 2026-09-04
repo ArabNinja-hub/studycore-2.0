@@ -166,12 +166,14 @@ npm start
 
 | Variable | Purpose |
 |---|---|
-| `PORT` / `NODE_ENV` | Port; `production` makes cookies `secure` |
-| `JWT_SECRET` | **Change this** - signs session tokens |
+| `PORT` / `NODE_ENV` | Port; `production` makes cookies `secure` and enables HSTS over HTTPS |
+| `JWT_SECRET` | **Required** - signs session tokens. Must be at least 32 characters; the app refuses to start without it (no dev fallback). |
+| `CONTENT_ADMIN_ACCESS_CODE` | **Required** - server-side registration code for Content Admin accounts. Never exposed to the frontend; the app refuses to start without it. |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | Seeded admin, created once on first boot |
-| `MAX_UPLOAD_MB` | Max upload size (default 2000MB) |
+| `MAX_UPLOAD_MB` | Max upload size in MB (default 200, hard cap 2048) |
+| `CORS_ALLOWED_ORIGINS` | Optional comma-separated extra trusted origins (defaults to `studycore.academy` + `www`) |
 | `DATA_DIR` | Persistent disk path for the SQLite file (Render etc.) |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage. If these are unset, uploads stream to `DATA_DIR/uploads` instead so local development still works. |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage. **Required in production** - with `NODE_ENV=production` the app refuses to start if R2 is not configured. In local development uploads stream to `DATA_DIR/uploads` instead. |
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP for the access-granted email sent when a payment is approved. Unset = email is logged to console instead of sent. |
 | `APP_URL` | Public base URL of this deployment, used for links inside emails |
@@ -186,8 +188,10 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
 
 1. **Persistent disk for `data/`** (the SQLite file). Uploaded files live in R2 and
    survive on their own.
-2. **Real environment variables** - `JWT_SECRET`, `ADMIN_PASSWORD`,
-   `NODE_ENV=production`, the four `R2_*` variables.
+2. **Real environment variables** - `JWT_SECRET` (32+ chars),
+   `CONTENT_ADMIN_ACCESS_CODE`, `ADMIN_PASSWORD`, `NODE_ENV=production`,
+   the four `R2_*` variables. The app refuses to start in production
+   without all of them.
 
 ### Search Console / SEO
 

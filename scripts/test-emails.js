@@ -17,6 +17,9 @@ const http = require('node:http');
 const path = require('node:path');
 const test = require('node:test');
 
+// JWT_SECRET is mandatory at startup (no dev fallback) - tests provide their
+// own fixed, test-only secret.
+process.env.JWT_SECRET = 'test-only-studycore-jwt-secret-0123456789';
 const db = require('../db');
 const { createToken, COOKIE_NAME } = require('../middleware/auth');
 const mailer = require('../lib/mailer');
