@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { DatabaseSync } = require('node:sqlite');
-const { seedProgramCatalog } = require('../lib/programs');
+const { seedProgramCatalog, pruneLegacySeedCourses } = require('../lib/programs');
 const { ROLES } = require('../lib/roles');
 
 // On Render, set DATA_DIR to the mounted persistent disk's path (e.g.
@@ -616,6 +616,12 @@ migrateBareUuidDocuments();
 // Idempotent — only inserts rows that do not yet exist, so admin-managed
 // programs/courses survive every restart.
 seedProgramCatalog(db);
+
+// Databases created by an earlier build still contain that build's full
+// multi-year course dump. Seeding cannot remove rows, so prune the stale
+// non-first-year seed courses here (content-bearing and admin-created
+// courses are never touched). See lib/programs.js for the exact rules.
+pruneLegacySeedCourses(db);
 
 function seedAdmin() {
   const existingAdmin = db.prepare(`SELECT id FROM users WHERE role = '${ROLES.ADMIN}' LIMIT 1`).get();

@@ -30,7 +30,7 @@ process.env.ADMIN_EMAIL = 'admin@catalog-test.com';
 process.env.ADMIN_PASSWORD = 'Catalog-Pass-1';
 
 const db = require('../db');
-const { PROGRAM_CATALOG, COURSE_CATALOG, courseCodeToSlug } = require('../lib/programs');
+const { PROGRAM_CATALOG, COURSE_CATALOG, courseCodeToSlug, pruneLegacySeedCourses } = require('../lib/programs');
 const { createToken, COOKIE_NAME } = require('../middleware/auth');
 // server.js exports its production app without binding a port when required,
 // so this suite exercises the real API middleware end to end.
@@ -284,4 +284,71 @@ test('the client mirror resolves built-environment course links by slug', () => 
     SCPrograms.courseLabel({ code: 'ESQ 420', name: 'Theory and Practice of Quantity Surveying' }),
     'ESQ 420 — Theory and Practice of Quantity Surveying'
   );
+});
+
+// ---- 4. Legacy multi-year seed rows are pruned on boot --------------------
+//
+// Seeding is INSERT OR IGNORE, so an existing deployment keeps every course an
+// earlier build seeded — which is why the live site still advertised 31
+// Business Studies, 118 Built Environment and 45 SICT courses for a first
+// year. pruneLegacySeedCourses() removes those stale seed rows on boot.
+
+test('legacy non-first-year seed courses are pruned, admin & content courses are not', () => {
+  const now = new Date().toISOString();
+  const legacy = ['EBA/B 250', 'ESQ 420', 'CS 280'];
+  for (const code of legacy) {
+    const id = `course-${courseCodeToSlug(code)}`;
+    db.prepare('INSERT OR IGNORE INTO courses (id, code, slug, name, icon, subject, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, code, courseCodeToSlug(code), code, 'book-open', null, now);
+    db.prepare('INSERT OR IGNORE INTO program_courses (program_code, course_id, sort_order) VALUES (?, ?, ?)')
+      .run('SBE', id, 90);
+  }
+  // An admin-created course (uuid id) must survive untouched.
+  db.prepare('INSERT OR IGNORE INTO courses (id, code, slug, name, icon, subject, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run('course-admin-made', 'ES 999', 'es999', 'Admin added course', 'book-open', null, now);
+  db.prepare('INSERT OR IGNORE INTO program_courses (program_code, course_id, sort_order) VALUES (?, ?, ?)')
+    .run('SBE', 'course-admin-made', 91);
+  // A legacy course that already holds content must survive too.
+  db.prepare('INSERT OR IGNORE INTO resources (id, title, category, course_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run('legacy-resource', 'Old notes', 'notes', `course-${courseCodeToSlug('ESQ 420')}`, now, now);
+
+  const first = pruneLegacySeedCourses(db);
+  assert.equal(first.removed, 2, 'empty legacy seed courses must be removed');
+  assert.equal(first.kept, 1, 'a legacy course with content is kept, not silently deleted');
+
+  const codes = db.prepare(`
+    SELECT c.code FROM program_courses pc
+    JOIN courses c ON c.id = pc.course_id
+    WHERE pc.program_code = 'SBE'
+  `).all().map((r) => r.code);
+  assert.ok(!codes.includes('EBA/B 250'));
+  assert.ok(!codes.includes('CS 280'));
+  assert.ok(codes.includes('ES 999'), 'admin-created courses are never pruned');
+  assert.ok(codes.includes('ESQ 420'), 'content-bearing courses are never pruned');
+  for (const code of ['ES 100', 'ES 110', 'ES 150']) {
+    assert.ok(codes.includes(code), `${code} is first year and must stay`);
+  }
+
+  // Idempotent: a second pass on the same database changes nothing more.
+  const second = pruneLegacySeedCourses(db);
+  assert.equal(second.removed, 0);
+
+  // Clean up the fixtures this test introduced so it does not affect others.
+  db.prepare('DELETE FROM resources WHERE id = ?').run('legacy-resource');
+  for (const id of [`course-${courseCodeToSlug('ESQ 420')}`, 'course-admin-made']) {
+    db.prepare('DELETE FROM program_courses WHERE course_id = ?').run(id);
+    db.prepare('DELETE FROM courses WHERE id = ?').run(id);
+  }
+});
+
+test('every program advertises a believable first-year course count', async () => {
+  const res = await call('GET', '/api/programs?counts=1');
+  assert.equal(res.status, 200);
+  for (const p of res.data.programs) {
+    const expected = COURSE_CATALOG.filter((c) => c.programs.includes(p.code)).length;
+    assert.equal(p.courseCount, expected,
+      `${p.code} advertises ${p.courseCount} courses but the first-year catalog has ${expected}`);
+    assert.ok(p.courseCount > 0 && p.courseCount <= 12,
+      `${p.code} course count ${p.courseCount} is not a first-year workload`);
+  }
 });

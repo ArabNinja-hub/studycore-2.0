@@ -19,6 +19,19 @@ seeded — the admin adds them per programme from the dashboard. This keeps the
 advertised course counts honest (Built Environment first year = 7, not the
 full 118 across all years and degrees).
 
+**Existing deployments:** seeding is `INSERT OR IGNORE`, so it can only ever add
+rows — a database created by an older build kept that build's full multi-year
+dump and still advertised 31 Business Studies, 118 Built Environment and 45
+SICT courses to first years. `pruneLegacySeedCourses()` (lib/programs.js, run
+from db/index.js on every boot) removes those leftovers. It only deletes
+courses that (a) carry the deterministic seed id `course-<slug>`, (b) are not
+in the first-year catalog, and (c) have no resources attached. Admin-created
+courses (`course-<uuid>`) and any course that already holds content are kept
+and logged instead, so nothing students use disappears silently.
+
+Expected first-year course counts: Law 7, Business Studies 8, SNR 5,
+School of Mines 6, Non-Quota 6, SICT 5, Built Environment 7.
+
 ---
 
 ## School of the Built Environment (SBE) — program code `SBE`
