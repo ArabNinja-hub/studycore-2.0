@@ -11,6 +11,14 @@ lists a course by title only (or the code is ambiguous), leave it out of the
 seed and let the admin add it from the dashboard — an invented code is worse
 than a missing one, because students bookmark it and content is attached to it.
 
+**Scope:** the catalog is **first-year only**. CBU course codes carry their
+year block in the hundreds digit (`BS 1xx`, `CS 2xx`, `ES 3xx` ...), so every
+course seeded here is a year-1 course and each program's course list is that
+school's true first-year foundation. Later-year courses are deliberately not
+seeded — the admin adds them per programme from the dashboard. This keeps the
+advertised course counts honest (Built Environment first year = 7, not the
+full 118 across all years and degrees).
+
 ---
 
 ## School of the Built Environment (SBE) — program code `SBE`
@@ -30,16 +38,19 @@ shared foundation block rather than five separate programs.
 | About / history | `cbu.ac.zm/schoolsAndUnits/schoolofthebuiltenvironment/?page_id=17` |
 | Current programme index | `cbu.ac.zm/school/sbe/programmes` |
 
-Seeded: the shared first year (7 courses), the shared second year of the three
-construction-facing degrees (7 courses) and every programme-specific course,
-118 courses in total.
+Seeded: the shared first year (7 courses — the `ES 1xx` foundation every
+degree shares). The second- to fifth-year courses of the five degrees are not
+seeded; the admin adds them per programme once the codes are confirmed.
 
-### Naming notes
+### Naming notes (for the later-year courses the admin adds)
 
-CBU uses the same code with two different titles on different programme pages,
-and the courses table is keyed by code, so one title had to win:
+These rows concern the degree-specific second- to fifth-year courses that are
+**not** part of the first-year seed. They record the exact code + title CBU
+publishes so the admin adds the right one from the dashboard — CBU uses the
+same code with two different titles on different programme pages, and the
+courses table is keyed by code, so one title has to win:
 
-| Code | Titles CBU publishes | Seeded as |
+| Code | Titles CBU publishes | Use when adding |
 | --- | --- | --- |
 | `ES 210` | "Construction and Services I" (Architecture, Real Estate) / "Construction Technology and Building Services I" (QS, Construction Management) | Construction Technology and Building Services I |
 | `ES 230` | "Land Surveying" (Architecture, QS, CM) / "Land Information Systems" (Real Estate) | Land Surveying |
@@ -50,11 +61,11 @@ and the courses table is keyed by code, so one title had to win:
 
 Where the same *title* appears under different codes in different degrees
 (`ESA 500` / `ESB 500` / `ESQ 500` / `ESP 500` / `ESR 500` are all "Thesis
-Project"), the seeded name carries the degree in brackets so a Built
-Environment student can tell them apart. The codes stay exactly as CBU writes
-them, including the programme letters in `ESA/B 200`, `ES A/B 310`,
-`ESB/Q 250`, `EBA/B 250`, `ESB/B 320`, `ESA/P 350` — CBU needs those letters to
-distinguish near-identical courses (`ESB 310` vs `ES A/B 310`).
+Project"), the name carries the degree in brackets so a Built Environment
+student can tell them apart. The codes stay exactly as CBU writes them,
+including the programme letters in `ESA/B 200`, `ES A/B 310`, `ESB/Q 250`,
+`EBA/B 250`, `ESB/B 320`, `ESA/P 350` — CBU needs those letters to distinguish
+near-identical courses (`ESB 310` vs `ES A/B 310`).
 
 ---
 
@@ -73,8 +84,9 @@ foundation rows are attached to SICT as well as to SMMS/SMNS.
 CBU re-uses two codes with different titles across its two SICT degrees —
 `CS 445` is "Computer Security" in Computer Science and "Digital Electronics" in
 Computer Engineering, and `CS 491` is "Special Topics in Computer Science" vs
-"Digital Signal Processing". The Computer Science titles are seeded; the
-Computer Engineering variants are left to the admin.
+"Digital Signal Processing". When these later-year courses are added, use the
+Computer Science titles; the Computer Engineering variants are left to the
+admin.
 
 ---
 
