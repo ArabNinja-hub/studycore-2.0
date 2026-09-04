@@ -143,9 +143,8 @@ test('seeding produced one program_courses row per catalog assignment', () => {
 
 test('courses keep catalog order inside each program', () => {
   // The admin UI appends new courses at MAX(sort_order) + 1, so the seed has
-  // to number courses the same way or a program with a large catalog (the
-  // School of the Built Environment has 118) falls back to an alphabetical
-  // sort and buries its shared first year.
+  // to number courses the same way or a program falls back to an alphabetical
+  // sort and buries its shared first-year block.
   const byProgram = new Map();
   for (const course of COURSE_CATALOG) {
     for (const programCode of course.programs) {
@@ -203,24 +202,23 @@ test('a Built Environment student gets the CBU built-environment course list', a
   assert.equal(codes.length, expectedCount,
     `SBE should expose every seeded built-environment course (${expectedCount}), got ${codes.length}`);
 
-  // The shared ES 1xx first year plus one course from each of the five
-  // degrees CBU runs in the school.
+  // The shared ES 1xx first-year block — the only courses CBU seeds for SBE.
+  // (The degree-specific second- to fifth-year courses are deliberately not
+  // seeded; the admin adds them per programme from the dashboard.)
   for (const code of [
-    'ES 100',   // shared first year — Studio Project
-    'ES 142',   // shared first year — Communication Skills
-    'ESA 300',  // Bachelor of Architecture
-    'ESB 420',  // BSc Construction Management
-    'ESQ 420',  // BSc Quantity Surveying
-    'ESR 350',  // BSc Real Estate Studies
-    'ESP 440'   // BSc Urban and Regional Planning
+    'ES 100',   // Studio Project
+    'ES 110',   // Built Environment
+    'ES 120',   // Introduction to Economics
+    'ES 130',   // Introduction to Physical and Human Geography
+    'ES 141',   // Introduction to Sociology
+    'ES 142',   // Communication Skills
+    'ES 150'    // Mathematics
   ]) {
     assert.ok(codes.includes(code), `SBE course list is missing ${code}; got: ${codes.join(', ')}`);
   }
 
-  // Every course is reachable by its slug, including the codes CBU writes with
-  // a programme letter and a slash (ESA/B 200 -> esab200), which cannot be
-  // addressed by code in a URL.
-  for (const code of ['ES 100', 'ESA/B 200', 'ES A/B 310', 'ESB/Q 250', 'ESQ 420']) {
+  // Every seeded first-year course is reachable by its slug.
+  for (const code of ['ES 100', 'ES 110', 'ES 120', 'ES 141', 'ES 142', 'ES 150']) {
     const slug = courseCodeToSlug(code);
     const page = await call('GET', `/api/programs/course/${slug}`, { cookie: cookieFor(student) });
     assert.equal(page.status, 200, `SBE student must be able to open ${code} (${slug}): ${JSON.stringify(page.data)}`);
@@ -232,21 +230,22 @@ test('built-environment courses stay gated to Built Environment students', async
   const sbe = await makeStudent('Bea Two', 'bea2@catalog-test.com', 'SBE');
   const law = await makeStudent('Lex Three', 'lex3@catalog-test.com', 'LAW');
 
-  // A Law student must not be able to walk into a quantity-surveying course.
-  const lawSeesQs = await call('GET', '/api/programs/course/esq420', { cookie: cookieFor(law) });
-  assert.equal(lawSeesQs.status, 403, `LAW student opening ESQ 420 must be refused, got ${lawSeesQs.status}`);
+  // A Law student must not be able to walk into a Built Environment course.
+  const lawSeesSbe = await call('GET', '/api/programs/course/es150', { cookie: cookieFor(law) });
+  assert.equal(lawSeesSbe.status, 403, `LAW student opening ES 150 must be refused, got ${lawSeesSbe.status}`);
 
   // ...and an SBE student must not walk into the law library either.
   const sbeSeesLaw = await call('GET', '/api/programs/course/ls110', { cookie: cookieFor(sbe) });
   assert.equal(sbeSeesLaw.status, 403, `SBE student opening LS110 must be refused, got ${sbeSeesLaw.status}`);
 
   // Shared foundation courses still work across the programs that teach them:
-  // MA 210 is seeded for SICT, and MA110 for the Mines/Non-Quota/SNR group.
+  // MA110 is a first-year foundation shared by SICT and the Mines/Non-Quota
+  // group.
   const sict = await makeStudent('Cy Four', 'cy4@catalog-test.com', 'SICT');
   const sictMine = await call('GET', '/api/programs/mine', { cookie: cookieFor(sict) });
   const sictCodes = sictMine.data.courses.map((c) => c.code);
-  assert.ok(sictCodes.includes('CS 250'), `SICT must expose CBU's BSc Computer Science courses, got: ${sictCodes.join(', ')}`);
-  const sictOpens = await call('GET', `/api/programs/course/${courseCodeToSlug('CS 250')}`, { cookie: cookieFor(sict) });
+  assert.ok(sictCodes.includes('CS120'), `SICT must expose CBU's first-year courses, got: ${sictCodes.join(', ')}`);
+  const sictOpens = await call('GET', `/api/programs/course/${courseCodeToSlug('CS120')}`, { cookie: cookieFor(sict) });
   assert.equal(sictOpens.status, 200, JSON.stringify(sictOpens.data));
 });
 
