@@ -37,7 +37,7 @@
 
     const fileInput = document.getElementById('fileInput');
     if (category === 'video') fileInput.setAttribute('accept', '.mp4,.mov,.webm,.mkv,.avi,video/*');
-    else fileInput.setAttribute('accept', '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.svg');
+    else fileInput.setAttribute('accept', '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp');
   }
 
   function resetResourceForm() {

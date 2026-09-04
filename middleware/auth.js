@@ -5,8 +5,33 @@ const {
   dashboardPathForRole
 } = require('../lib/roles');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'studycore-dev-secret-change-me';
+// There is deliberately NO fallback secret. A deployment that boots without
+// JWT_SECRET (or with a weak one) must fail loudly at startup instead of
+// signing tokens with a value every attacker knows from the repository.
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  throw new Error(
+    'FATAL: JWT_SECRET must be set and contain at least 32 characters.'
+  );
+}
+
+// Issuer/audience pin tokens to StudyCore (issuer) and to the web app
+// (audience), so a token cannot be replayed against a different service
+// that happens to share the same secret.
+const JWT_ISSUER = 'studycore';
+const JWT_AUDIENCE = 'studycore-web';
 const COOKIE_NAME = 'sc_token';
+
+// The session lifetime is unchanged (7 days) - these hardening changes do
+// not shorten or extend existing sessions beyond that.
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+  maxAge: 7 * 24 * 60 * 60 * 1000
+};
 
 function createToken(user) {
   return jwt.sign({
@@ -16,20 +41,58 @@ function createToken(user) {
     // role from SQLite below. Keeping the claim canonical avoids old uppercase
     // values leaking back to the browser during a rolling upgrade.
     role: normalizeRole(user.role) || 'student'
-  }, JWT_SECRET, { expiresIn: '7d' });
-}
-
-function setAuthCookie(res, token) {
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 7 * 24 * 60 * 60 * 1000
+  }, JWT_SECRET, {
+    expiresIn: '7d',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE
   });
 }
 
+function setAuthCookie(res, token) {
+  res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS);
+}
+
+// Clearing with the SAME attributes as setAuthCookie matters: a Set-Cookie
+// only overwrites an earlier cookie when the path/domain/samesite match,
+// so a bare clearCookie() could leave the original session cookie alive.
 function clearAuthCookie(res) {
-  res.clearCookie(COOKIE_NAME);
+  res.clearCookie(COOKIE_NAME, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/'
+  });
+}
+
+// Single verification path for every consumer (attachUser, requireAuth,
+// requirePageAuth) so the issuer/audience rules cannot drift between them.
+//
+// Migration note: sessions issued before the issuer/audience claims were
+// introduced carry no such claims. Rather than force an application-wide
+// logout, those legacy tokens (signed with the same secret, expiring
+// naturally within 7 days) are still accepted; every newly issued token
+// carries both claims and any token whose claims do not match is rejected.
+function verifyToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET, {
+      issuer: JWT_ISSUER,
+      audience: JWT_AUDIENCE
+    });
+  } catch (err) {
+    const isClaimError = err && err.name === 'JsonWebTokenError' &&
+      /issuer|audience/i.test(String(err.message));
+    if (!isClaimError) return null;
+    try {
+      const legacyPayload = jwt.verify(token, JWT_SECRET);
+      // Only true legacy sessions (no issuer/audience claims at all) pass.
+      // A token with mismatched claims fails the strict check above and is
+      // also rejected here.
+      if (legacyPayload.iss !== undefined || legacyPayload.aud !== undefined) return null;
+      return legacyPayload;
+    } catch {
+      return null;
+    }
+  }
 }
 
 function getTokenFromRequest(req) {
@@ -61,8 +124,8 @@ function attachFreshUser(payload, freshUser) {
 function attachUser(req, res, next) {
   const token = getTokenFromRequest(req);
   if (token) {
-    try {
-      const payload = jwt.verify(token, JWT_SECRET);
+    const payload = verifyToken(token);
+    if (payload) {
       const freshUser = freshSessionUser(payload.id);
       if (isActive(freshUser)) {
         req.user = attachFreshUser(payload, freshUser);
@@ -70,7 +133,7 @@ function attachUser(req, res, next) {
         req.user = null;
         clearAuthCookie(res);
       }
-    } catch {
+    } else {
       req.user = null;
     }
   }
@@ -82,22 +145,19 @@ function attachUser(req, res, next) {
 function requireAuth(req, res, next) {
   const token = getTokenFromRequest(req);
   if (!token) return res.status(401).json({ message: 'Please log in to continue.' });
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    const freshUser = freshSessionUser(payload.id);
-    if (!freshUser) {
-      clearAuthCookie(res);
-      return res.status(401).json({ message: 'Account no longer exists.' });
-    }
-    if (!isActive(freshUser)) {
-      clearAuthCookie(res);
-      return res.status(403).json({ message: 'This account has been disabled. Please contact StudyCore support.' });
-    }
-    req.user = attachFreshUser(payload, freshUser);
-    return next();
-  } catch {
-    return res.status(401).json({ message: 'Your session has expired. Please log in again.' });
+  const payload = verifyToken(token);
+  if (!payload) return res.status(401).json({ message: 'Your session has expired. Please log in again.' });
+  const freshUser = freshSessionUser(payload.id);
+  if (!freshUser) {
+    clearAuthCookie(res);
+    return res.status(401).json({ message: 'Account no longer exists.' });
   }
+  if (!isActive(freshUser)) {
+    clearAuthCookie(res);
+    return res.status(403).json({ message: 'This account has been disabled. Please contact StudyCore support.' });
+  }
+  req.user = attachFreshUser(payload, freshUser);
+  return next();
 }
 
 // Accepts one role, multiple roles, or an array. The comparison normalizes
@@ -124,26 +184,23 @@ function requirePageAuth(...requestedRoles) {
   return (req, res, next) => {
     const token = getTokenFromRequest(req);
     if (!token) return res.redirect('/login.html');
-    try {
-      const payload = jwt.verify(token, JWT_SECRET);
-      const freshUser = freshSessionUser(payload.id);
-      if (!freshUser || !isActive(freshUser)) {
-        clearAuthCookie(res);
-        return res.redirect('/login.html?disabled=1');
-      }
-      const role = normalizeRole(freshUser.role);
-      if (!role) {
-        clearAuthCookie(res);
-        return res.redirect('/login.html');
-      }
-      if (allowed && !allowed.has(role)) {
-        return res.redirect(dashboardPathForRole(role));
-      }
-      req.user = attachFreshUser(payload, freshUser);
-      return next();
-    } catch {
+    const payload = verifyToken(token);
+    if (!payload) return res.redirect('/login.html');
+    const freshUser = freshSessionUser(payload.id);
+    if (!freshUser || !isActive(freshUser)) {
+      clearAuthCookie(res);
+      return res.redirect('/login.html?disabled=1');
+    }
+    const role = normalizeRole(freshUser.role);
+    if (!role) {
+      clearAuthCookie(res);
       return res.redirect('/login.html');
     }
+    if (allowed && !allowed.has(role)) {
+      return res.redirect(dashboardPathForRole(role));
+    }
+    req.user = attachFreshUser(payload, freshUser);
+    return next();
   };
 }
 
@@ -151,6 +208,7 @@ module.exports = {
   createToken,
   setAuthCookie,
   clearAuthCookie,
+  verifyToken,
   attachUser,
   requireAuth,
   requireRole,

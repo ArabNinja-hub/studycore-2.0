@@ -361,6 +361,14 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
     : await resolveType(key, storedType, mimeType);
   const range = parseRange(req.headers.range, size);
 
+  // SVG is active content: served same-origin as image/svg+xml it can
+  // execute scripts (stored XSS). New uploads can no longer be SVG (see
+  // middleware/upload.js), but objects uploaded before that change may
+  // still exist, so this endpoint must NEVER emit the SVG content type -
+  // legacy SVGs are delivered as inert plain-file downloads instead.
+  const svgNeutralized = type === 'image/svg+xml';
+  if (svgNeutralized) type = 'application/octet-stream';
+
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Content-Type', type);
   // Ensure the filename sent to the browser always has an extension so
@@ -368,7 +376,9 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
   // reader's type detection works even when the original upload had a bare
   // UUID name.
   const safeFilename = ensureFileNameWithExt(filename, type, key);
-  res.setHeader('Content-Disposition', inlineContentDisposition(safeFilename, key, type));
+  res.setHeader('Content-Disposition', svgNeutralized
+    ? `attachment; filename="${safeFilename.replace(/["\r\n]/g, '')}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`
+    : inlineContentDisposition(safeFilename, key, type));
   // Private cache lets the browser reuse range chunks while seeking / paging
   // a PDF. The URL is still session-gated — unauthenticated clients cannot
   // hit this route at all.
@@ -721,12 +731,26 @@ router.get('/:id/download', requireAuth, requireStudentLibraryAccess, (req, res)
   });
 });
 
+// Progress writes (bookmarks / completions) enforce the SAME program
+// boundary as reads: a student may only record progress on content that is
+// visible to their program. The fresh user row is loaded because the JWT
+// payload carries no program_code.
+function programGuard(req, res, resourceId) {
+  const resource = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
+  if (!resource) return { status: 404, message: 'Resource not found.' };
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!programCanSeeResource(user, resource)) {
+    return { status: 403, message: 'This content is not available for your program.' };
+  }
+  return { resource, user, ok: true };
+}
+
 router.post('/:id/bookmark', requireAuth, requireStudentLibraryAccess, (req, res) => {
-  const resource = db.prepare('SELECT id FROM resources WHERE id = ?').get(req.params.id);
-  if (!resource) return res.status(404).json({ message: 'Resource not found.' });
+  const guard = programGuard(req, res, req.params.id);
+  if (!guard.ok) return res.status(guard.status).json({ message: guard.message });
   try {
     db.prepare('INSERT INTO bookmarks (id, user_id, resource_id, created_at) VALUES (?, ?, ?, ?)')
-      .run(`bm-${uuidv4()}`, req.user.id, resource.id, new Date().toISOString());
+      .run(`bm-${uuidv4()}`, req.user.id, guard.resource.id, new Date().toISOString());
   } catch {
     // already bookmarked - ignore (idempotent)
   }
@@ -761,11 +785,11 @@ const COURSE_SUBJECTS = [
 // ---- Lesson completion tracking (real, per student) -----------------------
 
 router.post('/:id/complete', requireAuth, requireStudentLibraryAccess, (req, res) => {
-  const resource = db.prepare('SELECT id FROM resources WHERE id = ?').get(req.params.id);
-  if (!resource) return res.status(404).json({ message: 'Resource not found.' });
+  const guard = programGuard(req, res, req.params.id);
+  if (!guard.ok) return res.status(guard.status).json({ message: guard.message });
   try {
     db.prepare('INSERT INTO lesson_progress (id, user_id, resource_id, completed_at) VALUES (?, ?, ?, ?)')
-      .run(`lp-${uuidv4()}`, req.user.id, resource.id, new Date().toISOString());
+      .run(`lp-${uuidv4()}`, req.user.id, guard.resource.id, new Date().toISOString());
   } catch {
     // already marked complete - idempotent, no error
   }
@@ -794,8 +818,15 @@ router.post('/:id/quiz-attempt', requireAuth, requireStudentLibraryAccess, (req,
   if (typeof score !== 'number' || typeof total !== 'number' || total <= 0 || score < 0 || score > total) {
     return res.status(400).json({ message: 'Invalid score submitted.' });
   }
-  const resource = db.prepare(`SELECT id, category FROM resources WHERE id = ?`).get(req.params.id);
+  const resource = db.prepare(`SELECT * FROM resources WHERE id = ?`).get(req.params.id);
   if (!resource || resource.category !== 'quiz') return res.status(404).json({ message: 'Quiz not found.' });
+  // Same program boundary as the canonical quiz API (routes/quiz.routes.js):
+  // an attempt may only be recorded for a quiz the student's program can
+  // see, so cross-program quizzes cannot accumulate progress/score rows.
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!programCanSeeResource(user, resource)) {
+    return res.status(403).json({ message: 'This quiz is not available for your program.' });
+  }
 
   db.prepare('INSERT INTO quiz_attempts (id, user_id, resource_id, score, total, created_at) VALUES (?, ?, ?, ?, ?, ?)')
     .run(`qa-${uuidv4()}`, req.user.id, resource.id, Math.round(score), Math.round(total), new Date().toISOString());

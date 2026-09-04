@@ -278,7 +278,7 @@
     term.required = isVideo;
     file.accept = isVideo
       ? '.mp4,.mov,.webm,.mkv,.avi,video/*'
-      : '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.svg,.mp3,.wav';
+      : '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav';
     $('#caFileDropHint').textContent = isVideo
       ? 'Choose a supported video file: .mp4, .mov, .webm, .mkv, or .avi'
       : 'PDF, office document, image, archive or audio file';
