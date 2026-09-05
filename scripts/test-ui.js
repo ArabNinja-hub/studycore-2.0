@@ -192,6 +192,99 @@ test('hero section contains decorative animated background logo behind content',
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.hero-floating-logo-track/);
 });
 
+test('hero photography renders as an aged archive print, cheaply', () => {
+  const indexHtml = read('public/index.html');
+  const css = read('public/css/style.css');
+  const js = read('public/js/hero-slideshow.js');
+
+  // The slideshow is declarative markup + one shared module, not an inline
+  // per-page script, and the photo list lives in the HTML.
+  assert.match(indexHtml, /data-hero-slideshow/);
+  assert.match(indexHtml, /<script src="\/js\/hero-slideshow\.js" defer><\/script>/);
+  assert.doesNotMatch(indexHtml, /Hero image slideshow initialization/, 'inline slideshow script was replaced');
+  assert.match(indexHtml, /rel="preload"[\s\S]*?as="image"/, 'first hero frame is preloaded');
+
+  // The "ancient fade": sepia-drained shot + patina + grain.
+  assert.match(css, /\.hero-shot img\s*\{[\s\S]*?filter:[\s\S]*?sepia\(/);
+  assert.match(css, /\.hero-shot img\s*\{[\s\S]*?grayscale\(/);
+  assert.match(css, /\.hero-patina\s*\{/);
+  assert.match(css, /\.hero-grain\s*\{[\s\S]*?feTurbulence/);
+
+  // Only compositor-friendly properties animate, and the expensive drift is
+  // gated to large motion-safe screens so phones never scale a filtered image.
+  assert.match(css, /\.hero-shot\s*\{[\s\S]*?transition: opacity/);
+  assert.match(
+    css,
+    /@media \(min-width: 900px\) and \(prefers-reduced-motion: no-preference\)\s*\{\s*\.hero-shot\.is-drifting img/
+  );
+
+  // Two recycled layers only, data-plan aware, pauses when unseen.
+  assert.match(js, /const a = makeLayer\(\);\s*const b = makeLayer\(\);/);
+  assert.match(js, /saveData/);
+  assert.match(js, /prefers-reduced-motion/);
+  assert.match(js, /IntersectionObserver/);
+  assert.match(js, /visibilitychange/);
+  assert.doesNotMatch(js, /setInterval\s*\(/, 'a self-scheduling timeout chain, never setInterval');
+  assert.match(js, /is-unavailable/, 'a failed photo degrades to the plain hero');
+});
+
+test('the client is built for a phone on mobile data', () => {
+  const api = read('public/js/api.js');
+  const auth = read('public/js/auth.js');
+  const css = read('public/css/style.css');
+
+  // Timeouts + bounded retries, and writes are never replayed.
+  assert.match(api, /AbortController/);
+  assert.match(api, /TIMEOUT_MS/);
+  assert.match(api, /const SAFE_METHODS = new Set\(\['GET', 'HEAD'\]\)/);
+  assert.match(api, /safe \? NET\.RETRIES \+ 1 : 1/, 'only safe requests auto-retry');
+
+  // One shared, honest connection state.
+  assert.match(api, /SC\.net = \{/);
+  assert.match(api, /onReconnect\(fn\)/);
+  assert.match(api, /id = 'scNetStrip'/);
+  assert.match(css, /\.sc-net-strip\s*\{/);
+
+  // A dropped connection must not look like being signed out.
+  assert.match(auth, /sessionUnknown/);
+  assert.match(auth, /if \(err && err\.network\) \{\s*sessionUnknown = true;/);
+
+  // iOS-safe scroll lock instead of body { overflow: hidden }.
+  assert.match(auth, /function setScrollLock\(key, locked\)/);
+  assert.match(auth, /SC\.setScrollLock = setScrollLock/);
+  for (const file of ['public/js/layout.js', 'public/js/auth.js']) {
+    const source = read(file);
+    assert.doesNotMatch(
+      source,
+      /document\.body\.style\.overflow/,
+      `${file}: overlays must go through SC.setScrollLock`
+    );
+  }
+
+  // Touch ergonomics: no sticky hover states, real press feedback, 44px targets.
+  assert.match(css, /@media \(hover: none\)/);
+  assert.match(css, /@media \(pointer: coarse\)[\s\S]*?min-height: 44px/);
+  assert.match(css, /-webkit-tap-highlight-color: transparent/);
+  assert.match(css, /scroll-padding-top: calc\(var\(--nav-h\)/);
+});
+
+test('every page opts into the mobile viewport and warms the font connection', () => {
+  const pages = [
+    ...fs.readdirSync(path.join(ROOT, 'public')).filter((n) => n.endsWith('.html')).map((n) => path.join('public', n)),
+    ...fs.readdirSync(path.join(ROOT, 'public', 'pages')).filter((n) => n.endsWith('.html')).map((n) => path.join('public', 'pages', n)),
+    ...subjectPages.map((n) => path.join('public', 'pages', 'subjects', n)),
+    ...fs.readdirSync(path.join(ROOT, 'views')).filter((n) => n.endsWith('.html')).map((n) => path.join('views', n))
+  ];
+
+  assert.ok(pages.length >= 20);
+  for (const page of pages) {
+    const html = read(page);
+    if (!/name="viewport"/.test(html)) continue;
+    assert.match(html, /viewport-fit=cover/, `${page}: safe-area insets need viewport-fit=cover`);
+    assert.match(html, /rel="preconnect" href="https:\/\/fonts\.gstatic\.com"/, `${page}: preconnect to the font CDN`);
+  }
+});
+
 test('application JavaScript parses successfully', () => {
   const roots = [
     'server.js',

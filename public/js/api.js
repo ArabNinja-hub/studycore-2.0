@@ -6,31 +6,252 @@
 // browser sends it automatically on same-origin requests as long as we
 // pass `credentials: 'include'`. There is no token in localStorage to
 // spoof, and no client-side role logic anywhere in this file.
+//
+// RELIABILITY (most students are on mobile data):
+//   · Every request has a real timeout — a stalled socket on a weak
+//     signal fails fast with an honest message instead of spinning
+//     forever behind a skeleton.
+//   · Safe (GET/HEAD) requests retry automatically with exponential
+//     backoff + jitter on network errors, timeouts and 5xx/429. Writes
+//     are NEVER auto-retried: a duplicated POST is worse than an error.
+//   · When the device is offline we wait briefly for the radio to come
+//     back before even attempting, so a two-second tunnel does not turn
+//     into a visible failure.
+//   · Connection state is published on SC.net so the UI can show one
+//     shared, calm status strip instead of a pile of red toasts.
 // =============================================
 
 (function (global) {
   'use strict';
 
+  global.SC = global.SC || {};
+
+  /* ── Connection state ─────────────────────── */
+
+  const NET = {
+    TIMEOUT_MS: 16000,        // normal JSON call
+    UPLOAD_TIMEOUT_MS: 180000, // multipart upload (big files, slow uplink)
+    RETRIES: 2,               // extra attempts for safe requests
+    BACKOFF_MS: 550,
+    OFFLINE_GRACE_MS: 6000,   // how long to wait for the radio before failing
+    BUDGET_MS: 26000          // hard ceiling on one request incl. all retries
+  };
+
+  const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+  const SAFE_METHODS = new Set(['GET', 'HEAD']);
+
+  const state = {
+    online: typeof navigator === 'undefined' || navigator.onLine !== false,
+    // True only while a request is actually mid-retry, so the status strip
+    // never claims to be doing something it is not.
+    degraded: false
+  };
+
+  function emit(name, detail) {
+    try {
+      global.dispatchEvent(new CustomEvent(name, { detail }));
+    } catch { /* very old engines: events are a nice-to-have, never required */ }
+  }
+
+  // `announce` forces the recovery event even when we already believed we
+  // were online. That matters because navigator.onLine only tracks the radio:
+  // a captive portal, dead mobile data or an unreachable server all look
+  // "online" while every request fails. Recovery from THAT state has to be
+  // announced too, or the page never heals itself.
+  function setOnline(next, options = {}) {
+    const changed = state.online !== next;
+    if (!changed && !(next && options.announce)) return;
+    state.online = next;
+    if (next) state.degraded = false;
+    emit(next ? 'sc:net:online' : 'sc:net:offline', { ...state });
+    emit('sc:net:change', { ...state });
+  }
+
+  function setDegraded(next) {
+    if (state.degraded === next) return;
+    state.degraded = next;
+    emit('sc:net:change', { ...state });
+  }
+
+  if (typeof global.addEventListener === 'function') {
+    global.addEventListener('online', () => setOnline(true, { announce: true }));
+    global.addEventListener('offline', () => setOnline(false));
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Resolves as soon as the device reports a connection again, or after
+  // `ms`. Used before the first attempt so a brief dead spot is invisible.
+  function waitForConnection(ms) {
+    if (typeof navigator === 'undefined' || navigator.onLine !== false) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        global.removeEventListener('online', onBack);
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const onBack = () => finish(true);
+      const timer = setTimeout(() => finish(false), ms);
+      global.addEventListener('online', onBack);
+    });
+  }
+
+  function networkError(message, extra) {
+    const err = new Error(message);
+    err.network = true;
+    Object.assign(err, extra || {});
+    return err;
+  }
+
+  /* ── The single fetch path ────────────────── */
+
+  async function attempt(path, options, timeoutMs) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+    let res;
+    try {
+      res = await fetch(path, {
+        ...options,
+        credentials: 'include',
+        signal: controller ? controller.signal : undefined
+      });
+    } catch (err) {
+      if (timer) clearTimeout(timer);
+      if (controller && controller.signal.aborted) {
+        throw networkError('This is taking too long on your connection. Tap to try again.', { timeout: true });
+      }
+      throw networkError(
+        navigator.onLine === false
+          ? 'You appear to be offline. StudyCore will reconnect automatically.'
+          : 'Connection problem. Check your data and try again.',
+        { offline: navigator.onLine === false }
+      );
+    }
+    if (timer) clearTimeout(timer);
+    return res;
+  }
+
   async function request(path, options = {}) {
     const isFormData = options.body instanceof FormData;
-    const res = await fetch(path, {
+    const method = String(options.method || 'GET').toUpperCase();
+    const safe = SAFE_METHODS.has(method);
+    const timeoutMs = options.timeoutMs || (isFormData ? NET.UPLOAD_TIMEOUT_MS : NET.TIMEOUT_MS);
+    const maxAttempts = options.retries === undefined
+      ? (safe ? NET.RETRIES + 1 : 1)
+      : Number(options.retries) + 1;
+
+    const fetchOptions = {
       ...options,
-      credentials: 'include',
-      headers: isFormData ? { ...(options.headers || {}) } : { 'Content-Type': 'application/json', ...(options.headers || {}) }
-    });
+      method: options.method,
+      headers: isFormData
+        ? { ...(options.headers || {}) }
+        : { 'Content-Type': 'application/json', ...(options.headers || {}) }
+    };
+    delete fetchOptions.timeoutMs;
+    delete fetchOptions.retries;
+    delete fetchOptions.budgetMs;
 
-    let data = null;
-    try { data = await res.json(); } catch { data = null; }
-
-    if (!res.ok) {
-      const error = new Error((data && data.message) || `Request failed (${res.status})`);
-      error.status = res.status;
-      error.locked = Boolean(data && data.locked);
-      error.lockReason = data && data.lockReason ? data.lockReason : null;
-      throw error;
+    // Nothing has been sent yet, so waiting here can never duplicate a write.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setOnline(false);
+      const back = await waitForConnection(NET.OFFLINE_GRACE_MS);
+      if (!back) {
+        throw networkError('You are offline. StudyCore will retry as soon as you are back.', { offline: true });
+      }
+      setOnline(true);
     }
-    return data;
+
+    // A retry loop with no ceiling is its own kind of unreliability: the
+    // student stares at a skeleton for a minute. Never exceed this budget.
+    const budgetMs = options.budgetMs || (isFormData ? NET.UPLOAD_TIMEOUT_MS : NET.BUDGET_MS);
+    const deadline = Date.now() + budgetMs;
+    const budgetLeft = () => deadline - Date.now();
+
+    let lastError = null;
+
+    for (let i = 0; i < maxAttempts; i += 1) {
+      try {
+        const res = await attempt(path, fetchOptions, timeoutMs);
+
+        let data = null;
+        try { data = await res.json(); } catch { data = null; }
+
+        if (!res.ok) {
+          const error = new Error((data && data.message) || `Request failed (${res.status})`);
+          error.status = res.status;
+          error.locked = Boolean(data && data.locked);
+          error.lockReason = data && data.lockReason ? data.lockReason : null;
+
+          // Server-side hiccups are worth one more shot for safe reads only.
+          const backoff = NET.BACKOFF_MS * Math.pow(2, i) + Math.random() * 250;
+          if (safe && RETRYABLE_STATUS.has(res.status) && i < maxAttempts - 1 && budgetLeft() > backoff + 1500) {
+            lastError = error;
+            setDegraded(true);
+            await sleep(backoff);
+            continue;
+          }
+          // A real answer from the server means the pipe works.
+          setOnline(true, { announce: state.degraded });
+          setDegraded(false);
+          throw error;
+        }
+
+        // Getting through after a rough patch is a reconnection: announce it
+        // so pages holding an error state can quietly reload themselves.
+        setOnline(true, { announce: state.degraded });
+        setDegraded(false);
+        return data;
+      } catch (err) {
+        if (!err.network) throw err;   // an HTTP error already decided above
+        lastError = err;
+
+        if (err.offline) setOnline(false);
+
+        const backoff = NET.BACKOFF_MS * Math.pow(2, i) + Math.random() * 250;
+        if (i < maxAttempts - 1 && budgetLeft() > backoff + 1500) {
+          setDegraded(true);
+          // Give the radio a chance to come back before burning the retry.
+          if (err.offline) await waitForConnection(Math.min(NET.OFFLINE_GRACE_MS, budgetLeft()));
+          else await sleep(backoff);
+          continue;
+        }
+        break;
+      }
+    }
+
+    // Out of attempts: the caller now owns the failure (error state, toast,
+    // retry button). The strip stops claiming to be working on it.
+    setDegraded(false);
+    throw lastError || networkError('Connection problem. Please try again.');
   }
+
+  /* ── Public connection API ────────────────── */
+
+  SC.net = {
+    get online() { return state.online; },
+    get degraded() { return state.degraded; },
+    state: () => ({ ...state }),
+    waitForConnection,
+    // Run `fn` now and again every time the connection is restored. Returns
+    // an unsubscribe function. Pages use this to self-heal after a dropout.
+    onReconnect(fn) {
+      const handler = () => { try { fn(); } catch { /* page-level concern */ } };
+      global.addEventListener('sc:net:online', handler);
+      return () => global.removeEventListener('sc:net:online', handler);
+    },
+    // Human-friendly text for any error thrown by this client.
+    message(err) {
+      if (!err) return 'Something went wrong. Please try again.';
+      if (err.offline) return 'You are offline. StudyCore will retry when you reconnect.';
+      if (err.timeout) return 'That took too long on your connection. Please try again.';
+      if (err.network) return 'Connection problem. Check your data and try again.';
+      return err.message || 'Something went wrong. Please try again.';
+    }
+  };
 
   const StudyCoreAPI = {
     // Auth
@@ -41,7 +262,10 @@
     registerContentAdmin: (payload) => request('/api/auth/register-content-admin', { method: 'POST', body: JSON.stringify(payload) }),
     login: (payload) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
     logout: () => request('/api/auth/logout', { method: 'POST' }),
-    me: () => request('/api/auth/me'),
+    // The whole account UI waits on this one, so it gets a tighter budget
+    // than a content fetch: better a fast "not signed in" that self-corrects
+    // on reconnect than a nav bar frozen for half a minute.
+    me: () => request('/api/auth/me', { timeoutMs: 7000, retries: 1, budgetMs: 12000 }),
     updateProfile: (payload) => request('/api/auth/profile', { method: 'PUT', body: JSON.stringify(payload) }),
     changePassword: (payload) => request('/api/auth/password', { method: 'PUT', body: JSON.stringify(payload) }),
     subscribe: (payload) => request('/api/auth/subscribe', { method: 'POST', body: JSON.stringify(payload) }),
@@ -186,10 +410,73 @@
           reject(err);
         }
       };
-      xhr.onerror = () => reject(new Error('Network error during upload.'));
+      xhr.onerror = () => reject(networkError(
+        navigator.onLine === false
+          ? 'Upload stopped — you are offline. Reconnect and try again.'
+          : 'Connection lost during the upload. Please try again.',
+        { offline: navigator.onLine === false }
+      ));
+      xhr.ontimeout = () => reject(networkError('The upload timed out on this connection. Please try again.', { timeout: true }));
+      xhr.timeout = NET.UPLOAD_TIMEOUT_MS;
       xhr.send(formData);
     });
   };
 
   global.StudyCoreAPI = StudyCoreAPI;
+
+  /* ── Shared connection status strip ─────────
+     One calm, non-blocking strip pinned to the bottom of the viewport
+     (above the mobile dock). It replaces the "nothing happened / did it
+     save?" ambiguity that makes a site feel unreliable on mobile data.
+     Pure DOM + inline SVG so it works on every page, even before the
+     icon set or the layout script has run. */
+
+  function initNetBanner() {
+    if (!global.document || !document.body) return;
+    if (document.getElementById('scNetStrip')) return;
+
+    const strip = document.createElement('div');
+    strip.id = 'scNetStrip';
+    strip.className = 'sc-net-strip';
+    strip.setAttribute('role', 'status');
+    strip.setAttribute('aria-live', 'polite');
+    strip.hidden = true;
+    strip.innerHTML = '<span class="sc-net-dot" aria-hidden="true"></span><span class="sc-net-text"></span>';
+    document.body.appendChild(strip);
+
+    const text = strip.querySelector('.sc-net-text');
+    let restoreTimer = null;
+
+    function render() {
+      clearTimeout(restoreTimer);
+      if (!state.online) {
+        strip.hidden = false;
+        strip.dataset.mode = 'offline';
+        text.textContent = 'No connection — StudyCore will reconnect automatically.';
+      } else if (state.degraded) {
+        strip.hidden = false;
+        strip.dataset.mode = 'slow';
+        text.textContent = 'Slow connection — retrying…';
+      } else if (!strip.hidden) {
+        strip.dataset.mode = 'back';
+        text.textContent = 'Back online.';
+        restoreTimer = setTimeout(() => { strip.hidden = true; }, 2200);
+      }
+      // Let the layout push content (e.g. the mobile dock) out of the way.
+      document.body.classList.toggle('has-net-strip', !strip.hidden);
+    }
+
+    global.addEventListener('sc:net:change', render);
+    global.addEventListener('sc:net:online', render);
+    global.addEventListener('sc:net:offline', render);
+    if (!state.online) render();
+  }
+
+  if (global.document) {
+    if (document.readyState === 'loading' || !document.body) {
+      document.addEventListener('DOMContentLoaded', initNetBanner, { once: true });
+    } else {
+      initNetBanner();
+    }
+  }
 })(window);
