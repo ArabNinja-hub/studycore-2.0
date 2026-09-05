@@ -23,19 +23,30 @@
 //     directly by the browser. Cloudflare Stream (when adopted) will be
 //     authorized through the same server-side gate, not via public URLs.
 //   * workers: the PDF.js worker is a same-origin file.
+//   * Google Drive Picker (Content Admin dashboard): the official
+//     implementation requires three remote origins -
+//       - script-src: https://apis.google.com (gapi loader) and
+//         https://accounts.google.com (Google Identity Services);
+//       - connect-src: the Picker/GIS XHRs plus the Drive REST API;
+//       - frame-src: the Picker renders inside https://docs.google.com and
+//         https://drive.google.com iframes, and GIS uses an
+//         accounts.google.com frame for the OAuth token flow.
+//     Without these the browser silently refuses to evaluate api.js /
+//     gsi/client, which is exactly how the Picker "fails to load".
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://ajax.googleapis.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://*.googleusercontent.com https://*.gstatic.com https://drive-thirdparty.googleusercontent.com https://ssl.gstatic.com",
   "media-src 'self' blob:",
   "worker-src 'self' blob:",
-  "connect-src 'self'",
+  "connect-src 'self' https://apis.google.com https://accounts.google.com https://content.googleapis.com https://www.googleapis.com https://oauth2.googleapis.com",
+  "frame-src 'self' https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com",
   "manifest-src 'self'"
 ].join('; ');
 
