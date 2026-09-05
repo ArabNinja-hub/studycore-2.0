@@ -74,30 +74,6 @@
     <main>
       <!-- Hero: one stage, one message, one primary action -->
       <section class="hero" id="homeHero" style="position:relative;">
-        <!-- Decorative floating animated StudyCore background logo -->
-        <div class="hero-bg-visual" aria-hidden="true">
-          <div class="hero-floating-logo-stage" id="heroLogoStage">
-            <div class="hero-floating-logo-track">
-              <div class="hero-floating-logo-element" id="heroLogoElement">
-                <!-- Ambient backlight aura -->
-                <div class="hero-logo-glow"></div>
-                <!-- Subtle orbital rings for futuristic academic depth -->
-                <div class="hero-logo-orbit hero-logo-orbit-1"></div>
-                <div class="hero-logo-orbit hero-logo-orbit-2"></div>
-                <!-- 3D StudyCore floating emblem graphic -->
-                <img
-                  src="/assets/studycore-emblem.png"
-                  alt=""
-                  class="hero-logo-img"
-                  draggable="false"
-                  loading="eager"
-                  decoding="async"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Hero photography: aged-archive slideshow (js/hero-slideshow.js).
              The list lives here so it can be edited without touching JS. -->
         <div
@@ -384,85 +360,6 @@
           });
         }
 
-        // Home hero decorative floating background logo controller
-        (function initHeroLogo() {
-          const heroEl = document.getElementById('homeHero');
-          const stageEl = document.getElementById('heroLogoStage');
-          const trackEl = heroEl ? heroEl.querySelector('.hero-floating-logo-track') : null;
-          const elemEl = document.getElementById('heroLogoElement');
-          if (!heroEl || !stageEl || !trackEl || !elemEl) return;
-
-          const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-          if (prefersReduced) return;
-
-          // Pause the emblem's CSS animations whenever nobody can see them:
-          // off-screen or on a hidden tab. Free battery on a phone.
-          let heroOnScreen = true;
-          let syncParallax = () => {};
-          function setPlayState(playing) {
-            const value = playing ? 'running' : 'paused';
-            trackEl.style.animationPlayState = value;
-            elemEl.style.animationPlayState = value;
-          }
-
-          if ('IntersectionObserver' in window) {
-            const io = new IntersectionObserver(([entry]) => {
-              heroOnScreen = entry.isIntersecting;
-              setPlayState(heroOnScreen && !document.hidden);
-              syncParallax();
-            }, { threshold: 0.05 });
-            io.observe(heroEl);
-          }
-
-          document.addEventListener('visibilitychange', () => {
-            setPlayState(heroOnScreen && !document.hidden);
-            syncParallax();
-          });
-
-          // Subtle interactive mouse parallax — desktop pointers only.
-          if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
-            let targetX = 0, targetY = 0;
-            let currentX = 0, currentY = 0;
-            let rafId = null;
-
-            function onMouseMove(e) {
-              const rect = heroEl.getBoundingClientRect();
-              if (e.clientY < rect.top || e.clientY > rect.bottom) return;
-              const relX = (e.clientX - rect.left) / rect.width - 0.5;
-              const relY = (e.clientY - rect.top) / rect.height - 0.5;
-              targetX = relX * -22; // subtle shift opposite to mouse
-              targetY = relY * -16;
-              start();
-            }
-
-            function updateParallax() {
-              currentX += (targetX - currentX) * 0.06;
-              currentY += (targetY - currentY) * 0.06;
-              stageEl.style.setProperty('--parallax-x', currentX.toFixed(2) + 'px');
-              stageEl.style.setProperty('--parallax-y', currentY.toFixed(2) + 'px');
-              // Settle and stop: an idle rAF loop that runs for the whole
-              // session is pure battery drain for zero visible motion.
-              const settled = Math.abs(targetX - currentX) < 0.05 && Math.abs(targetY - currentY) < 0.05;
-              rafId = settled ? null : requestAnimationFrame(updateParallax);
-            }
-
-            function start() {
-              if (rafId || !heroOnScreen || document.hidden) return;
-              rafId = requestAnimationFrame(updateParallax);
-            }
-            function stop() {
-              if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-            }
-            syncParallax = () => { (heroOnScreen && !document.hidden) ? start() : stop(); };
-
-            heroEl.addEventListener('mousemove', onMouseMove, { passive: true });
-            heroEl.addEventListener('mouseleave', () => {
-              targetX = 0;
-              targetY = 0;
-              start();
-            }, { passive: true });
-          }
-        })();
       });
     </script>
 

@@ -154,42 +154,24 @@ test('homepage is program-aware and never ships the obsolete subject cards', () 
   assert.match(revealJs, /closest\('\[data-no-scroll-reveal\]'\)/);
 });
 
-test('hero section contains decorative animated background logo behind content', () => {
+test('hero has no decorative StudyCore logo', () => {
   const indexHtml = read('public/index.html');
   const css = read('public/css/style.css');
   const layout = read('public/js/layout.js');
 
-  // Decorative element in hero background with aria-hidden
-  assert.match(indexHtml, /<div class="hero-bg-visual" aria-hidden="true">/);
-  assert.match(indexHtml, /hero-floating-logo-stage/);
-  assert.match(indexHtml, /hero-floating-logo-track/);
-  assert.match(indexHtml, /hero-floating-logo-element/);
-  assert.match(indexHtml, /src="\/assets\/studycore-emblem\.png"/);
+  // The decorative emblem and all of its styling are gone from the hero.
+  assert.doesNotMatch(indexHtml, /hero-bg-visual/);
+  assert.doesNotMatch(indexHtml, /hero-floating-logo/);
+  assert.doesNotMatch(indexHtml, /studycore-emblem\.png/);
+  assert.doesNotMatch(css, /hero-floating-logo|hero-logo-img|hero-logo-glow|hero-logo-orbit|hero-bg-visual/);
+  assert.doesNotMatch(css, /heroLogoEntrance|heroLogoFloat/);
 
-  // Main StudyCore navbar branding remains intact and not replaced
+  // Main StudyCore navbar branding remains intact.
   assert.match(layout, /<a href="\/" class="nav-brand" aria-label="StudyCore home">/);
 
-  // Asset exists
-  assert.equal(fs.existsSync(path.join(ROOT, 'public', 'assets', 'studycore-emblem.png')), true);
-
-  // CSS Z-index layering: background visual is behind container foreground content
-  assert.match(css, /\.hero-bg-visual\s*\{[^}]*position:\s*absolute/);
-  assert.match(css, /\.hero-bg-visual\s*\{[^}]*z-index:\s*1/);
+  // Hero foreground content layering is untouched.
   assert.match(css, /\.hero \.container\s*\{[^}]*position:\s*relative/);
   assert.match(css, /\.hero \.container\s*\{[^}]*z-index:\s*2/);
-
-  // Entrance and continuous float animations
-  assert.match(css, /@keyframes heroLogoEntrance/);
-  assert.match(css, /@keyframes heroLogoFloat/);
-  assert.match(css, /animation:\s*heroLogoEntrance/);
-  assert.match(css, /animation:\s*heroLogoFloat/);
-
-  // Mobile scaling and repositioning
-  assert.match(css, /@media \(max-width:\s*640px\)[\s\S]*?\.hero-floating-logo-stage/);
-  assert.match(css, /@media \(max-width:\s*480px\)[\s\S]*?\.hero-floating-logo-stage/);
-
-  // Prefers-reduced-motion accessibility
-  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.hero-floating-logo-track/);
 });
 
 test('hero photography renders as an aged archive print, cheaply', () => {
