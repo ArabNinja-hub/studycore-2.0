@@ -292,6 +292,11 @@
     state.selectedFile = null;
     $('#caUploadForm').reset();
     $('#caEditingResourceId').value = '';
+    $('#caGoogleDriveFileId').value = '';
+    $('#caGoogleDriveUrl').value = '';
+    $('#caGoogleDriveFileName').value = '';
+    $('#caGoogleDriveMimeType').value = '';
+    $('#caGoogleDriveFileSize').value = '';
     $('#caSchoolFaculty').value = '';
     renderCourses('', '');
     $('#caFile').required = true;
@@ -327,10 +332,74 @@
     formData.append('description', $('#caDescription').value.trim());
     formData.append('semester', $('#caTerm').value);
     formData.append('yearLevel', $('#caYearLevel').value.trim());
+    const driveFileId = $('#caGoogleDriveFileId').value || '';
+    if (driveFileId) {
+      formData.append('google_drive_file_id', driveFileId);
+      formData.append('google_drive_url', $('#caGoogleDriveUrl').value || '');
+      formData.append('file_name', $('#caGoogleDriveFileName').value || '');
+      formData.append('mime_type', $('#caGoogleDriveMimeType').value || '');
+      formData.append('file_size', $('#caGoogleDriveFileSize').value || '');
+    }
     formData.append('publishStatus', $('#caPublishStatus').value);
     if (state.selectedFile) formData.append('file', state.selectedFile);
     return formData;
   }
+
+  const PICKER_CONFIG = (window.STUDYCORE_CONFIG && window.STUDYCORE_CONFIG.googlePicker) ? window.STUDYCORE_CONFIG.googlePicker : {};
+  const PICKER_API_KEY = PICKER_CONFIG.apiKey || '';
+  const PICKER_APP_ID = PICKER_CONFIG.appId || '1076280995038';
+  const PICKER_CLIENT_ID = PICKER_CONFIG.clientId || '';
+
+  function openPicker() {
+    if (!window.google || !window.google.picker) {
+      alert('Google Picker is not loaded yet. Please try again shortly.');
+      return;
+    }
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: PICKER_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (tokenResponse) => {
+        if (tokenResponse.access_token) {
+          createPicker(tokenResponse.access_token);
+        }
+      },
+    });
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+  }
+
+  window.openPicker = openPicker;
+
+  function createPicker(accessToken) {
+    const picker = new google.picker.PickerBuilder()
+      .addView(google.picker.ViewId.DOCS)
+      .setOAuthToken(accessToken)
+      .setDeveloperKey(PICKER_API_KEY)
+      .setAppId(PICKER_APP_ID)
+      .setCallback(pickerCallback)
+      .setOrigin(window.location.origin)
+      .build();
+    picker.setVisible(true);
+  }
+
+  function pickerCallback(data) {
+    if (data.action === google.picker.Action.PICKED) {
+      const doc = data.docs[0];
+      $('#caGoogleDriveFileId').value = doc.id || '';
+      $('#caGoogleDriveUrl').value = doc.url || '';
+      $('#caGoogleDriveFileName').value = doc.name || '';
+      $('#caGoogleDriveMimeType').value = doc.mimeType || '';
+      $('#caGoogleDriveFileSize').value = doc.sizeBytes || 0;
+      $('#caFileName').textContent = `Selected: ${doc.name || 'Google Drive Document'}${doc.sizeBytes ? ` (${fileSize(doc.sizeBytes)})` : ''}`;
+      $('#caFile').required = false;
+      $('#caFile').value = '';
+      $('#caFileDropTitle').innerHTML = 'Drive file selected <span style="font-weight:400;color:var(--muted);">(optional — replace with a file upload)</span>';
+      state.selectedFile = null;
+    }
+  }
+
+  window.onPickerApiLoaded = function () {
+    // Picker API loaded; ready to open picker when requested.
+  };
 
   function validateUpload() {
     if (!$('#caResourceType').value || !$('#caSchoolFaculty').value || !$('#caCourse').value || !$('#caTopic').value.trim() || !$('#caTitle').value.trim()) {
@@ -339,8 +408,9 @@
     if ($('#caResourceType').value === 'video' && !$('#caTerm').value) {
       return 'Choose a term for a video resource.';
     }
-    if (!state.editingId && !state.selectedFile) {
-      return 'Choose a file to upload.';
+    const driveFileId = $('#caGoogleDriveFileId').value || '';
+    if (!state.editingId && !state.selectedFile && !driveFileId) {
+      return 'Choose a file to upload or select from Google Drive.';
     }
     return null;
   }
@@ -411,6 +481,17 @@
     $('#caUploadSubmitBtn').textContent = 'Save Changes';
     $('#caCancelEditBtn').hidden = false;
     $('#caFileDropTitle').innerHTML = 'Replace resource file <span style="font-weight:400;color:var(--muted);">(optional)</span>';
+    // Restore Drive-backed file info when editing an existing resource.
+    const hasDriveFile = Boolean(resource.googleDriveFileId);
+    $('#caGoogleDriveFileId').value = resource.googleDriveFileId || '';
+    $('#caGoogleDriveUrl').value = resource.googleDriveUrl || '';
+    $('#caGoogleDriveFileName').value = resource.fileName || '';
+    $('#caGoogleDriveMimeType').value = resource.mimeType || '';
+    $('#caGoogleDriveFileSize').value = resource.fileSize || 0;
+    if (hasDriveFile) {
+      $('#caFileName').textContent = `Current file: ${resource.fileName || 'Google Drive Document'}${resource.fileSize ? ` (${fileSize(resource.fileSize)})` : ''}`;
+      $('#caFileDropTitle').innerHTML = 'Drive file selected <span style="font-weight:400;color:var(--muted);">(optional — replace with file upload)</span>';
+    }
     setFile(null, { currentName: resource.fileName, currentSize: resource.fileSize });
     setStatus($('#caUploadStatus'), 'Editing your resource. Only choose a file if you want to replace it.');
     setNavActive('upload');
@@ -489,7 +570,20 @@
     $('#caCourse').addEventListener('change', () => renderTopicSuggestions($('#caCourse').value));
 
     const fileInput = $('#caFile');
-    fileInput.addEventListener('change', () => setFile(fileInput.files && fileInput.files[0]));
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (file) {
+        // If selecting a regular file upload, clear any previous Drive selection
+        // so the server does not treat this as a Drive-backed resource.
+        $('#caGoogleDriveFileId').value = '';
+        $('#caGoogleDriveUrl').value = '';
+        $('#caGoogleDriveFileName').value = '';
+        $('#caGoogleDriveMimeType').value = '';
+        $('#caGoogleDriveFileSize').value = '';
+        $('#caFileDropTitle').innerHTML = 'Choose a resource file <span class="ca-required">*</span>';
+      }
+      setFile(file);
+    });
     const fileDrop = $('#caFileDrop');
     ['dragenter', 'dragover'].forEach((type) => fileDrop.addEventListener(type, (event) => {
       event.preventDefault();

@@ -26,9 +26,12 @@ function serializeResource(row, user) {
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
     fileName: row.file_name,
     fileSize: row.file_size,
-    mimeType: row.stored_name ? inferMime(row) : row.mime_type,
-    hasFile: Boolean(row.stored_name),
+    mimeType: (row.stored_name || row.google_drive_file_id) ? inferMime(row) : row.mime_type,
+    hasFile: Boolean(row.stored_name || row.google_drive_file_id),
     externalUrl: row.external_url,
+    googleDriveFileId: row.google_drive_file_id || null,
+    googleDriveUrl: row.google_drive_url || null,
+    storageProvider: row.storage_provider || 'local',
     // Generic list/detail/bookmark responses are not quiz authoring APIs.
     // Students get questions without answers from /api/quiz/:id; answer keys
     // are revealed only by server-side grading, never by this serializer.
@@ -524,8 +527,17 @@ async function handleStream(req, res) {
   // resource id is refused outright.
   if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
-  if (!row.stored_name && !row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
-  if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
+  if (!row.stored_name && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
+  if (row.external_url && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
+
+  // Google Drive-backed resources: redirect to the secure preview link instead
+  // of streaming bytes. This avoids exposing admin OAuth tokens and avoids
+  // downloading the document onto Render permanently.
+  if (row.google_drive_file_id) {
+    const previewUrl = `https://docs.google.com/gview?embedded=1&url=https://drive.google.com/uc?export=view&id=${encodeURIComponent(row.google_drive_file_id)}`;
+    return res.redirect(previewUrl);
+  }
+
   await streamStoredObject(req, res, row.stored_name, {
     filename: row.file_name || row.stored_name,
     mimeType: inferMime(row),

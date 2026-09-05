@@ -137,6 +137,11 @@
           <article class="card ca-form-card">
             <form id="caUploadForm" novalidate enctype="multipart/form-data">
               <input id="caEditingResourceId" type="hidden" value="" />
+              <input id="caGoogleDriveFileId" name="google_drive_file_id" type="hidden" value="" />
+              <input id="caGoogleDriveUrl" name="google_drive_url" type="hidden" value="" />
+              <input id="caGoogleDriveFileName" name="file_name" type="hidden" value="" />
+              <input id="caGoogleDriveMimeType" name="mime_type" type="hidden" value="" />
+              <input id="caGoogleDriveFileSize" name="file_size" type="hidden" value="" />
               <div class="ca-form-grid">
                 <div class="form-group">
                   <label for="caResourceType">Resource Type <span class="ca-required">*</span></label>
@@ -190,6 +195,7 @@
                     <span><strong id="caFileDropTitle">Choose a resource file <span class="ca-required">*</span></strong><span id="caFileDropHint">PDF, office document, image, archive, audio or a supported video file</span></span>
                     <input id="caFile" type="file" required />
                   </label>
+                  <button type="button" class="btn btn-outline btn-sm" id="caSelectDriveBtn" onclick="openPicker()">Select from Google Drive</button>
                   <div class="ca-file-name" id="caFileName" aria-live="polite"></div>
                   <small class="ca-help" id="caFileHelp">Video resources accept .mp4, .mov, .webm, .mkv, or .avi.</small>
                 </div>
@@ -223,6 +229,17 @@
 
     <div class="ca-toast-container" id="caToastContainer" aria-live="polite" aria-atomic="true"></div>
 
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js?onload=onPickerApiLoaded" async defer></script>
+    <script>
+      // Load public site config (includes Google Picker credentials for the
+      // Content Admin dashboard) without exposing anything server-side.
+      fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg) {
+        window.STUDYCORE_CONFIG = cfg || {};
+      }).catch(function () {
+        window.STUDYCORE_CONFIG = {};
+      });
+    </script>
     <script src="/js/icons.js"></script>
     <script src="/js/api.js"></script>
     <script src="/js/auth.js"></script>
