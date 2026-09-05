@@ -113,6 +113,14 @@
             <a class="btn whatsapp-btn" href="https://wa.me/260962838581" target="_blank" rel="noopener" id="contactCta"></a>
             <span class="resource-meta">+260 962 838 581</span>
           </div>
+          <p style="margin:18px 0 10px;">
+            Found a bug or something not working on the platform? Complaints go directly
+            to the developer:
+          </p>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+            <a class="btn btn-outline" href="https://wa.me/260981474031" target="_blank" rel="noopener" id="complaintsCta"></a>
+            <span class="resource-meta">+260 981 474 031</span>
+          </div>
         </div>
       </section>
     </main>
@@ -130,6 +138,7 @@
       document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 }); });
         document.getElementById('contactCta').innerHTML = `${SC.icon('whatsapp', { size: 17 })} Message StudyCore`;
+        document.getElementById('complaintsCta').innerHTML = `${SC.icon('flag', { size: 17 })} Report a Problem (Developer)`;
       });
     </script>
   </body>

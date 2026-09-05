@@ -56,6 +56,13 @@
   const WHATSAPP_CHANNEL_URL = 'https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k';
   const SITE = 'https://studycore.academy/';
 
+  // Developer's line for user complaints. Rendered in the footer on every
+  // page; the raw number is swapped for whatever /api/config serves (owner
+  // can rotate it in .env via SUPPORT_COMPLAINTS_PHONE).
+  const COMPLAINTS_PHONE = '+260981474031';
+  const COMPLAINTS_PHONE_DISPLAY = '+260 981 474 031';
+  const complaintsWaLink = (phone) => `https://wa.me/${phone.replace(/[^0-9]/g, '')}`;
+
   const NAV_LINKS = [
     { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
     { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text' },
@@ -808,6 +815,11 @@
               <a class="btn whatsapp-btn btn-sm" href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener">${SC.icon('whatsapp', { size: 16 })} Follow Channel</a>
               <a class="btn btn-on-dark btn-sm" id="footerGroupBtn" style="display:none;" target="_blank" rel="noopener">Join Group</a>
             </div>
+            <p style="margin:16px 0 10px;">Something not working? Send complaints directly to the developer:</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <a class="btn btn-on-dark btn-sm" id="footerComplaintsBtn" href="${complaintsWaLink(COMPLAINTS_PHONE)}" target="_blank" rel="noopener">${SC.icon('flag', { size: 15 })} Report a Problem</a>
+              <span id="footerComplaintsNumber" style="font-size:0.8rem;color:rgba(255,255,255,0.55);">${COMPLAINTS_PHONE_DISPLAY}</span>
+            </div>
           </div>
         </div>
         <div class="footer-bottom">
@@ -824,7 +836,8 @@
 
   /* ── Official WhatsApp links ─────────────
      Fetched once from GET /api/config (owner-managed in .env). The channel
-     URL is the official one; the group URL is the official group invite. */
+     URL is the official one; the group URL is the official group invite. The
+     complaints phone is the developer's line shown in the footer. */
   let whatsappPromise = null;
   function whatsappLinks() {
     if (!whatsappPromise) {
@@ -832,9 +845,10 @@
         .then((r) => r.ok ? r.json() : null)
         .then((d) => ({
           channel: (d && d.whatsapp && d.whatsapp.channel) || WHATSAPP_CHANNEL_URL,
-          group: (d && d.whatsapp && d.whatsapp.group) || ''
+          group: (d && d.whatsapp && d.whatsapp.group) || '',
+          complaintsPhone: (d && d.support && d.support.complaintsPhone) || COMPLAINTS_PHONE
         }))
-        .catch(() => ({ channel: WHATSAPP_CHANNEL_URL, group: '' }));
+        .catch(() => ({ channel: WHATSAPP_CHANNEL_URL, group: '', complaintsPhone: COMPLAINTS_PHONE }));
     }
     return whatsappPromise;
   }
@@ -1460,6 +1474,14 @@
       if (btn && links.group) {
         btn.href = links.group;
         btn.style.display = '';
+      }
+      // Complaints line (developer's number) — swap the default for the
+      // owner-managed one if the server serves a different number.
+      const complaintsBtn = document.getElementById('footerComplaintsBtn');
+      const complaintsNum = document.getElementById('footerComplaintsNumber');
+      if (complaintsBtn && links.complaintsPhone) {
+        complaintsBtn.href = complaintsWaLink(links.complaintsPhone);
+        if (complaintsNum) complaintsNum.textContent = links.complaintsPhone;
       }
     });
   }
