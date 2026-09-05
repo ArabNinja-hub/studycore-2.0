@@ -1,4 +1,5 @@
 const express = require('express');
+const asyncHandler = require('../lib/async-handler');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
@@ -570,7 +571,7 @@ router.get('/payments', (req, res) => {
   res.json({ payments: rows });
 });
 
-router.post('/payments/:id/approve', async (req, res) => {
+router.post('/payments/:id/approve', asyncHandler(async (req, res) => {
   const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id);
   if (!payment) return res.status(404).json({ message: 'Payment request not found.' });
   if (payment.status !== 'PENDING') return res.status(400).json({ message: 'This payment has already been reviewed.' });
@@ -612,7 +613,7 @@ router.post('/payments/:id/approve', async (req, res) => {
   }
 
   res.json({ message, emailSent: emailResult.sent });
-});
+}));
 
 router.post('/payments/:id/reject', (req, res) => {
   const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id);

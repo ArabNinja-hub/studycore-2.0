@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
+const { resourceVisibilityClause, programCanSeeResource } = require('../lib/program-access');
 
 const router = express.Router();
 const requireStudentLearningAccount = requireRole(ROLES.STUDENT, ROLES.ADMIN);
@@ -25,6 +26,18 @@ const COURSES = [
 ];
 const SUBJECT_TO_COURSE = Object.fromEntries(COURSES.map((c) => [c.subject.toLowerCase(), c.subject]));
 const COURSE_TO_SUBJECT = Object.fromEntries(COURSES.map((c) => [c.slug, c.subject]));
+
+// Legacy subject pages are still reachable, so they must apply the same
+// program/course restrictions as the dynamic program-course endpoints.
+function publishedSubjectResources(user, subject) {
+  const vis = resourceVisibilityClause(user, 'r', 'subjectProgram');
+  return db.prepare(`
+    SELECT r.* FROM resources r
+    WHERE LOWER(r.subject) = LOWER(@subject) AND r.publish_status = 'published'
+      ${vis.clause ? `AND ${vis.clause}` : ''}
+    ORDER BY r.created_at ASC
+  `).all({ subject, ...vis.params });
+}
 
 function serializeResource(row, extra = {}) {
   let mime = row.mime_type;
@@ -177,14 +190,12 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
 
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Lesson not found.' });
+  if (!programCanSeeResource(user, row)) return res.status(403).json({ message: 'This lesson is not available for your program.' });
 
   const completedById = new Map(
     db.prepare('SELECT resource_id FROM lesson_progress WHERE user_id = ?').all(user.id).map((r) => [r.resource_id, 1])
   );
-  const subjectRows = db.prepare(`
-    SELECT * FROM resources WHERE LOWER(subject) = LOWER(?) AND publish_status = 'published'
-    ORDER BY created_at ASC
-  `).all(row.subject);
+  const subjectRows = publishedSubjectResources(user, row.subject);
   const LEARN_CATEGORIES = ['video', 'document', 'tutorial', 'past_paper'];
   const CATEGORY_ORDER = { video: 0, document: 1, tutorial: 2, past_paper: 3 };
   const topicMap = new Map();
@@ -226,10 +237,7 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
   const subject = SUBJECT_TO_COURSE[key] || COURSE_TO_SUBJECT[key] || req.params.subject;
   const access = accessFor(user);
 
-  const rows = db.prepare(`
-    SELECT * FROM resources WHERE LOWER(subject) = LOWER(?) AND publish_status = 'published'
-    ORDER BY created_at ASC
-  `).all(subject);
+  const rows = publishedSubjectResources(user, subject);
 
   const completed = (id) => Boolean(db.prepare('SELECT 1 x FROM lesson_progress WHERE user_id = ? AND resource_id = ?').get(user.id, id));
   const completedById = new Map();

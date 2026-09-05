@@ -28,11 +28,10 @@ app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
 // ---- CORS ------------------------------------------------------------------
-// The entire frontend is served SAME-ORIGIN by this process, so normal
-// browser traffic carries no cross-origin Origin header and is unaffected.
-// CORS exists only for explicitly trusted external origins. Arbitrary
-// origins must never receive Access-Control-Allow-Origin with credentials -
-// that would let any site read the victim's authenticated responses.
+// The frontend is served SAME-ORIGIN by this process. Browsers still send
+// Origin on same-origin POST/PUT/DELETE requests, so allow this request's
+// own scheme/host/port as well as explicitly trusted external origins.
+// Arbitrary external origins must never receive credentialed CORS access.
 const DEFAULT_CORS_ORIGINS = [
   'https://studycore.academy',
   'https://www.studycore.academy'
@@ -42,16 +41,23 @@ const allowedOrigins = new Set([
   ...String(process.env.CORS_ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean)
 ]);
 
-app.use(cors({
-  origin(origin, callback) {
-    // No Origin header => same-origin request, curl, or a native app: fine.
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.has(origin)) return callback(null, true);
-    // Rejected with a 403 in the error handler - no ACAO header is ever
-    // sent for an unknown origin, so the browser blocks the response.
-    return callback(new Error('CORS_ORIGIN_NOT_ALLOWED'));
-  },
-  credentials: true
+app.use(cors((req, callback) => {
+  const origin = req.get('Origin');
+  let sameOrigin = false;
+  try {
+    // req.protocol honors the trusted TLS-terminating proxy. Use Host rather
+    // than req.hostname: preserve the port and do not trust X-Forwarded-Host
+    // to turn an unrelated Origin into a same-origin request.
+    const requestUrl = new URL(`${req.protocol}://${req.get('Host')}`);
+    sameOrigin = ['http:', 'https:'].includes(requestUrl.protocol) && origin === requestUrl.origin;
+  } catch { /* malformed host: only an explicit allowlist entry can pass */ }
+
+  if (!origin || sameOrigin || allowedOrigins.has(origin)) {
+    return callback(null, { origin: true, credentials: true });
+  }
+  // Rejected with a 403 in the error handler; never reflect an unknown
+  // external origin, even when it supplies forged forwarding headers.
+  return callback(new Error('CORS_ORIGIN_NOT_ALLOWED'));
 }));
 
 app.use(express.json());
@@ -91,10 +97,10 @@ app.use('/api/auth/profile', profileLimit);
 // Uploads are the most expensive request type (large bodies, storage I/O):
 // 30 per 15 minutes per IP is generous for a Content Admin publishing a
 // batch of notes and hostile to an automated upload flood.
-const uploadLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+const uploadLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, methods: ['POST', 'PUT', 'PATCH', 'DELETE'] });
 app.use(['/api/admin/resources', '/api/content-admin/resources', '/api/quiz/image'], uploadLimit);
-// Avatar uploads: 10 per hour per IP.
-const avatarLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10 });
+// Avatar changes: 10 per hour per IP; displaying a picture is not a change.
+const avatarLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, methods: ['POST', 'DELETE'] });
 app.use('/api/auth/avatar', avatarLimit);
 // Sensitive admin / Content Admin API surfaces: the dashboards make at most
 // a handful of calls per interaction, so these limits are wide enough for
@@ -290,11 +296,9 @@ app.use((err, req, res, next) => {
   next();
 });
 
-// Express 4 does not forward rejected promises from async route handlers to
-// the error middleware above; without this net, one unexpected throw (e.g. a
-// SQLite constraint hit by a race) would crash the whole server - a trivial
-// denial of service. Log and keep serving; the failed request times out on
-// the client side instead of taking down every other user.
+// Last-resort logging for background promises. HTTP async handlers use
+// lib/async-handler.js so their errors reach the middleware above and return
+// an actual response; this process-level listener cannot finish a request.
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection:', reason);
 });

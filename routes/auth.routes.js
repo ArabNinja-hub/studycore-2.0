@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
+const asyncHandler = require('../lib/async-handler');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
@@ -111,11 +112,14 @@ function subscriptionStatus(user) {
   };
 }
 
-router.post('/register', async (req, res) => {
-  const { name, email, password, school, grade, learningLevel, ref, program } = req.body;
-  if (!name || !name.trim()) return res.status(400).json({ message: 'Full name is required.' });
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ message: 'A valid email is required.' });
-  if (!password || password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+router.post('/register', asyncHandler(async (req, res) => {
+  const { name, email, password, school, grade, learningLevel, ref, program } = req.body || {};
+  if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ message: 'Full name is required.' });
+  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return res.status(400).json({ message: 'A valid email is required.' });
+  if (typeof password !== 'string' || password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+  if ((school != null && typeof school !== 'string') || (grade != null && typeof grade !== 'string')) {
+    return res.status(400).json({ message: 'School and grade must be text.' });
+  }
 
   // Program/category is REQUIRED at registration. It decides the student's
   // entire course and content experience and is enforced server-side.
@@ -172,10 +176,14 @@ router.post('/register', async (req, res) => {
     created_at: now
   };
 
-  db.prepare(`
+  // Another signup can finish while bcrypt is hashing. Let SQLite enforce
+  // email uniqueness atomically, and report that race as a normal conflict.
+  const inserted = db.prepare(`
     INSERT INTO users (id, name, email, password, role, school, grade, learning_level, program_code, subscription, trial_end, subscription_start, subscription_end, referral_code, referred_by, created_at)
     VALUES (@id, @name, @email, @password, @role, @school, @grade, @learning_level, @program_code, @subscription, @trial_end, @subscription_start, @subscription_end, @referral_code, @referred_by, @created_at)
+    ON CONFLICT(email) DO NOTHING
   `).run(user);
+  if (!inserted.changes) return res.status(409).json({ message: 'An account with this email already exists.' });
 
   if (referrer) {
     // Count how many successful referrals this person already had BEFORE
@@ -205,23 +213,23 @@ router.post('/register', async (req, res) => {
   const token = createToken(user);
   setAuthCookie(res, token);
   res.status(201).json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
-});
+}));
 
 // Content Admin registration is deliberately separate from public student
 // signup. The role is set here on the server — it is never accepted from the
 // browser — and the one-time access code is compared server-side only.
-router.post(['/register-content-admin', '/content-admin/register'], async (req, res) => {
+router.post(['/register-content-admin', '/content-admin/register'], asyncHandler(async (req, res) => {
   const { name, email, password, confirmPassword } = req.body || {};
   const adminAccessCode = req.body && (req.body.adminAccessCode ?? req.body.accessCode);
 
-  if (!name || !String(name).trim()) return res.status(400).json({ message: 'Full name is required.' });
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
+  if (typeof name !== 'string' || !name.trim()) return res.status(400).json({ message: 'Full name is required.' });
+  if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
     return res.status(400).json({ message: 'A valid email is required.' });
   }
-  if (!password || String(password).length < 6) {
+  if (typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ message: 'Password must be at least 6 characters.' });
   }
-  if (typeof confirmPassword !== 'string' || confirmPassword !== String(password)) {
+  if (typeof confirmPassword !== 'string' || confirmPassword !== password) {
     return res.status(400).json({ message: 'Passwords do not match.' });
   }
   if (!validContentAdminAccessCode(adminAccessCode)) {
@@ -246,10 +254,12 @@ router.post(['/register-content-admin', '/content-admin/register'], async (req, 
     created_at: now
   };
 
-  db.prepare(`
+  const inserted = db.prepare(`
     INSERT INTO users (id, name, email, password, role, subscription, created_at)
     VALUES (@id, @name, @email, @password, @role, @subscription, @created_at)
+    ON CONFLICT(email) DO NOTHING
   `).run(user);
+  if (!inserted.changes) return res.status(409).json({ message: 'An account with this email already exists.' });
 
   const token = createToken(user);
   setAuthCookie(res, token);
@@ -257,11 +267,13 @@ router.post(['/register-content-admin', '/content-admin/register'], async (req, 
     token,
     user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) }
   });
-});
+}));
 
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+router.post('/login', asyncHandler(async (req, res) => {
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || !email.trim() || typeof password !== 'string' || !password) {
+    return res.status(400).json({ message: 'Email and password are required.' });
+  }
 
   const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.trim().toLowerCase());
   if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
@@ -276,7 +288,7 @@ router.post('/login', async (req, res) => {
   const token = createToken(user);
   setAuthCookie(res, token);
   res.json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
-});
+}));
 
 router.post('/logout', (req, res) => {
   clearAuthCookie(res);
@@ -377,9 +389,10 @@ router.put('/program', requireAuth, (req, res) => {
   res.json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
 });
 
-router.put('/password', requireAuth, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
-  if (!newPassword || newPassword.length < 6) return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+router.put('/password', requireAuth, asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (typeof newPassword !== 'string' || newPassword.length < 6) return res.status(400).json({ message: 'New password must be at least 6 characters.' });
+  if (typeof currentPassword !== 'string' || !currentPassword) return res.status(400).json({ message: 'Current password is required.' });
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
   const valid = await bcrypt.compare(currentPassword || '', user.password);
@@ -387,7 +400,7 @@ router.put('/password', requireAuth, async (req, res) => {
   const hashed = await bcrypt.hash(newPassword, 10);
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashed, user.id);
   res.json({ message: 'Password updated.' });
-});
+}));
 
 router.post('/subscribe', requireAuth, requireRole(ROLES.STUDENT), (req, res) => {
   const { phone, method, reference } = req.body;
@@ -449,7 +462,7 @@ function verifyImageSignature(head) {
   return false;
 }
 
-router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, res) => {
+router.post('/avatar', requireAuth, avatarUpload.single('avatar'), asyncHandler(async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
   if (!req.file) return res.status(400).json({ message: 'Please choose an image file to upload.' });
@@ -474,9 +487,9 @@ router.post('/avatar', requireAuth, avatarUpload.single('avatar'), async (req, r
   db.prepare('UPDATE users SET avatar_key = ? WHERE id = ?').run(req.file.key, user.id);
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   res.status(201).json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
-});
+}));
 
-router.delete('/avatar', requireAuth, async (req, res) => {
+router.delete('/avatar', requireAuth, asyncHandler(async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
   if (user.avatar_key) {
@@ -485,12 +498,12 @@ router.delete('/avatar', requireAuth, async (req, res) => {
   db.prepare('UPDATE users SET avatar_key = NULL WHERE id = ?').run(user.id);
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   res.json({ user: { ...publicUser(updated), subscriptionStatus: subscriptionStatus(updated) } });
-});
+}));
 
 // Serves the authenticated user's own picture for display (nav, dashboard,
 // profile). It is scoped to the caller's own row - there is no route that
 // accepts another user's id.
-router.get('/avatar', requireAuth, async (req, res) => {
+router.get('/avatar', requireAuth, asyncHandler(async (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user || !user.avatar_key) return res.status(404).json({ message: 'No profile picture set.' });
   try {
@@ -515,7 +528,7 @@ router.get('/avatar', requireAuth, async (req, res) => {
   } catch {
     res.status(404).json({ message: 'Profile picture is temporarily unavailable.' });
   }
-});
+}));
 
 router.get('/payment-info', requireAuth, requireRole(ROLES.STUDENT), (req, res) => {
   res.json({
