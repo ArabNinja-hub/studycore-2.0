@@ -129,6 +129,29 @@ GOOGLE_API_KEY=AIza…
 GOOGLE_CLOUD_PROJECT_NUMBER=1076280995038
 ```
 
+**These values live only in the host environment** (Render → *Environment* →
+*Environment Variables*, then *Save* which triggers a redeploy; or a local,
+git-ignored `.env`). They are never committed to this repository —
+`.env.example` intentionally ships them blank.
+
+**No OAuth client secret is used or required.** This is the browser-side
+Picker flow (GIS `initTokenClient`), and Google does not use client secrets
+for Web application clients in this flow. Do not add a
+`GOOGLE_CLIENT_SECRET` variable.
+
+After the redeploy, confirm the server sees them:
+
+```
+curl -s https://<your-host>/api/config | jq .googlePicker
+# → { "apiKey": "AIza…", "clientId": "…apps.googleusercontent.com",
+#     "appId": "1076280995038", "valid": true, "issues": [] }
+```
+
+`"valid": true` with an empty `issues` array means the server-side
+configuration is present and consistent; the Content Admin dashboard status
+line then reads **“Google Drive ready”** and the *Select from Google Drive*
+button is enabled.
+
 The numeric prefix of `GOOGLE_CLIENT_ID` (before the first `-`) must equal
 `GOOGLE_CLOUD_PROJECT_NUMBER` — for this project both are `1076280995038`.
 `GOOGLE_CLIENT_ID` must be the **OAuth Web application** Client ID from
