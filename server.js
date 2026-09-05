@@ -112,10 +112,73 @@ app.use('/api/content-admin', contentAdminApiLimit);
 
 app.use('/api/auth', authRoutes);
 
+// ---------------------------------------------------------------------------
+// Google Picker env validation (Content Admin dashboard → "Select from
+// Google Drive"). The Picker only works when all three values are present
+// AND mutually consistent, so the app verifies them once at boot and
+// advertises any problems in /api/config - the browser console and the
+// dashboard status line then name the exact missing/malformed env var
+// instead of failing with a generic "Google Picker initialization".
+//
+//   GOOGLE_CLIENT_ID            OAuth *Web application* Client ID:
+//                               <projectNumber>-<id>.apps.googleusercontent.com
+//   GOOGLE_API_KEY              API key (AIza…, unrestricted or allowed for
+//                               the Picker + Drive APIs)
+//   GOOGLE_CLOUD_PROJECT_NUMBER the NUMERIC project number (not the project
+//                               ID string) of the same project as the client
+// ---------------------------------------------------------------------------
+const GOOGLE_WEB_CLIENT_ID_RE = /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/;
+const GOOGLE_PROJECT_NUMBER_RE = /^[0-9]{10,20}$/;
+const GOOGLE_API_KEY_RE = /^AIza[0-9A-Za-z_-]{30,}$/;
+
+function auditGooglePickerEnv() {
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const apiKey = String(process.env.GOOGLE_API_KEY || '').trim();
+  const projectNumber = String(process.env.GOOGLE_CLOUD_PROJECT_NUMBER || '').trim();
+  const issues = [];
+
+  if (!clientId) {
+    issues.push('GOOGLE_CLIENT_ID is not set (expected the OAuth Web application Client ID, e.g. 1076280995038-….apps.googleusercontent.com)');
+  } else if (!GOOGLE_WEB_CLIENT_ID_RE.test(clientId)) {
+    issues.push('GOOGLE_CLIENT_ID ("' + clientId + '") is not an OAuth Web application Client ID - it must end in .apps.googleusercontent.com');
+  }
+  if (!apiKey) {
+    issues.push('GOOGLE_API_KEY is not set (expected an "AIza…" API key)');
+  } else if (!GOOGLE_API_KEY_RE.test(apiKey)) {
+    issues.push('GOOGLE_API_KEY does not look like a valid API key (expected "AIza…" of ~39 chars)');
+  }
+  if (!projectNumber) {
+    issues.push('GOOGLE_CLOUD_PROJECT_NUMBER is not set (expected the numeric Google Cloud project number, e.g. 1076280995038)');
+  } else if (!GOOGLE_PROJECT_NUMBER_RE.test(projectNumber)) {
+    issues.push('GOOGLE_CLOUD_PROJECT_NUMBER ("' + projectNumber + '") is not the numeric project number - use the number, not the project ID');
+  }
+  if (clientId && GOOGLE_PROJECT_NUMBER_RE.test(projectNumber)) {
+    const clientProject = clientId.split('-')[0];
+    if (clientProject !== projectNumber) {
+      issues.push('GOOGLE_CLIENT_ID belongs to project ' + clientProject + ' but GOOGLE_CLOUD_PROJECT_NUMBER is ' + projectNumber + ' - they must be the same Google Cloud project');
+    }
+  }
+  return issues;
+}
+
+const googlePickerIssues = auditGooglePickerEnv();
+if (googlePickerIssues.length) {
+  console.warn('============================================================');
+  console.warn('StudyCore: the Google Drive Picker will NOT work for Content');
+  console.warn('Admins until the following is fixed in the server environment:');
+  googlePickerIssues.forEach((issue) => console.warn('  - ' + issue));
+  console.warn('The dashboard will report the exact problem in its status line');
+  console.warn('and in the browser console under [StudyCore][GooglePicker].');
+  console.warn('============================================================');
+} else {
+  console.log('StudyCore: Google Picker env OK (client ' + String(process.env.GOOGLE_CLIENT_ID).trim() + ', project ' + String(process.env.GOOGLE_CLOUD_PROJECT_NUMBER).trim() + ', key ' + String(process.env.GOOGLE_API_KEY).trim().slice(0, 6) + '…)');
+}
+
 // Public site config. Official WhatsApp links live in .env so the owner can
 // rotate them without touching page code; the marketing panels on every page
 // fetch them here on load. No auth required - nothing in this payload is
-// private.
+// private (the Picker needs the client ID / API key client-side by design;
+// `issues` carries the boot-time validation above).
 app.get('/api/config', (req, res) => {
   res.json({
     whatsapp: {
@@ -129,7 +192,9 @@ app.get('/api/config', (req, res) => {
     googlePicker: {
       apiKey: process.env.GOOGLE_API_KEY || '',
       clientId: process.env.GOOGLE_CLIENT_ID || '',
-      appId: process.env.GOOGLE_CLOUD_PROJECT_NUMBER || ''
+      appId: process.env.GOOGLE_CLOUD_PROJECT_NUMBER || '',
+      valid: googlePickerIssues.length === 0,
+      issues: googlePickerIssues
     }
   });
 });
