@@ -186,7 +186,11 @@
                 <label for="resDescription">Description</label>
                 <textarea id="resDescription" rows="3" placeholder="Short summary students will see on the lesson page"></textarea>
               </div>
-              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;" class="admin-four-col">
+              <!-- The column count lives in .admin-four-col (style.css) so the
+                   mobile breakpoints can collapse it. An inline
+                   grid-template-columns here would out-rank every media query
+                   and lock this row to 4 columns on a phone. -->
+              <div class="admin-four-col">
                 <div class="form-group">
                   <label for="resCourse">Course (optional)</label>
                   <input id="resCourse" type="text" placeholder="e.g. Pure Mathematics" />

@@ -284,3 +284,76 @@ test('application JavaScript parses successfully', () => {
     );
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Mobile fit regressions.
+//
+// These lock in the specific defects that made phone layouts overflow
+// while desktop and tablet looked fine. They are cheap static checks —
+// the point is that a future edit reintroducing the pattern fails loudly.
+// ─────────────────────────────────────────────────────────────────────
+
+test('no inline grid-template-columns can outrank the mobile breakpoints', () => {
+  const pages = [
+    ...fs.readdirSync(path.join(ROOT, 'views')).filter((n) => n.endsWith('.html')).map((n) => path.join('views', n)),
+    ...fs.readdirSync(path.join(ROOT, 'public')).filter((n) => n.endsWith('.html')).map((n) => path.join('public', n))
+  ];
+  for (const page of pages) {
+    assert.doesNotMatch(
+      read(page),
+      /style="[^"]*grid-template-columns/i,
+      `${page}: an inline grid-template-columns beats every media query, so the grid can never collapse on a phone. Put the columns in a class.`
+    );
+  }
+});
+
+test('fixed grid track minimums are clamped so they fit a 320px screen', () => {
+  for (const file of ['public/css/style.css', 'public/css/quiz.css', 'public/css/content-admin.css']) {
+    // Strip comments first: the explanatory prose next to these rules
+    // legitimately quotes the bad pattern it is warning about.
+    const css = read(file).replace(/\/\*[\s\S]*?\*\//g, '');
+    // minmax(<fixed>px, …) with a minimum wider than a narrow column forces
+    // horizontal overflow; min(<fixed>px, 100%) lets the track shrink.
+    const offenders = [...css.matchAll(/minmax\(\s*(\d+)px/g)]
+      .filter((match) => Number(match[1]) > 120)
+      .map((match) => match[0]);
+    assert.deepEqual(
+      offenders, [],
+      `${file}: use minmax(min(Npx, 100%), …) so the track can shrink below N on a phone.`
+    );
+  }
+});
+
+test('wide admin tables reflow into labelled cards on small screens', () => {
+  const css = read('public/css/style.css');
+  assert.match(css, /table\.table td::before\s*\{[\s\S]*?content: attr\(data-label\)/);
+  assert.match(css, /table\.table thead\s*\{[\s\S]*?clip: rect\(0 0 0 0\)/);
+
+  // Every cell the admin table renders must carry the label the CSS shows.
+  const adminJs = read('public/js/admin.js');
+  // Target the mapped resource row specifically — the loading/empty states
+  // above it are single-cell colspan rows with no labels by design.
+  const rowStart = adminJs.indexOf('<tr>', adminJs.indexOf('resources.map('));
+  const rowMarkup = adminJs.slice(rowStart, adminJs.indexOf('</tr>', rowStart));
+  const cells = [...rowMarkup.matchAll(/<td(\s[^>]*)?>/g)];
+  assert.ok(cells.length >= 10, 'expected the full resource row');
+  for (const cell of cells) {
+    assert.match(cell[0], /data-label="/, `resource table cell ${cell[0]} needs a data-label for the mobile card view`);
+  }
+});
+
+test('mobile layout rules let flex and grid children shrink', () => {
+  const css = read('public/css/style.css');
+  // min-width:auto on flex/grid items is the single most common cause of a
+  // page that scrolls sideways on a phone.
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?min-width: 0;/);
+  assert.match(css, /overflow-wrap: anywhere;/);
+});
+
+test('quiz taking and authoring have real phone styles', () => {
+  const css = read('public/css/quiz.css');
+  const mobile = css.slice(css.indexOf('@media (max-width: 600px)'));
+  assert.match(mobile, /\.quiz-option\s*\{[^}]*min-height: 46px/, 'answer rows need a 44px+ touch target');
+  assert.match(mobile, /\.quiz-text-input\s*\{[^}]*font-size: 16px/, '16px inputs stop iOS zooming the page');
+  assert.match(mobile, /\.qa-editor-card/, 'the quiz builder needs phone styles too');
+});

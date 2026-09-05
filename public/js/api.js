@@ -30,7 +30,13 @@
 
   const NET = {
     TIMEOUT_MS: 16000,        // normal JSON call
-    UPLOAD_TIMEOUT_MS: 180000, // multipart upload (big files, slow uplink)
+    // Multipart uploads are NOT bounded by wall-clock time: a large file on
+    // a slow uplink is legitimately slow, and aborting a transfer that is
+    // still moving bytes just wastes the student's data bundle. Progress-
+    // based stall detection (see uploadWithProgress) is the real signal.
+    UPLOAD_TIMEOUT_MS: 180000, // fetch-based small uploads (avatar, quiz image)
+    UPLOAD_STALL_MS: 45000,    // no upload progress at all -> genuinely dead
+    UPLOAD_FINALIZE_MS: 120000, // bytes sent; waiting on R2 + DB commit
     RETRIES: 2,               // extra attempts for safe requests
     BACKOFF_MS: 550,
     OFFLINE_GRACE_MS: 6000,   // how long to wait for the radio before failing
@@ -392,15 +398,105 @@
   };
 
   // XHR wrapper so we can report real upload progress (fetch can't do this yet).
-  StudyCoreAPI.uploadWithProgress = function (url, method, formData, onProgress) {
+  //
+  // SLOW CONNECTIONS: a single wall-clock timeout is wrong for uploads. A
+  // 60MB lecture PDF on a 200kbps uplink legitimately takes 40 minutes, and
+  // killing it at a fixed deadline throws away work that was progressing
+  // fine. What actually indicates a dead upload is *no bytes moving*, so we
+  // use a STALL timeout that resets on every progress event instead. The
+  // callback also receives live throughput/ETA so the UI can prove to the
+  // student that something is still happening.
+  StudyCoreAPI.uploadWithProgress = function (url, method, formData, onProgress, options = {}) {
+    const stallMs = options.stallMs || NET.UPLOAD_STALL_MS;
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open(method, url, true);
       xhr.withCredentials = true;
+
+      const startedAt = Date.now();
+      let lastLoaded = 0;
+      let lastTick = startedAt;
+      let speedBps = 0;          // smoothed bytes/second
+      let stallTimer = null;
+      let finished = false;
+
+      function clearStall() {
+        if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
+      }
+
+      function armStall() {
+        clearStall();
+        stallTimer = setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          try { xhr.abort(); } catch { /* already gone */ }
+          reject(networkError(
+            navigator.onLine === false
+              ? 'Upload stopped — you are offline. Reconnect and try again.'
+              : 'The upload stopped making progress. Check your connection and try again.',
+            { timeout: true, offline: navigator.onLine === false }
+          ));
+        }, stallMs);
+      }
+
+      // Let the caller cancel a doomed upload instead of waiting it out.
+      if (options.signal) {
+        if (options.signal.aborted) {
+          reject(networkError('Upload cancelled.', { cancelled: true }));
+          return;
+        }
+        options.signal.addEventListener('abort', () => {
+          if (finished) return;
+          finished = true;
+          clearStall();
+          try { xhr.abort(); } catch { /* already gone */ }
+          reject(networkError('Upload cancelled.', { cancelled: true }));
+        }, { once: true });
+      }
+
       xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onProgress) onProgress(Math.round((event.loaded / event.total) * 100));
+        armStall();
+        if (!event.lengthComputable || !onProgress) return;
+
+        const now = Date.now();
+        const dt = (now - lastTick) / 1000;
+        if (dt >= 0.25) {
+          const instant = (event.loaded - lastLoaded) / dt;
+          // Exponential smoothing: a raw per-tick rate on mobile data swings
+          // wildly and makes the ETA jump around, which reads as "broken".
+          speedBps = speedBps ? (speedBps * 0.7) + (instant * 0.3) : instant;
+          lastLoaded = event.loaded;
+          lastTick = now;
+        }
+
+        const percent = Math.round((event.loaded / event.total) * 100);
+        const remaining = event.total - event.loaded;
+        const etaSeconds = speedBps > 0 ? Math.round(remaining / speedBps) : null;
+        onProgress(percent, {
+          loaded: event.loaded,
+          total: event.total,
+          bytesPerSecond: Math.max(0, Math.round(speedBps)),
+          etaSeconds,
+          elapsedSeconds: Math.round((now - startedAt) / 1000)
+        });
       };
+
+      // Bytes are all out; now we are waiting on R2 + the database. Give the
+      // server its own generous window rather than the upload stall window.
+      xhr.upload.onload = () => {
+        clearStall();
+        stallTimer = setTimeout(() => {
+          if (finished) return;
+          finished = true;
+          try { xhr.abort(); } catch { /* already gone */ }
+          reject(networkError('The server did not confirm the upload in time. Please check the library before re-uploading.', { timeout: true }));
+        }, NET.UPLOAD_FINALIZE_MS);
+      };
+
       xhr.onload = () => {
+        if (finished) return;
+        finished = true;
+        clearStall();
         let data = null;
         try { data = JSON.parse(xhr.responseText); } catch { data = null; }
         if (xhr.status >= 200 && xhr.status < 300) resolve(data);
@@ -410,14 +506,26 @@
           reject(err);
         }
       };
-      xhr.onerror = () => reject(networkError(
-        navigator.onLine === false
-          ? 'Upload stopped — you are offline. Reconnect and try again.'
-          : 'Connection lost during the upload. Please try again.',
-        { offline: navigator.onLine === false }
-      ));
-      xhr.ontimeout = () => reject(networkError('The upload timed out on this connection. Please try again.', { timeout: true }));
-      xhr.timeout = NET.UPLOAD_TIMEOUT_MS;
+      xhr.onerror = () => {
+        if (finished) return;
+        finished = true;
+        clearStall();
+        reject(networkError(
+          navigator.onLine === false
+            ? 'Upload stopped — you are offline. Reconnect and try again.'
+            : 'Connection lost during the upload. Please try again.',
+          { offline: navigator.onLine === false }
+        ));
+      };
+      xhr.ontimeout = () => {
+        if (finished) return;
+        finished = true;
+        clearStall();
+        reject(networkError('The upload timed out on this connection. Please try again.', { timeout: true }));
+      };
+      // No xhr.timeout: progress-based stalling (above) is the correct
+      // failure signal for a big file on a slow uplink.
+      armStall();
       xhr.send(formData);
     });
   };

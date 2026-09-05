@@ -11,7 +11,13 @@
 /* ── Student quiz list ───────────────────── */
 .quiz-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  /* min() is what makes this fit a phone. A bare minmax(320px, 1fr) track is
+     320px wide even when the column box is only ~288px (a 320px device minus
+     container padding), so the card overflows and the whole page scrolls
+     sideways. Clamping the minimum to 100% lets the track shrink to whatever
+     is actually available while still giving two/three columns on wider
+     screens. */
+  grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr));
   gap: 18px;
 }
 .quiz-card {
@@ -230,4 +236,38 @@
   .quiz-card { flex-direction: column; }
   .quiz-card-actions { width: 100%; }
   .quiz-card-actions .btn { width: 100%; }
+
+  /* ── Taking a quiz on a phone ──────────────────────────────────────
+     The take view was only ever sized for desktop. On a phone the heavy
+     padding eats the question text, the header crowds the timer onto the
+     title, and option rows sit below a comfortable tap height. */
+  .quiz-take-head { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .quiz-take-title { flex: 1 1 100%; }
+  .quiz-take-title h2 { font-size: 1.15rem; }
+  .quiz-question { padding: 15px 14px; }
+  .quiz-q-head { gap: 10px; }
+  .quiz-q-num { width: 26px; height: 26px; flex-basis: 26px; font-size: 0.78rem; }
+  .quiz-q-head strong { font-size: 0.95rem; }
+  .quiz-q-img img { max-height: 220px; }
+  /* A tappable answer is a 44px row, not a 38px one. */
+  .quiz-option { padding: 13px 13px; min-height: 46px; font-size: 0.92rem; }
+  /* 16px stops iOS zooming the page when the field takes focus. */
+  .quiz-text-input { font-size: 16px; }
+  .quiz-submit-row { justify-content: stretch; }
+  .quiz-submit-row .btn { width: 100%; }
+
+  /* ── Quiz authoring on a phone ─────────────────────────────────── */
+  .qa-card { flex-wrap: wrap; }
+  .qa-card-actions { width: 100%; }
+  .qa-card-actions .btn { flex: 1; }
+  .qa-editor-card { padding: 16px 14px; }
+  .qa-editor-head { flex-wrap: wrap; }
+  .qa-question { padding: 13px 12px; }
+  .qa-question-head { flex-wrap: wrap; }
+  .qa-form-row.qa-points-row { max-width: none; }
+  .qa-inline-row > * { flex: 1 1 100%; }
+  .qa-form-row input[type="text"], .qa-form-row textarea, .qa-form-row select,
+  .qa-inline-row input, .qa-inline-row select,
+  .qa-option-row input[type="text"], .qa-answer-text { font-size: 16px; }
+  .qa-editor-actions .btn { width: 100%; }
 }
