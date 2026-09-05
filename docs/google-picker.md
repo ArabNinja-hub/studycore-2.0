@@ -29,19 +29,57 @@ created and the admin UI was not replaced.
 4. **Race on config.** `PICKER_CONFIG` was read at script-parse time while
    `/api/config` was still in flight, so the API key/client ID were usually
    empty strings.
+5. **Config validity was never verified.** The readiness gate only checked
+   that client ID and API key were *non-empty*. A missing
+   `GOOGLE_CLOUD_PROJECT_NUMBER` passed bootstrap, the button was enabled,
+   the admin went through Google authorization, and only then did the Picker
+   window open **empty** ("App ID missing") — with no error state at all.
+   A project number that did not match the Client ID's project (e.g. the
+   project ID string instead of the numeric number) failed the same way:
+   silent empty Picker.
+
+## Diagnosing "Google Drive failed to load — …"
+
+Every failure is printed to the browser console under
+`[StudyCore][GooglePicker]` as the **exact error + full stack trace** plus a
+10-point diagnostic audit (also available on demand via
+`window.__STUDYCORE_PICKER_DIAGNOSTICS__()`). The status-line stage maps to
+the console evidence like this:
+
+| Status-line stage | Exact console error | Meaning / fix |
+| --- | --- | --- |
+| `Google API library loading` | `Failed to load https://apis.google.com/js/api.js (network failure, CSP block, or the origin is unreachable)` | The gapi loader never executed — CSP `script-src` must allow `https://apis.google.com`; ad blockers and corporate proxies also cause this. |
+| `Google API library loading` | `gapi.load('picker') reported onerror / ontimeout` or `timed out after 20s` | The picker module never arrived from Google. |
+| `Google Identity Services loading` | `Failed to load https://accounts.google.com/gsi/client (…)` | CSP `script-src` must allow `https://accounts.google.com`. |
+| `Google Picker initialization` | `Readiness check failed — not ready: GOOGLE_CLIENT_ID: EMPTY — the server environment variable GOOGLE_CLIENT_ID is not set…` | The server environment (not the Google Cloud console) is missing/renamed. The message names the exact variable. The server prints the same list in its boot log and in `/api/config.googlePicker.issues`. |
+| `Google Picker initialization` | `NOT the numeric project number (got "…")` | `GOOGLE_CLOUD_PROJECT_NUMBER` must be the numeric project number (e.g. `1076280995038`), not the project ID. |
+| `Google Picker initialization` | `MISMATCH — the Client ID belongs to project X but GOOGLE_CLOUD_PROJECT_NUMBER is Y` | Client ID and App ID must come from the same Google Cloud project. |
+| `OAuth authorization` | `Error: invalid_client (…)` / `access_denied (…)` | Google rejected the Client ID or the origin. Authorized JavaScript origins must include the site origin; the consent app must allow the signed-in account. |
+
+A **Retry** button appears next to the status line after any failure — a
+transient network problem or a corrected server env var can be retried
+without reloading the page.
 
 ## How it works now
 
-1. `/api/config` is awaited (`window.STUDYCORE_CONFIG_READY`).
+1. `/api/config` is awaited (`window.STUDYCORE_CONFIG_READY`). The server
+   also validates the three env vars **at boot** (warning in the server log
+   when anything is missing/malformed) and advertises the result in
+   `/api/config.googlePicker.{valid, issues}`.
 2. Both libraries are injected and awaited in parallel:
    - `https://apis.google.com/js/api.js` → then `gapi.load('picker', onPickerApiLoad)`
      (switch to `'client:picker'` if the Drive REST client is ever needed).
    - `https://accounts.google.com/gsi/client`.
-3. A readiness check verifies the **real objects**, not the button:
-   `gapi`, `google.picker.PickerBuilder`, `google.accounts.oauth2`, plus
-   client ID and API key.
-4. Only then is "Select from Google Drive" enabled and the status set to
-   **"Google Drive ready"**.
+3. The config is **audited** in the browser: `GOOGLE_CLIENT_ID` must be an
+   OAuth *Web application* Client ID (`<projectNumber>-….apps.googleusercontent.com`),
+   `GOOGLE_API_KEY` an `AIza…` key, and `GOOGLE_CLOUD_PROJECT_NUMBER` the
+   **numeric** project number — which must equal the numeric prefix of the
+   Client ID. Every check is printed to the console as PASS/FAIL with the
+   exact value.
+4. A readiness check verifies the **real objects** (`gapi`,
+   `google.picker.PickerBuilder`, `google.accounts.oauth2`) **and** the
+   audited config. Only then is "Select from Google Drive" enabled and the
+   status set to **"Google Drive ready"**.
 5. On click: GIS `initTokenClient({ scope: 'https://www.googleapis.com/auth/drive.file' })`
    → access token → Picker built with
    `.setDeveloperKey(GOOGLE_API_KEY)`, `.setAppId(GOOGLE_CLOUD_PROJECT_NUMBER)`,
@@ -82,10 +120,18 @@ status line reads "ready" but the Picker window is blank or 403s, verify:
 
 ## Deployment
 
-Set in the host environment:
+Set in the host environment (the server boot log and
+`/api/config.googlePicker.issues` tell you exactly which one is missing):
 
 ```
 GOOGLE_CLIENT_ID=…apps.googleusercontent.com
 GOOGLE_API_KEY=AIza…
 GOOGLE_CLOUD_PROJECT_NUMBER=1076280995038
 ```
+
+The numeric prefix of `GOOGLE_CLIENT_ID` (before the first `-`) must equal
+`GOOGLE_CLOUD_PROJECT_NUMBER` — for this project both are `1076280995038`.
+`GOOGLE_CLIENT_ID` must be the **OAuth Web application** Client ID from
+Google Cloud → APIs & Services → Credentials (the one ending in
+`.apps.googleusercontent.com`), and its authorized JavaScript origins must
+include the site origin.
