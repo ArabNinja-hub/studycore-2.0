@@ -61,7 +61,7 @@
 
     <main>
       <!-- Hero: one stage, one message, one primary action -->
-      <section class="hero" id="homeHero">
+      <section class="hero" id="homeHero" style="position:relative;">
         <!-- Decorative floating animated StudyCore background logo -->
         <div class="hero-bg-visual" aria-hidden="true">
           <div class="hero-floating-logo-stage" id="heroLogoStage">
@@ -85,6 +85,9 @@
             </div>
           </div>
         </div>
+
+        <!-- Hero image slideshow -->
+        <div class="hero-slideshow" id="heroSlideshow" aria-label="Hero image slideshow"></div>
 
         <div class="container">
           <div class="hero-copy">
@@ -385,6 +388,50 @@
             updateParallax();
           }
         })();
+      });
+    </script>
+
+    <script>
+      // Hero image slideshow initialization
+      document.addEventListener('DOMContentLoaded', () => {
+        const images = [
+          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014..jpeg',
+          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.3.jpeg',
+          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.38.jpeg',
+          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.39.jpeg',
+          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.jpeg'
+        ];
+        const slideshow = document.getElementById('heroSlideshow');
+        if (!slideshow) return;
+        // Add semi‑transparent dark overlay so text stays readable
+        slideshow.style.cssText = 'position:absolute; inset:0; z-index:1; background:rgba(0,0,0,0.6);';
+        const container = document.querySelector('#homeHero .container');
+        if (container) container.style.zIndex = 2;
+        images.forEach((src, i) => {
+          const img = document.createElement('img');
+          img.src = src;
+          img.loading = 'eager';
+          img.style.cssText = `
+            position:absolute;
+            inset:0;
+            width:100%;
+            height:100%;
+            object-fit:cover;
+            opacity:${i === 0 ? '1' : '0'};
+            transition:opacity 1s ease;
+          `;
+          slideshow.appendChild(img);
+        });
+        let current = 0;
+        const total = images.length;
+        setInterval(() => {
+          const currentImg = slideshow.children[current];
+          const nextIdx = (current + 1) % total;
+          const nextImg = slideshow.children[nextIdx];
+          currentImg.style.opacity = 0;
+          nextImg.style.opacity = 1;
+          current = nextIdx;
+        }, 4500);
       });
     </script>
   </body>

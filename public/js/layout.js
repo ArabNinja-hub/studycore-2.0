@@ -61,7 +61,7 @@
   // can rotate it in .env via SUPPORT_COMPLAINTS_PHONE).
   const COMPLAINTS_PHONE = '+260981474031';
   const COMPLAINTS_PHONE_DISPLAY = '+260 981 474 031';
-  const complaintsWaLink = (phone) => `https://wa.me/${phone.replace(/[^0-9]/g, '')}`;
+  const complaintsWaLink = (phone) => `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hello 18_ghtɛɛn! am having trouble with certain stuff')}`;
 
   const NAV_LINKS = [
     { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
