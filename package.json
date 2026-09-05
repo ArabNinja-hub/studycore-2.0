@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node --test scripts/test-ui.js scripts/test-notifications.js scripts/test-emails.js scripts/test-content-admin.js scripts/test-role-migration.js scripts/test-program-targeting.js scripts/test-program-catalog.js",
+    "test": "node --test scripts/test-ui.js scripts/test-notifications.js scripts/test-emails.js scripts/test-content-admin.js scripts/test-role-migration.js scripts/test-program-targeting.js scripts/test-program-catalog.js scripts/test-http-regressions.js scripts/test-learning-regressions.js",
     "make-admin": "node scripts/make-admin.js"
   },
   "dependencies": {

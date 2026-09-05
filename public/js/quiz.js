@@ -116,7 +116,7 @@
     }
     const attempted = quiz.attempts > 0;
     const best = Number(quiz.bestPercent) || 0;
-    const passing = Number(quiz.passingPercent) || 50;
+    const passing = Number(quiz.passingPercent ?? 50);
     const meta = [];
     if (attempted) meta.push(`<span class="quiz-pill ${best >= passing ? 'passed' : 'failed'}">Best ${best}%</span>`);
     meta.push(`<span class="quiz-pill">${quiz.questionCount} Q · ${quiz.totalPoints} pts</span>`);

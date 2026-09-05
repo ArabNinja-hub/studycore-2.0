@@ -103,7 +103,7 @@ function getTokenFromRequest(req) {
 }
 
 function freshSessionUser(id) {
-  return db.prepare('SELECT id, email, role, is_active FROM users WHERE id = ?').get(id);
+  return db.prepare('SELECT id, email, role, is_active, program_code FROM users WHERE id = ?').get(id);
 }
 
 function isActive(user) {
@@ -114,7 +114,10 @@ function attachFreshUser(payload, freshUser) {
   return {
     ...payload,
     email: freshUser.email || payload.email,
-    role: normalizeRole(freshUser.role) || 'student'
+    role: normalizeRole(freshUser.role) || 'student',
+    // Quiz and other visibility checks need the current program, too. Never
+    // preserve a missing/stale program claim from the signed session payload.
+    program_code: freshUser.program_code || null
   };
 }
 

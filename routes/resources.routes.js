@@ -1,6 +1,7 @@
 const path = require('path');
 const { Readable } = require('stream');
 const express = require('express');
+const asyncHandler = require('../lib/async-handler');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, attachUser } = require('../middleware/auth');
@@ -10,7 +11,7 @@ const { isAdmin, isStudent } = require('../lib/roles');
 
 const router = express.Router();
 
-function serializeResource(row) {
+function serializeResource(row, user) {
   return {
     id: row.id,
     title: row.title,
@@ -28,7 +29,10 @@ function serializeResource(row) {
     mimeType: row.stored_name ? inferMime(row) : row.mime_type,
     hasFile: Boolean(row.stored_name),
     externalUrl: row.external_url,
-    quizData: row.quiz_data ? JSON.parse(row.quiz_data) : null,
+    // Generic list/detail/bookmark responses are not quiz authoring APIs.
+    // Students get questions without answers from /api/quiz/:id; answer keys
+    // are revealed only by server-side grading, never by this serializer.
+    quizData: isAdmin(user) && row.quiz_data ? JSON.parse(row.quiz_data) : null,
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
     pinned: Boolean(row.pinned),
@@ -87,6 +91,8 @@ function gate(req, res, next) {
 // Can this student open this specific resource right now?
 function canAccess(row, access) {
   if (row.category === 'announcement') return true;
+  // Match the canonical quiz API even on compatibility resource endpoints.
+  if (row.category === 'quiz') return access.premium;
   if (!row.is_premium) return true; // free preview
   if (row.category === 'video') return access.premium; // videos are Premium-only, always
   return access.premium || access.trial; // documents, tutorials, past papers
@@ -95,6 +101,7 @@ function canAccess(row, access) {
 // Why it's locked (drives the exact upgrade message the student sees):
 // 'video' -> Premium Video wall; 'premium' -> trial expired wall.
 function lockReason(row, access) {
+  if (row.category === 'quiz' && !access.premium) return 'quiz';
   if (row.category === 'video' && !access.premium) return 'video';
   if (!access.premium && !access.trial) return 'premium';
   return null;
@@ -257,10 +264,13 @@ function ensureFileNameWithExt(filename, mimeType, key) {
   return raw;
 }
 
-function inlineContentDisposition(filename, key, mimeType) {
+function contentDisposition(filename, key, mimeType, disposition = 'inline') {
   const raw = ensureFileNameWithExt(filename, mimeType, key);
-  const encoded = encodeURIComponent(raw);
-  return `inline; filename="${raw}"; filename*=UTF-8''${encoded}`;
+  // Node rejects non-Latin-1 characters in header values. Keep a safe ASCII
+  // fallback and preserve the real Unicode name in the RFC 5987 parameter.
+  const fallback = raw.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  const encoded = encodeURIComponent(raw).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${disposition}; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }
 
 function pipeBodyToResponse(body, res, req) {
@@ -356,7 +366,7 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
     storedType = meta.contentType;
   }
 
-  const type = isSpecificMime(mimeType)
+  const detectedType = isSpecificMime(mimeType)
     ? String(mimeType).trim().toLowerCase().split(';')[0].trim()
     : await resolveType(key, storedType, mimeType);
   const range = parseRange(req.headers.range, size);
@@ -366,8 +376,8 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
   // middleware/upload.js), but objects uploaded before that change may
   // still exist, so this endpoint must NEVER emit the SVG content type -
   // legacy SVGs are delivered as inert plain-file downloads instead.
-  const svgNeutralized = type === 'image/svg+xml';
-  if (svgNeutralized) type = 'application/octet-stream';
+  const svgNeutralized = detectedType === 'image/svg+xml';
+  const type = svgNeutralized ? 'application/octet-stream' : detectedType;
 
   res.setHeader('Accept-Ranges', 'bytes');
   res.setHeader('Content-Type', type);
@@ -376,9 +386,7 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
   // reader's type detection works even when the original upload had a bare
   // UUID name.
   const safeFilename = ensureFileNameWithExt(filename, type, key);
-  res.setHeader('Content-Disposition', svgNeutralized
-    ? `attachment; filename="${safeFilename.replace(/["\r\n]/g, '')}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`
-    : inlineContentDisposition(safeFilename, key, type));
+  res.setHeader('Content-Disposition', contentDisposition(safeFilename, key, type, svgNeutralized ? 'attachment' : 'inline'));
   // Private cache lets the browser reuse range chunks while seeking / paging
   // a PDF. The URL is still session-gated — unauthenticated clients cannot
   // hit this route at all.
@@ -426,6 +434,7 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
 
 function lockedResponse(res, reason) {
   const messages = {
+    quiz: 'Quizzes are a Premium feature. Upgrade your plan to take this quiz.',
     video: 'Video lessons are available exclusively to StudyCore Premium students. Upgrade to unlock this video.',
     premium: 'Your free access period has ended. Upgrade to StudyCore Premium to continue reading this resource.'
   };
@@ -495,7 +504,7 @@ router.get('/', requireAuth, gate, (req, res) => {
 
   res.json({
     resources: rows.map((row) => ({
-      ...serializeResource(row),
+      ...serializeResource(row, req.user),
       locked: canAccess(row, req.access) ? null : lockReason(row, req.access),
       completed: db.prepare('SELECT 1 AS x FROM lesson_progress WHERE user_id = ? AND resource_id = ?').get(req.user.id, row.id) ? true : false,
       isRead: row.category === 'announcement' ? Boolean(db.prepare('SELECT 1 FROM announcement_reads WHERE user_id = ? AND announcement_id = ?').get(req.user.id, row.id)) : undefined
@@ -524,8 +533,8 @@ async function handleStream(req, res) {
   });
 }
 
-router.head('/:id/stream', requireAuth, gate, handleStream);
-router.get('/:id/stream', requireAuth, gate, handleStream);
+router.head('/:id/stream', requireAuth, gate, asyncHandler(handleStream));
+router.get('/:id/stream', requireAuth, gate, asyncHandler(handleStream));
 
 // ---- Video playback progress (server-stored resume position) ---------------
 //
@@ -590,7 +599,7 @@ router.get('/bookmarks/mine', requireAuth, gate, (req, res) => {
     ${vis.clause ? `AND ${vis.clause}` : ''}
     ORDER BY b.created_at DESC
   `).all({ userId: req.user.id, ...vis.params });
-  res.json({ resources: rows.map((r) => ({ ...serializeResource(r), locked: canAccess(r, req.access) ? null : lockReason(r, req.access) })) });
+  res.json({ resources: rows.map((r) => ({ ...serializeResource(r, req.user), locked: canAccess(r, req.access) ? null : lockReason(r, req.access) })) });
 });
 
 router.get('/search', attachUser, (req, res) => {
@@ -717,7 +726,7 @@ router.get('/:id', requireAuth, gate, (req, res) => {
 
   res.json({
     resource: {
-      ...serializeResource(row),
+      ...serializeResource(row, req.user),
       isRead: row.category === 'announcement' ? true : undefined
     }
   });
@@ -806,39 +815,14 @@ router.get('/completed/mine', requireAuth, requireStudentLibraryAccess, (req, re
   res.json({ completed: rows.map((r) => ({ resourceId: r.resource_id, completedAt: r.completed_at })) });
 });
 
-// ---- Quiz attempts (kept for backend/admin compatibility) ------------------
-//
-// Quizzes are no longer part of the student learning experience, but the
-// storage and endpoints remain so admin-managed quiz records (and any
-// historical score data) stay intact and nothing referencing the table
-// breaks.
-
+// ---- Legacy quiz compatibility --------------------------------------------
+// Historical scores remain readable below. The old write endpoint trusted
+// client-supplied score/total values and bypassed Premium checks and grading.
+// Retire it explicitly; the current UI submits answers to /api/quiz/:id/attempt.
 router.post('/:id/quiz-attempt', requireAuth, requireStudentLibraryAccess, (req, res) => {
-  const { score, total } = req.body;
-  if (typeof score !== 'number' || typeof total !== 'number' || total <= 0 || score < 0 || score > total) {
-    return res.status(400).json({ message: 'Invalid score submitted.' });
-  }
-  const resource = db.prepare(`SELECT * FROM resources WHERE id = ?`).get(req.params.id);
-  if (!resource || resource.category !== 'quiz') return res.status(404).json({ message: 'Quiz not found.' });
-  // Same program boundary as the canonical quiz API (routes/quiz.routes.js):
-  // an attempt may only be recorded for a quiz the student's program can
-  // see, so cross-program quizzes cannot accumulate progress/score rows.
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
-  if (!programCanSeeResource(user, resource)) {
-    return res.status(403).json({ message: 'This quiz is not available for your program.' });
-  }
-
-  db.prepare('INSERT INTO quiz_attempts (id, user_id, resource_id, score, total, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(`qa-${uuidv4()}`, req.user.id, resource.id, Math.round(score), Math.round(total), new Date().toISOString());
-
-  // Completing a quiz also counts as completing that lesson, for progress
-  // purposes - a student who has taken a topic quiz has engaged with it.
-  try {
-    db.prepare('INSERT INTO lesson_progress (id, user_id, resource_id, completed_at) VALUES (?, ?, ?, ?)')
-      .run(`lp-${uuidv4()}`, req.user.id, resource.id, new Date().toISOString());
-  } catch { /* already marked complete - fine */ }
-
-  res.status(201).json({ message: 'Score recorded.' });
+  res.status(410).json({
+    message: 'Client-supplied quiz scores are no longer accepted. Submit your answers to /api/quiz/:id/attempt instead.'
+  });
 });
 
 router.get('/:id/quiz-attempts/mine', requireAuth, requireStudentLibraryAccess, (req, res) => {

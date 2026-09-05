@@ -78,8 +78,9 @@ function securityHeaders(req, res, next) {
 // ---------------------------------------------------------------------------
 const MAX_TRACKED_CLIENTS = 100_000; // memory bound: never grow unbounded
 
-function rateLimit({ windowMs, max }) {
+function rateLimit({ windowMs, max, methods }) {
   const hits = new Map();
+  const limitedMethods = methods ? new Set(methods.map((method) => method.toUpperCase())) : null;
 
   // Periodic sweep keeps the map small and frees memory for gone clients.
   // .unref() so the timer never keeps the process alive (e.g. in tests).
@@ -95,6 +96,9 @@ function rateLimit({ windowMs, max }) {
   }, windowMs).unref();
 
   return (req, res, next) => {
+    // Upload-specific limits must not count GET/HEAD requests for the same
+    // URL (avatar display and resource listings are ordinary page reads).
+    if (limitedMethods && !limitedMethods.has(req.method)) return next();
     const key = req.ip || req.connection.remoteAddress || 'unknown';
     const now = Date.now();
     const cutoff = now - windowMs;

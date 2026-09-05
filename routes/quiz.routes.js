@@ -31,7 +31,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
-const { programCanSeeResource, resourceVisibilityClause, resolveCourse, validProgramCode } = require('../lib/program-access');
+const { programCanSeeResource, resourceVisibilityClause, resolveCourse, validProgramCode, targetingForResource } = require('../lib/program-access');
 
 const router = express.Router();
 
@@ -53,6 +53,12 @@ const KEY_RE = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.[
 function cleanText(value, maxLength) {
   const text = typeof value === 'string' ? value.trim() : '';
   return maxLength ? text.slice(0, maxLength) : text;
+}
+
+function passingPercentFor(data) {
+  const value = Number(data.passingPercent ?? 50);
+  // Zero is a valid author-selected pass mark, not a missing value.
+  return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 50;
 }
 
 function normalizeKey(value) {
@@ -77,7 +83,7 @@ function serializeOwnQuiz(row) {
     category: row.category,
     questionCount: questions.length,
     totalPoints,
-    passingPercent: Number(data.passingPercent) || 50,
+    passingPercent: passingPercentFor(data),
     targetAll,
     programCodes: programs,
     courseId: row.course_id || null,
@@ -205,8 +211,7 @@ function parseQuizBody(req) {
     courseId = course.id;
   }
 
-  const passingPercent = Number(body.passingPercent);
-  const normPassing = Number.isFinite(passingPercent) ? Math.min(100, Math.max(0, Math.round(passingPercent))) : 50;
+  const normPassing = passingPercentFor(body);
 
   const questions = normalizeQuestions(body.questions);
 
@@ -383,7 +388,7 @@ router.get('/:id/manage', requireAuth, requireRole(...AUTHOR_ROLES), (req, res) 
   try { data = row.quiz_data ? JSON.parse(row.quiz_data) : data; } catch { /* fall through */ }
   const quiz = serializeOwnQuiz(row);
   quiz.questions = data.questions || [];
-  quiz.passingPercent = Number(data.passingPercent) || 50;
+  quiz.passingPercent = passingPercentFor(data);
   res.json({ quiz });
 });
 
@@ -483,16 +488,20 @@ router.get('/student', requireAuth, (req, res) => {
     try { data = row.quiz_data ? JSON.parse(row.quiz_data) : data; } catch { /* fall through */ }
     const questions = Array.isArray(data.questions) ? data.questions : [];
     const totalPoints = questions.reduce((sum, q) => sum + (Number(q.points) || 1), 0);
+    const targeting = targetingForResource(row);
     const base = {
       id: row.id,
       title: row.title,
       description: row.description || '',
       questionCount: questions.length,
       totalPoints,
+      passingPercent: passingPercentFor(data),
+      targetAll: targeting.targetAll,
+      programCodes: targeting.programs,
       createdAt: row.created_at
     };
     if (req.user.role === ROLES.ADMIN) return base;
-    return { ...base, ...attemptSummaryFor(row.id, req.user.id), passingPercent: Number(data.passingPercent) || 50, locked: !hasPremiumAccess(req.user.id) };
+    return { ...base, ...attemptSummaryFor(row.id, req.user.id), locked: !hasPremiumAccess(req.user.id) };
   });
 
   res.json({ quizzes });
@@ -538,8 +547,9 @@ router.get('/:id', requireAuth, (req, res) => {
     id: row.id,
     title: row.title,
     description: row.description || '',
-    passingPercent: Number(data.passingPercent) || 50,
+    passingPercent: passingPercentFor(data),
     questionCount: questions.length,
+    totalPoints: questions.reduce((sum, q) => sum + q.points, 0),
     questions
   });
 });
@@ -631,7 +641,7 @@ router.post('/:id/attempt', requireAuth, (req, res) => {
   });
 
   const percent = total > 0 ? Math.round((score / total) * 100) : 0;
-  const passingPercent = Number(data.passingPercent) || 50;
+  const passingPercent = passingPercentFor(data);
   const passed = percent >= passingPercent;
 
   try {
@@ -663,7 +673,7 @@ router.get('/:id/attempts/mine', requireAuth, (req, res) => {
     .all(req.user.id, row.id);
   const best = rows.reduce((max, r) => Math.max(max, r.total ? r.score / r.total : 0), 0);
   res.json({
-    attempts: rows.map((r) => ({ score: r.score, total: r.total, percent: r.total ? Math.round((r.score / r.total) * 100) : 0, createdAt: r.createdAt })),
+    attempts: rows.map((r) => ({ score: r.score, total: r.total, percent: r.total ? Math.round((r.score / r.total) * 100) : 0, createdAt: r.created_at })),
     bestPercent: Math.round(best * 100)
   });
 });

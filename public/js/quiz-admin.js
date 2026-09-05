@@ -384,7 +384,7 @@
         <div class="qa-form-row" id="qaCourseRow"></div>
         <div class="qa-form-row qa-inline-row">
           <label for="qaPassing">Passing score (%)</label>
-          <input type="number" id="qaPassing" min="0" max="100" value="${Number(quiz.passingPercent) || 50}" style="width:90px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--border-strong);"/>
+          <input type="number" id="qaPassing" min="0" max="100" value="${Number(quiz.passingPercent ?? 50)}" style="width:90px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--border-strong);"/>
           <select id="qaStatus" style="margin-left:auto;padding:6px 10px;border-radius:8px;border:1.5px solid var(--border-strong);background:var(--card);">
             <option value="published" ${quiz.publishStatus === 'published' ? 'selected' : ''}>Published</option>
             <option value="draft" ${quiz.publishStatus === 'draft' ? 'selected' : ''}>Draft</option>
@@ -470,7 +470,7 @@
       programs,
       courseId: ($('#qaCourse', root) && $('#qaCourse', root).value) || null,
       publishStatus: $('#qaStatus', root).value,
-      passingPercent: Number($('#qaPassing', root).value) || 50,
+      passingPercent: Number($('#qaPassing', root).value || 50),
       questions
     };
 

@@ -107,25 +107,25 @@ router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
     const countRow = db.prepare(`
       SELECT
         COUNT(*) AS total,
+        COUNT(lp.id) AS completed,
         SUM(CASE WHEN r.category = 'video' THEN 1 ELSE 0 END) AS videos,
         SUM(CASE WHEN r.category = 'document' THEN 1 ELSE 0 END) AS documents,
         SUM(CASE WHEN r.category = 'tutorial' THEN 1 ELSE 0 END) AS tutorials,
         SUM(CASE WHEN r.category = 'past_paper' THEN 1 ELSE 0 END) AS past_papers
       FROM resources r
+      LEFT JOIN lesson_progress lp ON lp.resource_id = r.id AND lp.user_id = @userId
       WHERE r.publish_status = 'published' AND r.course_id = @courseId
+        AND r.category IN ('video', 'document', 'tutorial', 'past_paper')
       ${clause ? `AND ${clause}` : ''}
-    `).get({ courseId: c.id, ...params });
+    `).get({ courseId: c.id, userId: user.id, ...params });
 
-    const completed = db.prepare(`
-      SELECT COUNT(*) c FROM lesson_progress lp
-      JOIN resources r ON r.id = lp.resource_id
-      WHERE lp.user_id = ? AND r.course_id = ?
-    `).get(user.id, c.id).c;
-
-    const totalLearned = countRow.total || 0;
+    // Both sides of progress use the course home's visible learning set.
+    // Drafts, retargeted lessons, announcements and quizzes cannot inflate it.
+    const completed = countRow.completed;
+    const totalLearned = countRow.total;
     return serializeCourse(c, {
       counts: {
-        lessons: LEARN_CATEGORIES.reduce((n, cat) => n + (countRow[cat] || 0), 0),
+        lessons: totalLearned,
         videos: countRow.videos || 0,
         documents: countRow.documents || 0,
         tutorials: countRow.tutorials || 0,
