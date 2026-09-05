@@ -1,0 +1,13 @@
+PR title: Add hero image slideshow, complaint pre‑message, and subscription notification removal
+
+This PR adds the following changes to the arena/01a07078-studycore-2-0 branch:
+
+1. **Hero image slideshow** – Full‑width automatic fading slideshow using the five existing hero images in `public/images/hero/`. Images transition every 4.5 seconds with a smooth cross‑fade, a dark overlay keeps text readable, and the slideshow is contained within the existing hero section without affecting other page elements.
+
+2. **Complaint number pre‑message** – The “Report a Problem” WhatsApp link in the footer now pre‑fills a message: `Hello 18_ghtɛɛn! am having trouble with certain stuff`.
+
+3. **Subscription notification removal** – The code that would have sent a WhatsApp message to an admin number after payment approval has been removed, and the associated `SUBSCRIPTION_NOTIFICATION_PHONE` environment variable has been deleted from `.env.example`.
+
+4. **Miscellaneous** – Small bug‑fixes and z‑index adjustments to ensure the slideshow sits correctly above the hero content.
+
+Base: `main` | Head: `arena/01a07078-studycore-2-0`
