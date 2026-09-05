@@ -121,6 +121,10 @@ app.get('/api/config', (req, res) => {
     whatsapp: {
       channel: process.env.WHATSAPP_CHANNEL_URL || 'https://whatsapp.com/channel/0029Vb6sMBVIiRp0rg5RKQ2k',
       group: process.env.WHATSAPP_GROUP_URL || 'https://chat.whatsapp.com/FLRRx5ywcfv76i2Jtjej4i?s=cl&p=a&ilr=4'
+    },
+    support: {
+      // Developer's WhatsApp line shown site-wide for user complaints.
+      complaintsPhone: process.env.SUPPORT_COMPLAINTS_PHONE || '+260981474031'
     }
   });
 });
