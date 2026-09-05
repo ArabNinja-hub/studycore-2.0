@@ -29,6 +29,13 @@ const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi']);
 const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
 const PUBLISH_STATUSES = new Set(['published', 'draft']);
 
+function conditionalUpload(req, res, next) {
+  // Always use Multer's single-file parser so multipart form fields
+  // (including hidden Google Drive inputs) are properly parsed into
+  // req.body regardless of whether a file is attached.
+  return upload.single('file')(req, res, next);
+}
+
 function cleanText(value, maxLength = 0) {
   const text = typeof value === 'string' ? value.trim() : '';
   return maxLength ? text.slice(0, maxLength) : text;
@@ -71,7 +78,10 @@ function serializeOwnResource(row) {
     fileName: row.file_name || '',
     fileSize: row.file_size || 0,
     mimeType: row.mime_type || '',
-    hasFile: Boolean(row.stored_name),
+    hasFile: Boolean(row.stored_name || row.google_drive_file_id),
+    storageProvider: row.storage_provider || 'local',
+    googleDriveFileId: row.google_drive_file_id || null,
+    googleDriveUrl: row.google_drive_url || null,
     publishStatus: row.publish_status,
     uploadedAt: row.uploaded_at || row.created_at,
     createdAt: row.created_at,
@@ -303,17 +313,40 @@ router.get('/resources/:id', (req, res) => {
   res.json({ resource: serializeOwnResource(row) });
 });
 
-router.post('/resources', upload.single('file'), (req, res) => {
-  if (!req.file) return uploadError(req, res, 400, 'Choose a file to upload.');
+router.post('/resources', conditionalUpload, (req, res) => {
+  const isDriveFile = Boolean(req.body && req.body.google_drive_file_id);
+  if (!req.file && !isDriveFile) return uploadError(req, res, 400, 'Choose a file to upload or select from Google Drive.');
   const parsed = parseResourceInput(req.body);
   if (parsed.error) return uploadError(req, res, 400, parsed.error);
 
-  const fileError = validateFileForType(parsed.value.type, req.file);
-  if (fileError) return uploadError(req, res, 400, fileError);
+  const dummyFile = isDriveFile ? {
+    originalname: req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document',
+    mimetype: req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf',
+    size: Number(req.body.file_size) || 0,
+    key: req.body.google_drive_file_id,
+    stored_name: req.body.google_drive_file_id
+  } : null;
+  const fileForValidation = req.file || dummyFile;
+  const fileError = validateFileForType(parsed.value.type, fileForValidation);
+  if (fileError) {
+    if (req.file && req.file.key) storage.deleteObject(req.file.key).catch(() => {});
+    return uploadError(req, res, 400, fileError);
+  }
 
   const now = new Date().toISOString();
   const uploader = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
   const id = `res-${uuidv4()}`;
+  // When selecting from Google Drive, clean up any accidentally uploaded file.
+  if (isDriveFile && req.file && req.file.key) {
+    storage.deleteObject(req.file.key).catch(() => {});
+  }
+
+  const fileName = isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document') : req.file.originalname;
+  const storedName = isDriveFile ? (req.body.google_drive_file_id || null) : req.file.key;
+  const fileSizeVal = isDriveFile ? (Number(req.body.file_size) || 0) : req.file.size;
+  const mimeTypeVal = isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf') : req.file.mimetype;
+  const contentHashVal = isDriveFile ? null : (req.file.contentHash || null);
+
   const row = {
     id,
     title: parsed.value.title,
@@ -328,12 +361,12 @@ router.post('/resources', upload.single('file'), (req, res) => {
     year_level: parsed.value.yearLevel,
     semester: parsed.value.semester,
     tags: null,
-    file_name: req.file.originalname,
-    stored_name: req.file.key,
-    file_size: req.file.size,
-    mime_type: req.file.mimetype,
-    content_hash: req.file.contentHash || null,
-    external_url: null,
+    file_name: fileName,
+    stored_name: storedName,
+    file_size: fileSizeVal,
+    mime_type: mimeTypeVal,
+    content_hash: contentHashVal,
+    external_url: isDriveFile ? null : (req.body.external_url || null),
     quiz_data: null,
     due_date: null,
     is_premium: 1,
@@ -345,7 +378,10 @@ router.post('/resources', upload.single('file'), (req, res) => {
     uploader_email: uploader ? uploader.email : null,
     uploaded_at: now,
     created_at: now,
-    updated_at: now
+    updated_at: now,
+    storage_provider: isDriveFile ? 'google_drive' : 'local',
+    google_drive_file_id: isDriveFile ? req.body.google_drive_file_id : null,
+    google_drive_url: isDriveFile ? (req.body.google_drive_url || null) : null
   };
 
   try {
@@ -356,15 +392,17 @@ router.post('/resources', upload.single('file'), (req, res) => {
         target_all, topic, year_level, semester, tags, file_name, stored_name,
         file_size, mime_type, content_hash, external_url, quiz_data, due_date,
         is_premium, pinned, publish_status, uploaded_by, uploader_role,
-        uploader_name, uploader_email, uploaded_at, created_at, updated_at
+        uploader_name, uploader_email, uploaded_at, created_at, updated_at,
+        storage_provider, google_drive_file_id, google_drive_url
       ) VALUES (
         @id, @title, @description, @category, @resource_type, @subject, @course, @course_id,
         @target_all, @topic, @year_level, @semester, @tags, @file_name, @stored_name,
         @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date,
         @is_premium, @pinned, @publish_status, @uploaded_by, @uploader_role,
-        @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at
+        @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at,
+        @storage_provider, @google_drive_file_id, @google_drive_url
       )
-    `).run(row);
+    `).run({ ...row, storage_provider: row.storage_provider, google_drive_file_id: row.google_drive_file_id, google_drive_url: row.google_drive_url });
     replaceSingleProgram(id, parsed.value.program.code);
     db.exec('COMMIT');
   } catch (err) {
@@ -378,7 +416,7 @@ router.post('/resources', upload.single('file'), (req, res) => {
   return res.status(201).json({ resource: serializeOwnResource(saved) });
 });
 
-router.put('/resources/:id', upload.single('file'), (req, res) => {
+router.put('/resources/:id', conditionalUpload, (req, res) => {
   const existing = ownResourceById(req.params.id, req.user.id);
   if (!existing) {
     cleanupIncomingFile(req);
@@ -390,11 +428,16 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
   const parsed = parseResourceInput(req.body, existing, existingProgramCode);
   if (parsed.error) return uploadError(req, res, 400, parsed.error);
 
-  const fileForValidation = req.file || {
+  const isDriveFile = Boolean(req.body && req.body.google_drive_file_id);
+  const fileForValidation = req.file || (isDriveFile ? {
+    originalname: req.body.file_name || req.body.google_drive_file_name || existing.file_name || 'Google Drive Document',
+    stored_name: req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name,
+    mimetype: req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type
+  } : {
     originalname: existing.file_name,
     stored_name: existing.stored_name,
     mimetype: existing.mime_type
-  };
+  });
   const fileError = validateFileForType(parsed.value.type, fileForValidation);
   if (fileError) return uploadError(req, res, 400, fileError);
 
@@ -414,12 +457,21 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     semester: parsed.value.semester,
     publish_status: parsed.value.publishStatus,
     updated_at: now,
-    file_name: replacingFile ? req.file.originalname : existing.file_name,
-    stored_name: replacingFile ? req.file.key : existing.stored_name,
-    file_size: replacingFile ? req.file.size : existing.file_size,
-    mime_type: replacingFile ? req.file.mimetype : existing.mime_type,
-    content_hash: replacingFile ? (req.file.contentHash || null) : existing.content_hash,
-    owner_id: req.user.id
+    file_name: replacingFile ? req.file.originalname : (isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || existing.file_name) : existing.file_name),
+    stored_name: replacingFile ? req.file.key : (isDriveFile ? (req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name || null) : existing.stored_name),
+    file_size: replacingFile ? req.file.size : (isDriveFile ? (Number(req.body.file_size) || existing.file_size || 0) : existing.file_size),
+    mime_type: replacingFile ? req.file.mimetype : (isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type || 'application/pdf') : existing.mime_type),
+    content_hash: replacingFile ? (req.file.contentHash || null) : (isDriveFile ? null : existing.content_hash),
+    owner_id: req.user.id,
+    storage_provider: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
+      : (existing.storage_provider || 'local'),
+    google_drive_file_id: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_file_id || null)
+      : (existing.google_drive_file_id || null),
+    google_drive_url: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_url || null)
+      : (existing.google_drive_url || null)
   };
 
   try {
@@ -433,6 +485,9 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
         updated_at = @updated_at, file_name = @file_name,
         stored_name = @stored_name, file_size = @file_size,
         mime_type = @mime_type, content_hash = @content_hash,
+        storage_provider = @storage_provider,
+        google_drive_file_id = @google_drive_file_id,
+        google_drive_url = @google_drive_url,
         target_all = 0
       WHERE id = @id AND uploaded_by = @owner_id
     `).run(updated);

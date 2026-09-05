@@ -125,6 +125,11 @@ app.get('/api/config', (req, res) => {
     support: {
       // Developer's WhatsApp line shown site-wide for user complaints.
       complaintsPhone: process.env.SUPPORT_COMPLAINTS_PHONE || '+260981474031'
+    },
+    googlePicker: {
+      apiKey: process.env.GOOGLE_API_KEY || '',
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      appId: process.env.GOOGLE_CLOUD_PROJECT_NUMBER || ''
     }
   });
 });

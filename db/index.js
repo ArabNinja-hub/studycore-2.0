@@ -284,6 +284,23 @@ try {
   // column already exists - fine
 }
 
+// Google Drive integration fields for Content Admin resources.
+try {
+  db.exec("ALTER TABLE resources ADD COLUMN storage_provider TEXT DEFAULT 'local'");
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN google_drive_file_id TEXT');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN google_drive_url TEXT');
+} catch {
+  // column already exists - fine
+}
+
 // ── Multi-program platform ──────────────────────────────────────────────
 //
 // Every piece of content (notes, videos, past papers, resources AND

@@ -339,6 +339,17 @@
 
     renderHeader();
 
+    if (resource.googleDriveFileId) {
+      $('#viewerTools').hidden = true;
+      const previewUrl = `https://docs.google.com/gview?embedded=1&url=https://drive.google.com/uc?export=view&id=${encodeURIComponent(resource.googleDriveFileId)}`;
+      $('#viewerHost').innerHTML = `
+        <div class="doc-reader doc-reader-drive-preview" style="width:100%;height:calc(100vh - 100px);background:#fff;">
+          <iframe src="${previewUrl}" style="width:100%;height:100%;border:none;" frameborder="0" title="Google Drive Preview" allow="fullscreen"></iframe>
+        </div>
+      `;
+      return;
+    }
+
     // Legacy link-only resources have no stored file to render.
     if (!resource.hasFile) {
       if (resource.externalUrl) externalOnly();

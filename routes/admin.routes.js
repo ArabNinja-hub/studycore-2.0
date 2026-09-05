@@ -112,8 +112,11 @@ function serializeResource(row) {
     fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: row.mime_type,
-    hasFile: Boolean(row.stored_name),
+    hasFile: Boolean(row.stored_name || row.google_drive_file_id),
     externalUrl: row.external_url,
+    googleDriveFileId: row.google_drive_file_id || null,
+    googleDriveUrl: row.google_drive_url || null,
+    storageProvider: row.storage_provider || 'local',
     quizData: row.quiz_data ? JSON.parse(row.quiz_data) : null,
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
@@ -402,6 +405,15 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     is_premium: isPremium === undefined ? existing.is_premium : (isPremium === 'false' || isPremium === '0' ? 0 : 1),
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
+    storage_provider: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
+      : (existing.storage_provider || 'local'),
+    google_drive_file_id: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_file_id || null)
+      : (existing.google_drive_file_id || null),
+    google_drive_url: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_url || null)
+      : (existing.google_drive_url || null),
     ...fileFields
   };
 
@@ -410,7 +422,8 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
       course_id=@course_id, topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url,
       quiz_data=@quiz_data, due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status,
       updated_at=@updated_at, file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type,
-      content_hash=@content_hash
+      content_hash=@content_hash, storage_provider=@storage_provider,
+      google_drive_file_id=@google_drive_file_id, google_drive_url=@google_drive_url
     WHERE id=@id
   `).run(updated);
 
