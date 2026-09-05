@@ -14,6 +14,7 @@
   let cachedUser = null;
   let sessionChecked = false;
   let sessionPromise = null;
+  let sessionUnknown = false; // true when the last check failed on the network
 
   function normalizedRole(user) {
     return String((user && user.role) || '').trim().toLowerCase();
@@ -44,24 +45,55 @@
     return getPageLink('dashboard.html');
   }
 
-  async function fetchSession() {
+  async function fetchSession(options = {}) {
     // If a check is already in flight, reuse that same promise instead of
     // firing a second request and risking two different pieces of code
     // reading the result at two different times.
     if (sessionPromise) return sessionPromise;
+    if (options.force) { sessionChecked = false; sessionUnknown = false; }
     sessionPromise = (async () => {
       try {
         const data = await StudyCoreAPI.me();
         cachedUser = data.user;
-      } catch {
-        cachedUser = null;
+        sessionChecked = true;
+        sessionUnknown = false;
+      } catch (err) {
+        // A 401 is a real answer: this visitor is signed out.
+        // A dropped connection is NOT — treating it as "signed out" is what
+        // makes a site feel unreliable on mobile (the student watches their
+        // account disappear in a lift). Keep the last known state, flag the
+        // session as unverified, and let the reconnect handler re-check.
+        if (err && err.network) {
+          sessionUnknown = true;
+        } else {
+          cachedUser = null;
+          sessionChecked = true;
+          sessionUnknown = false;
+        }
       }
-      sessionChecked = true;
       return cachedUser;
     })();
     const result = await sessionPromise;
     sessionPromise = null;
     return result;
+  }
+
+  // True when we could not reach the server, so the rendered auth state is a
+  // best guess rather than a fact.
+  function isSessionUnverified() {
+    return sessionUnknown;
+  }
+
+  // The connection came back: confirm who the student is and let the page
+  // re-render its account chrome, rather than leaving stale/guessed state.
+  if (global.SC && SC.net && typeof SC.net.onReconnect === 'function') {
+    SC.net.onReconnect(async () => {
+      if (!sessionUnknown && sessionChecked) return;
+      await fetchSession({ force: true });
+      try {
+        global.dispatchEvent(new CustomEvent('sc:session:refreshed', { detail: { user: cachedUser } }));
+      } catch { /* events are a nice-to-have */ }
+    });
   }
 
   function getCurrentUser() {
@@ -129,6 +161,57 @@
     }, 4200);
   }
 
+  /* ── Body scroll lock (iOS-safe) ─────────────
+     `body { overflow: hidden }` alone does NOT stop iOS Safari scrolling
+     the page behind a drawer — the classic "I opened the menu and the
+     article moved" bug that makes a site feel broken on a phone. Pinning
+     the body and restoring the exact scroll position on release does.
+
+     Locks are keyed, so the drawer, the search overlay and a modal can be
+     open in any combination without one of them releasing another's lock. */
+  const scrollLocks = new Set();
+  let lockedScrollY = 0;
+
+  function applyScrollLock() {
+    lockedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    const body = document.body;
+    body.style.position = 'fixed';
+    body.style.top = `-${lockedScrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+    body.classList.add('is-scroll-locked');
+  }
+
+  function releaseScrollLock() {
+    const body = document.body;
+    body.style.position = '';
+    body.style.top = '';
+    body.style.left = '';
+    body.style.right = '';
+    body.style.width = '';
+    body.style.overflow = '';
+    body.classList.remove('is-scroll-locked');
+    // Jump straight back — an animated restore reads as a glitch.
+    const behavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.scrollBehavior = 'auto';
+    window.scrollTo(0, lockedScrollY);
+    document.documentElement.style.scrollBehavior = behavior;
+  }
+
+  function setScrollLock(key, locked) {
+    const was = scrollLocks.size > 0;
+    if (locked) scrollLocks.add(key);
+    else scrollLocks.delete(key);
+    const now = scrollLocks.size > 0;
+    if (was === now) return;
+    now ? applyScrollLock() : releaseScrollLock();
+  }
+
+  global.SC = global.SC || {};
+  SC.setScrollLock = setScrollLock;
+
   /* ── Mobile navigation (wired once, works on every page) ── */
   function initMobileNav() {
     const hamburger = document.getElementById('hamburgerBtn');
@@ -143,8 +226,7 @@
       menu.setAttribute('aria-hidden', String(!open));
       if ('inert' in menu) menu.inert = !open;
       if (backdrop) backdrop.classList.toggle('open', open);
-      const searchOpen = document.getElementById('searchOverlay')?.classList.contains('open');
-      document.body.style.overflow = (open || searchOpen) ? 'hidden' : '';
+      setScrollLock('mobile-nav', open);
       hamburger.setAttribute('aria-expanded', String(open));
       hamburger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
       if (typeof SC !== 'undefined') hamburger.innerHTML = SC.icon(open ? 'x' : 'menu', { size: 22 });
@@ -249,6 +331,7 @@
     consumeWelcomeFlag,
     showWelcomeTransition,
     initMobileNav,
+    isSessionUnverified,
     get sessionChecked() { return sessionChecked; }
   };
 

@@ -695,14 +695,14 @@
       });
     }
     overlay.classList.add('open');
-    document.body.style.overflow = 'hidden';
+    SC.setScrollLock('search', true);
     setTimeout(() => document.getElementById('globalSearchInput').focus(), 60);
   }
 
   function closeSearchOverlay() {
     const overlay = document.getElementById('searchOverlay');
     if (overlay) overlay.classList.remove('open');
-    if (!document.getElementById('mobileNav')?.classList.contains('open')) document.body.style.overflow = '';
+    SC.setScrollLock('search', false);
   }
 
   async function runSearch(q) {
@@ -887,7 +887,7 @@
 
       const closeDialog = () => {
         overlay.classList.remove('open');
-        document.body.style.overflow = '';
+        SC.setScrollLock('announcement-modal', false);
       };
 
       overlay.addEventListener('click', (e) => {
@@ -925,7 +925,7 @@
     bodyEl.textContent = announcement.description || 'No additional details provided.';
 
     overlay.classList.add('open');
-    document.body.style.overflow = 'hidden';
+    SC.setScrollLock('announcement-modal', true);
   }
 
   /* ── Announcement Notification System ───── */
@@ -1483,6 +1483,19 @@
         complaintsBtn.href = complaintsWaLink(links.complaintsPhone);
         if (complaintsNum) complaintsNum.textContent = links.complaintsPhone;
       }
+    });
+
+    // The account chrome is the most visible piece of "is this thing
+    // working?". If the session could not be verified because the
+    // connection dropped, redraw it the moment the server answers again
+    // instead of leaving the student looking at a signed-out nav bar.
+    global.addEventListener('sc:session:refreshed', (event) => {
+      const fresh = event && event.detail ? event.detail.user : StudyCoreAuth.getCurrentUser();
+      renderNavAuth();
+      renderMobileNavAuth();
+      renderMobileDock(fresh);
+      updateCoursesDropdownForUser(fresh).catch(() => {});
+      NotificationManager.init(fresh);
     });
   }
 

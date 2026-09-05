@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>StudyCore — Learning Built Around Your Program</title>
     <meta name="description" content="StudyCore gives every student a program-specific learning space with the right courses, lessons, notes, videos and past papers in one place." />
     <link rel="canonical" href="https://studycore.academy/" />
@@ -53,7 +53,19 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Google Fonts are pulled in by style.css @import; warming the
+         connections here removes a full DNS+TLS round trip on mobile. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/css/style.css" />
+    <!-- The first hero photograph is the largest thing above the fold on a
+         phone. Fetch it in parallel with the CSS instead of after it. -->
+    <link
+      rel="preload"
+      as="image"
+      fetchpriority="high"
+      href="/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.3.jpeg"
+    />
   </head>
   <body data-page="home">
     <div id="siteNav"></div>
@@ -86,8 +98,21 @@
           </div>
         </div>
 
-        <!-- Hero image slideshow -->
-        <div class="hero-slideshow" id="heroSlideshow" aria-label="Hero image slideshow"></div>
+        <!-- Hero photography: aged-archive slideshow (js/hero-slideshow.js).
+             The list lives here so it can be edited without touching JS. -->
+        <div
+          class="hero-slideshow"
+          id="heroSlideshow"
+          data-hero-slideshow
+          aria-hidden="true"
+          data-images='[
+            "/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.3.jpeg",
+            "/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.38.jpeg",
+            "/images/hero/WhatsApp%20Image%202026-08-21%20at%2014..jpeg",
+            "/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.39.jpeg",
+            "/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.jpeg"
+          ]'
+        ></div>
 
         <div class="container">
           <div class="hero-copy">
@@ -214,6 +239,7 @@
     <script src="/js/main.js"></script>
     <script src="/js/programs.js"></script>
     <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/hero-slideshow.js" defer></script>
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('[data-icon]').forEach((el) => {
@@ -264,70 +290,98 @@
             </article>`;
         }
 
-        try {
-          const user = await StudyCoreAuth.fetchSession();
-          if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
-            const data = await StudyCoreAPI.myProgram();
-            if (data.program) {
-              const programName = data.program.shortName || data.program.name;
-              eyebrow.textContent = 'My program';
-              heading.textContent = `${data.program.name} — My Courses`;
-              intro.textContent = 'Your homepage is filtered to your program. Open a course and continue with its lessons, notes, videos and past papers.';
-              catalog.innerHTML = data.courses.length
-                ? data.courses.map((course) => courseCard(course, programName)).join('')
-                : emptyState({ icon: 'library', title: 'Courses coming soon', body: 'Your program has no courses yet. They will appear here as soon as the admin adds them.' });
-              links.innerHTML = `<a class="btn btn-primary" href="/dashboard.html">Open my dashboard</a>`;
-              document.getElementById('homeEyebrow').textContent = data.program.name;
-              document.getElementById('homeTitle').innerHTML = `Welcome back.<br /><em>Your courses are ready.</em>`;
-              document.getElementById('homeLead').textContent = `Everything shown here is matched to ${data.program.name}. Pick up where you left off or open one of your courses below.`;
-              document.getElementById('homePrimaryCta').textContent = 'Open My Courses';
-              document.getElementById('homePrimaryCta').href = '#homeCatalog';
-              document.getElementById('homeSecondaryCta').textContent = 'Dashboard';
-              document.getElementById('homeSecondaryCta').href = '/dashboard.html';
-            } else {
-              heading.textContent = 'Select your program to see your courses';
-              intro.textContent = 'Your account is ready. Choose your program from the dashboard and this homepage will become your personal course space.';
+        // One loader, callable again: from the retry button in the error
+        // state and automatically the moment the connection comes back.
+        // A student on mobile data should never have to reload the page.
+        async function loadCatalog() {
+          catalog.setAttribute('aria-busy', 'true');
+          try {
+            const user = await StudyCoreAuth.fetchSession();
+            if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
+              const data = await StudyCoreAPI.myProgram();
+              if (data.program) {
+                const programName = data.program.shortName || data.program.name;
+                eyebrow.textContent = 'My program';
+                heading.textContent = `${data.program.name} — My Courses`;
+                intro.textContent = 'Your homepage is filtered to your program. Open a course and continue with its lessons, notes, videos and past papers.';
+                catalog.innerHTML = data.courses.length
+                  ? data.courses.map((course) => courseCard(course, programName)).join('')
+                  : emptyState({ icon: 'library', title: 'Courses coming soon', body: 'Your program has no courses yet. They will appear here as soon as the admin adds them.' });
+                links.innerHTML = `<a class="btn btn-primary" href="/dashboard.html">Open my dashboard</a>`;
+                document.getElementById('homeEyebrow').textContent = data.program.name;
+                document.getElementById('homeTitle').innerHTML = `Welcome back.<br /><em>Your courses are ready.</em>`;
+                document.getElementById('homeLead').textContent = `Everything shown here is matched to ${data.program.name}. Pick up where you left off or open one of your courses below.`;
+                document.getElementById('homePrimaryCta').textContent = 'Open My Courses';
+                document.getElementById('homePrimaryCta').href = '#homeCatalog';
+                document.getElementById('homeSecondaryCta').textContent = 'Dashboard';
+                document.getElementById('homeSecondaryCta').href = '/dashboard.html';
+              } else {
+                heading.textContent = 'Select your program to see your courses';
+                intro.textContent = 'Your account is ready. Choose your program from the dashboard and this homepage will become your personal course space.';
+                catalog.innerHTML = emptyState({
+                  icon: 'library',
+                  title: 'No program selected',
+                  body: 'Choose your program so StudyCore can show the correct courses and resources.',
+                  cta: '<a class="btn btn-primary" href="/dashboard.html">Choose program</a>'
+                });
+                links.innerHTML = '';
+              }
+            } else if (user && StudyCoreAuth.isAdmin(user)) {
+              eyebrow.textContent = 'Administration';
+              heading.textContent = 'Manage programs and courses';
+              intro.textContent = 'Create programs, assign courses and publish resources from the admin dashboard.';
               catalog.innerHTML = emptyState({
-                icon: 'library',
-                title: 'No program selected',
-                body: 'Choose your program so StudyCore can show the correct courses and resources.',
-                cta: '<a class="btn btn-primary" href="/dashboard.html">Choose program</a>'
+                icon: 'settings',
+                title: 'Program management',
+                body: 'Open the admin dashboard to manage the live course catalog.',
+                cta: '<a class="btn btn-primary" href="/admin.html">Open admin dashboard</a>'
               });
               links.innerHTML = '';
+            } else if (user && StudyCoreAuth.isContentAdmin(user)) {
+              eyebrow.textContent = 'Content Admin';
+              heading.textContent = 'Your publishing workspace is ready';
+              intro.textContent = 'Upload educational resources, keep your own library organised, and manage only the resources you created.';
+              catalog.innerHTML = emptyState({
+                icon: 'upload',
+                title: 'Content Admin workspace',
+                body: 'Open your dedicated dashboard to publish and manage your own resources.',
+                cta: '<a class="btn btn-primary" href="/content-admin.html">Open Content Admin dashboard</a>'
+              });
+              links.innerHTML = '';
+            } else {
+              const { programs } = await StudyCoreAPI.listPrograms(true);
+              document.getElementById('programCount').textContent = programs.length;
+              catalog.innerHTML = programs.length
+                ? programs.map(programCard).join('')
+                : emptyState({ icon: 'library', title: 'Programs coming soon', body: 'Program enrollment will open soon.' });
             }
-          } else if (user && StudyCoreAuth.isAdmin(user)) {
-            eyebrow.textContent = 'Administration';
-            heading.textContent = 'Manage programs and courses';
-            intro.textContent = 'Create programs, assign courses and publish resources from the admin dashboard.';
+          } catch (err) {
+            const offline = Boolean(err && (err.offline || err.network));
             catalog.innerHTML = emptyState({
-              icon: 'settings',
-              title: 'Program management',
-              body: 'Open the admin dashboard to manage the live course catalog.',
-              cta: '<a class="btn btn-primary" href="/admin.html">Open admin dashboard</a>'
+              icon: offline ? 'wifi-off' : 'alert-triangle',
+              title: offline ? 'No connection right now' : 'Could not load programs',
+              body: offline
+                ? 'StudyCore will load your programs automatically as soon as you are back online.'
+                : 'Something went wrong on our side. Your account and progress are safe.',
+              cta: '<button class="btn btn-primary" type="button" data-retry-catalog>Try again</button>'
             });
-            links.innerHTML = '';
-          } else if (user && StudyCoreAuth.isContentAdmin(user)) {
-            eyebrow.textContent = 'Content Admin';
-            heading.textContent = 'Your publishing workspace is ready';
-            intro.textContent = 'Upload educational resources, keep your own library organised, and manage only the resources you created.';
-            catalog.innerHTML = emptyState({
-              icon: 'upload',
-              title: 'Content Admin workspace',
-              body: 'Open your dedicated dashboard to publish and manage your own resources.',
-              cta: '<a class="btn btn-primary" href="/content-admin.html">Open Content Admin dashboard</a>'
-            });
-            links.innerHTML = '';
-          } else {
-            const { programs } = await StudyCoreAPI.listPrograms(true);
-            document.getElementById('programCount').textContent = programs.length;
-            catalog.innerHTML = programs.length
-              ? programs.map(programCard).join('')
-              : emptyState({ icon: 'library', title: 'Programs coming soon', body: 'Program enrollment will open soon.' });
+            const retry = catalog.querySelector('[data-retry-catalog]');
+            if (retry) {
+              retry.addEventListener('click', () => {
+                catalog.innerHTML = '<div class="card card-pad skeleton" aria-hidden="true" style="min-height:250px;"></div>'.repeat(3);
+                loadCatalog();
+              }, { once: true });
+            }
+          } finally {
+            catalog.setAttribute('aria-busy', 'false');
           }
-        } catch (err) {
-          catalog.innerHTML = emptyState({ icon: 'alert-triangle', title: 'Could not load programs', body: 'Please refresh the page and try again.' });
-        } finally {
-          catalog.setAttribute('aria-busy', 'false');
+        }
+
+        await loadCatalog();
+        if (SC.net && typeof SC.net.onReconnect === 'function') {
+          SC.net.onReconnect(() => {
+            if (catalog.querySelector('[data-retry-catalog]')) loadCatalog();
+          });
         }
 
         // Home hero decorative floating background logo controller
@@ -341,23 +395,31 @@
           const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
           if (prefersReduced) return;
 
-          // Pause animations when hero is scrolled out of view or tab is inactive to preserve performance
+          // Pause the emblem's CSS animations whenever nobody can see them:
+          // off-screen or on a hidden tab. Free battery on a phone.
+          let heroOnScreen = true;
+          let syncParallax = () => {};
+          function setPlayState(playing) {
+            const value = playing ? 'running' : 'paused';
+            trackEl.style.animationPlayState = value;
+            elemEl.style.animationPlayState = value;
+          }
+
           if ('IntersectionObserver' in window) {
             const io = new IntersectionObserver(([entry]) => {
-              const isVis = entry.isIntersecting;
-              trackEl.style.animationPlayState = isVis ? 'running' : 'paused';
-              elemEl.style.animationPlayState = isVis ? 'running' : 'paused';
+              heroOnScreen = entry.isIntersecting;
+              setPlayState(heroOnScreen && !document.hidden);
+              syncParallax();
             }, { threshold: 0.05 });
             io.observe(heroEl);
           }
 
           document.addEventListener('visibilitychange', () => {
-            const state = document.hidden ? 'paused' : 'running';
-            trackEl.style.animationPlayState = state;
-            elemEl.style.animationPlayState = state;
+            setPlayState(heroOnScreen && !document.hidden);
+            syncParallax();
           });
 
-          // Subtle interactive mouse parallax on desktop devices with fine pointer
+          // Subtle interactive mouse parallax — desktop pointers only.
           if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
             let targetX = 0, targetY = 0;
             let currentX = 0, currentY = 0;
@@ -370,69 +432,39 @@
               const relY = (e.clientY - rect.top) / rect.height - 0.5;
               targetX = relX * -22; // subtle shift opposite to mouse
               targetY = relY * -16;
+              start();
             }
 
             function updateParallax() {
               currentX += (targetX - currentX) * 0.06;
               currentY += (targetY - currentY) * 0.06;
-              stageEl.style.setProperty('--parallax-x', `${currentX.toFixed(2)}px`);
-              stageEl.style.setProperty('--parallax-y', `${currentY.toFixed(2)}px`);
+              stageEl.style.setProperty('--parallax-x', currentX.toFixed(2) + 'px');
+              stageEl.style.setProperty('--parallax-y', currentY.toFixed(2) + 'px');
+              // Settle and stop: an idle rAF loop that runs for the whole
+              // session is pure battery drain for zero visible motion.
+              const settled = Math.abs(targetX - currentX) < 0.05 && Math.abs(targetY - currentY) < 0.05;
+              rafId = settled ? null : requestAnimationFrame(updateParallax);
+            }
+
+            function start() {
+              if (rafId || !heroOnScreen || document.hidden) return;
               rafId = requestAnimationFrame(updateParallax);
             }
+            function stop() {
+              if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+            }
+            syncParallax = () => { (heroOnScreen && !document.hidden) ? start() : stop(); };
 
             heroEl.addEventListener('mousemove', onMouseMove, { passive: true });
             heroEl.addEventListener('mouseleave', () => {
               targetX = 0;
               targetY = 0;
-            });
-            updateParallax();
+              start();
+            }, { passive: true });
           }
         })();
       });
     </script>
 
-    <script>
-      // Hero image slideshow initialization
-      document.addEventListener('DOMContentLoaded', () => {
-        const images = [
-          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014..jpeg',
-          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.3.jpeg',
-          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.38.jpeg',
-          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.39.jpeg',
-          '/images/hero/WhatsApp%20Image%202026-08-21%20at%2014.19.jpeg'
-        ];
-        const slideshow = document.getElementById('heroSlideshow');
-        if (!slideshow) return;
-        // Add semi‑transparent dark overlay so text stays readable
-        slideshow.style.cssText = 'position:absolute; inset:0; z-index:1; background:rgba(0,0,0,0.6);';
-        const container = document.querySelector('#homeHero .container');
-        if (container) container.style.zIndex = 2;
-        images.forEach((src, i) => {
-          const img = document.createElement('img');
-          img.src = src;
-          img.loading = 'eager';
-          img.style.cssText = `
-            position:absolute;
-            inset:0;
-            width:100%;
-            height:100%;
-            object-fit:cover;
-            opacity:${i === 0 ? '1' : '0'};
-            transition:opacity 1s ease;
-          `;
-          slideshow.appendChild(img);
-        });
-        let current = 0;
-        const total = images.length;
-        setInterval(() => {
-          const currentImg = slideshow.children[current];
-          const nextIdx = (current + 1) % total;
-          const nextImg = slideshow.children[nextIdx];
-          currentImg.style.opacity = 0;
-          nextImg.style.opacity = 1;
-          current = nextIdx;
-        }, 4500);
-      });
-    </script>
   </body>
 </html>
