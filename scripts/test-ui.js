@@ -209,3 +209,55 @@ test('application JavaScript parses successfully', () => {
     );
   }
 });
+
+test('marketing pages answer buying questions with the shared FAQ component', () => {
+  const css = read('public/css/style.css');
+  const home = read('public/index.html');
+  const pricing = read('public/pages/pricing.html');
+
+  // One FAQ component, styled from the shared tokens, driven by native
+  // <details> so it works with the keyboard and with JavaScript disabled.
+  assert.match(css, /\.faq-list \{/);
+  assert.match(css, /\.faq-item > summary \{/);
+  assert.match(css, /\.faq-item\[open\] \.faq-mark \{/);
+
+  for (const [name, html] of [['home', home], ['pricing', pricing]]) {
+    const items = occurrences(html, /<details class="faq-item">/g);
+    assert.ok(items >= 5, `${name}: expected a real FAQ, found ${items} entries`);
+    assert.equal(items, occurrences(html, /<\/details>/g), `${name}: every FAQ entry closes`);
+    assert.equal(items, occurrences(html, /class="faq-mark"/g), `${name}: every FAQ entry has its marker`);
+    assert.equal(items, occurrences(html, /<div class="faq-answer">/g), `${name}: every FAQ entry has an answer`);
+    // Visible answers must also be exposed to search engines as FAQPage data.
+    assert.match(html, /"@type": "FAQPage"/, `${name}: FAQ structured data`);
+  }
+
+  // Structured data has to stay parseable, not just present.
+  for (const [name, html] of [['home', home], ['pricing', pricing]]) {
+    for (const block of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
+      assert.doesNotThrow(() => JSON.parse(block[1]), `${name}: JSON-LD parses`);
+    }
+  }
+});
+
+test('call-to-action banners use the shared class instead of inline styling', () => {
+  const css = read('public/css/style.css');
+  const home = read('public/index.html');
+
+  assert.match(css, /\.cta-banner \{/);
+  assert.match(css, /\.cta-banner-center \{/);
+  assert.match(css, /\.trust-row \{/);
+  assert.match(css, /\.hero \.trust-item \{/);
+
+  assert.ok(occurrences(home, /class="cta-banner/g) >= 2, 'home reuses the banner component');
+  // The old hand-rolled gradient panel must not come back.
+  assert.doesNotMatch(home, /style="background:linear-gradient\(135deg,#0e7568/);
+
+  // Signed-in students are never shown trial-only reassurance or a
+  // "create account" closing CTA.
+  assert.match(home, /id="homeTrustRow"/);
+  assert.match(home, /if \(trustRow\) trustRow\.remove\(\);/);
+  assert.match(home, /id="homeClosingCta"/);
+
+  const ids = [...home.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+  assert.equal(new Set(ids).size, ids.length, 'home page ids stay unique');
+});

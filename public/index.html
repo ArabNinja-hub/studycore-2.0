@@ -50,6 +50,64 @@
     }
     </script>
 
+    <!-- Structured data: FAQ (mirrors the visible FAQ section below) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What do I get for free?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Every new account starts with a 30-day free trial. During the trial you can read all study notes, tutorial sheets and past papers for your program's courses, and track your progress. Video lessons are Premium content, so they stay locked until you upgrade."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How much is StudyCore Premium and how do I pay?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Premium is K50 for 30 days, paid by mobile money (MTN MoMo or Airtel Money). Send the payment to the number shown on the Pricing page, submit your reference from your dashboard, and the StudyCore team activates Premium on your account."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why do I only see some of the courses?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "StudyCore is program-based. You choose your program when you sign up, and your homepage, search and dashboard only show the courses assigned to that program. You can change your program from your dashboard."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use StudyCore on my phone?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. StudyCore runs in any modern mobile browser with nothing to install. Videos and documents open inside the app and your progress follows you across devices."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need to download anything to read the notes?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. PDFs and Word documents are rendered by the built-in StudyCore document viewer with zoom, search and page navigation. Content stays view-only inside the platform."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What happens when my free trial ends?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Your account, progress and streaks stay exactly as they are. Locked resources prompt you to upgrade, free previews stay open, and upgrading restores full access instantly."
+          }
+        }
+      ]
+    }
+    </script>
+
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -98,6 +156,12 @@
               <a class="btn btn-primary btn-lg" id="homePrimaryCta" href="/signup.html">Choose My Program</a>
               <a class="btn btn-on-dark btn-lg" id="homeSecondaryCta" href="/login.html">Log In</a>
             </div>
+
+            <ul class="trust-row" id="homeTrustRow">
+              <li class="trust-item"><span data-icon="check" data-icon-size="16"></span> 30-day free trial</li>
+              <li class="trust-item"><span data-icon="check" data-icon-size="16"></span> No card needed</li>
+              <li class="trust-item"><span data-icon="check" data-icon-size="16"></span> Mobile money payments</li>
+            </ul>
           </div>
 
           <div class="hero-stats">
@@ -124,6 +188,34 @@
           <div class="support-links" id="homeCatalogLinks">
             <span class="support-links-label">Already registered?</span>
             <a class="section-link" href="/login.html">Log in to see your courses <span data-icon="arrow-right" data-icon-size="14"></span></a>
+          </div>
+        </div>
+      </section>
+
+      <!-- What's inside a course: the concrete content types, not adjectives -->
+      <section class="section" aria-labelledby="homeInsideTitle">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">What you get</span>
+            <h2 id="homeInsideTitle">Everything for a topic, in one lesson</h2>
+            <p>No hunting through group chats and shared drives. Each lesson keeps its video, its notes and its practice together.</p>
+          </div>
+          <div class="feature-grid">
+            <div class="card card-pad">
+              <div class="card-icon" data-icon="video"></div>
+              <h3 style="margin-top:14px;">Video lessons</h3>
+              <p>Watch in the StudyCore player — it remembers your position, plays at your speed and marks the lesson complete for you.</p>
+            </div>
+            <div class="card card-pad">
+              <div class="card-icon" data-icon="file-text"></div>
+              <h3 style="margin-top:14px;">Notes &amp; tutorial sheets</h3>
+              <p>PDFs and Word documents open right in the browser — no downloads, no extra apps, readable on a phone.</p>
+            </div>
+            <div class="card card-pad">
+              <div class="card-icon" data-icon="clipboard-check"></div>
+              <h3 style="margin-top:14px;">Past papers</h3>
+              <p>Previous exam papers grouped by year, sitting with the topic they belong to so revision has a starting point.</p>
+            </div>
           </div>
         </div>
       </section>
@@ -190,13 +282,81 @@
       <!-- Quizzes: program-targeted practice -->
       <section class="section" style="padding-top:0;">
         <div class="container">
-          <div style="background:linear-gradient(135deg,#0e7568 0%,#0b2033 100%);border-radius:18px;padding:34px 30px;display:flex;gap:22px;align-items:center;flex-wrap:wrap;color:#fff;">
-            <div style="width:54px;height:54px;border-radius:14px;background:rgba(255,255,255,0.12);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;"><span data-icon="circle-help" data-icon-size="26"></span></div>
-            <div style="flex:1;min-width:240px;">
-              <h2 style="margin:0 0 8px;">Test yourself with Quizzes</h2>
-              <p style="margin:0;color:rgba(255,255,255,0.8);">Content Admins and the StudyCore team post program-targeted quizzes — multiple-choice, word answers, or image questions. Take them any time and watch your best scores improve.</p>
+          <div class="cta-banner cta-banner-teal">
+            <div class="cta-banner-icon"><span data-icon="circle-help" data-icon-size="26"></span></div>
+            <div class="cta-banner-body">
+              <h2>Test yourself with Quizzes</h2>
+              <p>Content Admins and the StudyCore team post program-targeted quizzes — multiple-choice, word answers, or image questions. Take them any time and watch your best scores improve.</p>
             </div>
             <a class="btn btn-amber" href="/quiz.html">Open Quizzes</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ: the questions support actually gets, answered before signup -->
+      <section class="section" aria-labelledby="homeFaqTitle">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Questions</span>
+            <h2 id="homeFaqTitle">Before you sign up</h2>
+            <p>The things students ask us on WhatsApp most often.</p>
+          </div>
+
+          <div class="faq-list">
+            <details class="faq-item">
+              <summary>What do I get for free?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>Every new account starts with a 30-day free trial. During the trial you can read all study notes, tutorial sheets and past papers for your program's courses, and track your progress. Video lessons are Premium content, so they stay locked until you upgrade.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>How much is Premium and how do I pay?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>Premium is K50 for 30 days. You pay by mobile money — MTN MoMo or Airtel Money — to the number shown on the Pricing page, then submit your payment reference from your dashboard.</p>
+                <p>The StudyCore team confirms the payment and Premium activates on your account. You get an email as soon as access is granted. No card and no merchant account needed.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>Why do I only see some of the courses?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>StudyCore is program-based. You pick your program when you sign up, and your homepage, search and dashboard only show the courses assigned to that program — so you are never scrolling past material you do not study. You can change your program from your dashboard.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>Can I use it on my phone?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>Yes. StudyCore works in any modern mobile browser — nothing to install. Videos and documents open inside the app, so notes and past papers are readable on a small screen, and your progress follows you when you switch to a laptop.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>Do I need to download anything to read the notes?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>No. PDFs and Word documents are rendered by the built-in StudyCore document viewer, with zoom, search and page navigation. Content stays view-only inside the platform.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>What happens when my trial ends?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>Your account, progress and streaks stay exactly as they are. Locked resources simply prompt you to upgrade, and any lesson marked as a free preview stays open. Upgrading at any time restores full access instantly.</p>
+              </div>
+            </details>
+          </div>
+
+          <p class="faq-foot">Still stuck? <a href="/pages/about.html#contact">Message the StudyCore team on WhatsApp</a>.</p>
+        </div>
+      </section>
+
+      <!-- Closing CTA: one last, single action -->
+      <section class="section" style="padding-top:0;">
+        <div class="container">
+          <div class="cta-banner cta-banner-center">
+            <h2>Start with your program today</h2>
+            <p>Create your account, choose your program, and open your first lesson in under a minute. The first 30 days are free.</p>
+            <div class="cta-banner-actions">
+              <a class="btn btn-amber btn-lg" id="homeClosingCta" href="/signup.html">Create Free Account</a>
+              <a class="btn btn-on-dark btn-lg" href="/pages/pricing.html">See Premium</a>
+            </div>
+            <p class="cta-banner-note">No card required · Cancel by simply not renewing</p>
           </div>
         </div>
       </section>
@@ -263,6 +423,29 @@
 
         try {
           const user = await StudyCoreAuth.fetchSession();
+
+          // Signed-in visitors should never be sold a free trial they already
+          // have: swap the signup-only reassurances and closing CTA for the
+          // equivalent "keep going" actions.
+          if (user) {
+            const trustRow = document.getElementById('homeTrustRow');
+            if (trustRow) trustRow.remove();
+            const closing = document.getElementById('homeClosingCta');
+            if (closing) {
+              closing.textContent = 'Open My Dashboard';
+              closing.href = '/dashboard.html';
+              const banner = closing.closest('.cta-banner');
+              if (banner) {
+                const note = banner.querySelector('.cta-banner-note');
+                if (note) note.remove();
+                const heading = banner.querySelector('h2');
+                if (heading) heading.textContent = 'Pick up where you left off';
+                const lead = banner.querySelector('p');
+                if (lead) lead.textContent = 'Your courses, lessons and progress are waiting in your dashboard.';
+              }
+            }
+          }
+
           if (user && StudyCoreAuth.normalizedRole(user) === 'student') {
             const data = await StudyCoreAPI.myProgram();
             if (data.program) {

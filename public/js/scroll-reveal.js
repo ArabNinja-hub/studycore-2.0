@@ -29,6 +29,8 @@
     '.topic-grid > .topic-card',
     '.video-term-grid > .video-term-card',
     '.announcement-list > .announcement-card',
+    '.faq-list > .faq-item',
+    '.cta-banner',
     '.achievement',
     '.premium-card'
   ].join(',');
@@ -41,6 +43,7 @@
     '.topic-grid',
     '.video-term-grid',
     '.announcement-list',
+    '.faq-list',
     '#myCoursesList',
     '.achievement-grid'
   ].join(',');

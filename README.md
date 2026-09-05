@@ -80,6 +80,23 @@ block or roll back an approval. See `lib/mailer.js`.
 The public Pricing page routes logged-out visitors to signup and logged-in students
 straight to the dashboard Premium payment section.
 
+## Public pages (home & pricing)
+
+The marketing surface is built from the same design system as the app — no page-specific
+one-off styling:
+
+- **Home** (`/`): hero (with a short reassurance row) → programs → what's inside a course
+  → how it works → Premium → Quizzes → **FAQ** → closing CTA. Signed-in visitors never see
+  trial-only copy: the reassurance row is removed and the closing CTA becomes
+  "Open My Dashboard".
+- **Pricing** (`/pages/pricing.html`): plans, how mobile-money payment works, and a
+  **payment FAQ** covering activation time, no auto-renew, paying from another number and
+  what happens when the trial ends.
+- Shared components live in `public/css/style.css`: `.faq-list` / `.faq-item` (native
+  `<details>`, so it is keyboard accessible and works with JavaScript disabled),
+  `.cta-banner` (the dark brand CTA panel, replacing hand-rolled inline gradients) and
+  `.trust-row`. Both FAQs are mirrored as `FAQPage` JSON-LD for search results.
+
 ## Profile pictures
 
 `POST /api/auth/avatar` streams the image to R2, then **verifies the actual file

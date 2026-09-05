@@ -12,6 +12,54 @@
     <meta property="og:description" content="Unlock every video lesson, note and past paper across all StudyCore courses." />
     <meta property="og:url" content="https://studycore.academy/pages/pricing.html" />
     <meta property="og:image" content="https://studycore.academy/assets/images/og-image.png" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How soon does StudyCore Premium activate after payment?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "As soon as the StudyCore team confirms your payment reference. Approvals are manual, so it usually takes minutes. You receive a confirmation email when access is granted and your dashboard shows Premium as active."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does StudyCore Premium renew automatically?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Premium is 30 days of access rather than a subscription. Nothing is deducted automatically from your mobile money account; you pay again only if you want to continue."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "I paid but Premium is still locked. What should I do?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Make sure you submitted the payment reference from your dashboard, since payments are matched to accounts by that reference. If it is still pending, message the StudyCore team on WhatsApp with the reference and the number you paid from."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can someone else pay for my StudyCore Premium?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Payment can come from any MTN MoMo or Airtel Money number. Submit the reference from your own StudyCore account so Premium activates on the right profile."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does Premium cover every course?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Premium unlocks all video lessons, notes, tutorial sheets and past papers available to your program for one price, with no per-course charges."
+          }
+        }
+      ]
+    }
+    </script>
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="stylesheet" href="/css/style.css" />
@@ -29,6 +77,11 @@
             One plan, every course. Premium unlocks all video lessons, every study note,
             tutorial sheet and past paper — across the entire platform.
           </p>
+          <ul class="trust-row">
+            <li class="trust-item"><span data-icon="check" data-icon-size="16"></span> K50 for 30 days</li>
+            <li class="trust-item"><span data-icon="check" data-icon-size="16"></span> MTN MoMo &amp; Airtel Money</li>
+            <li class="trust-item"><span data-icon="check" data-icon-size="16"></span> No card, no auto-renew</li>
+          </ul>
         </div>
       </section>
 
@@ -78,6 +131,52 @@
             <div class="pay-methods" id="payMethods" hidden></div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;" id="payHowCta"></div>
           </div>
+
+          <!-- Payment FAQ: the questions that create support messages -->
+          <div class="section-heading" style="margin-top:56px;">
+            <span class="eyebrow">Payment questions</span>
+            <h2>Good to know before you pay</h2>
+          </div>
+          <div class="faq-list">
+            <details class="faq-item">
+              <summary>How soon does Premium activate?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>As soon as the StudyCore team confirms your payment reference. Approvals are done by hand, so it usually takes minutes rather than seconds — you get a confirmation email the moment access is granted, and your dashboard shows Premium as active.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>Does it renew automatically?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>No. Premium is 30 days of access, not a subscription. Nothing is ever deducted from your mobile money account automatically — when the 30 days are up you simply pay again if you want to continue.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>I paid but Premium is still locked. What now?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>First check that you submitted the payment reference from your dashboard — the payment and the account are matched by that reference. If it is submitted and still pending after a while, message the team on WhatsApp with the reference and the number you paid from, and it will be sorted out.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>Can someone else pay for me?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>Yes. The payment can come from any MTN MoMo or Airtel Money number — just submit the reference from your own StudyCore account so Premium is activated on the right profile.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>Does Premium cover every course?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>Premium unlocks all video lessons, notes, tutorial sheets and past papers available to your program — one price, no per-course charges. Your homepage still stays filtered to your program so you only see what you actually study.</p>
+              </div>
+            </details>
+            <details class="faq-item">
+              <summary>What do I lose if I do not upgrade?<span class="faq-mark" data-icon="plus" data-icon-size="16"></span></summary>
+              <div class="faq-answer">
+                <p>Nothing you have already done. Your account, completed lessons, streaks and achievements stay. Video lessons stay locked, and after the 30-day trial documents lock too — except lessons marked as free previews.</p>
+              </div>
+            </details>
+          </div>
+
+          <p class="faq-foot">Any other question? <a href="https://wa.me/260962838581" target="_blank" rel="noopener">Message the StudyCore team on WhatsApp</a>.</p>
         </div>
       </section>
     </main>
@@ -93,6 +192,10 @@
     <script src="/js/scroll-reveal.js"></script>
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
+        // iconify shared [data-icon] slots (trust row, FAQ markers)
+        document.querySelectorAll('[data-icon]').forEach((el) => {
+          el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: Number(el.getAttribute('data-icon-size')) || 22 });
+        });
         // iconify perks
         document.querySelectorAll('[data-perk]').forEach((li) => {
           li.insertAdjacentHTML('afterbegin', SC.icon('check', { size: 16 }));
