@@ -203,6 +203,21 @@
     return fd;
   }
 
+  // A bare percentage stalls visibly on a slow uplink and reads as "frozen".
+  // Showing live speed and a time estimate is what tells an admin on mobile
+  // data that the upload is working and roughly how long to keep the tab open.
+  function formatUploadDetail(info) {
+    if (!info || !info.bytesPerSecond) return '';
+    const kbps = info.bytesPerSecond / 1024;
+    const speed = kbps >= 1024 ? `${(kbps / 1024).toFixed(1)} MB/s` : `${Math.round(kbps)} KB/s`;
+    let eta = '';
+    if (info.etaSeconds !== null && info.etaSeconds !== undefined && info.etaSeconds < 86400) {
+      const s = info.etaSeconds;
+      eta = s >= 60 ? ` · about ${Math.ceil(s / 60)} min left` : ` · about ${s}s left`;
+    }
+    return ` — ${speed}${eta}`;
+  }
+
   async function submitResourceForm(e) {
     e.preventDefault();
     const category = document.getElementById('resCategory').value;
@@ -227,9 +242,9 @@
     try {
       const url = editingResourceId ? `/api/admin/resources/${editingResourceId}` : '/api/admin/resources';
       const method = editingResourceId ? 'PUT' : 'POST';
-      const result = await StudyCoreAPI.uploadWithProgress(url, method, fd, (pct) => {
+      const result = await StudyCoreAPI.uploadWithProgress(url, method, fd, (pct, info) => {
         progressBar.style.width = `${pct}%`;
-        progressText.textContent = `Uploading… ${pct}%`;
+        progressText.textContent = `Uploading… ${pct}%${formatUploadDetail(info)}`;
       });
       showToast(editingResourceId ? 'Resource updated.' : 'Resource published.', 'success');
       if (result && result.warning) showToast(result.warning, 'info');

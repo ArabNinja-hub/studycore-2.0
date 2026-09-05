@@ -311,9 +311,31 @@ process.on('unhandledRejection', (reason) => {
 // allowing integration tests to exercise the exact same routes and page gates
 // on an ephemeral listener.
 if (require.main === module) {
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`StudyCore server running on http://0.0.0.0:${PORT}`);
   });
+
+  // ---------------------------------------------------------------------
+  // Slow-uplink upload tuning.
+  //
+  // Node's defaults are written for small JSON requests and quietly break
+  // large uploads on weak mobile data:
+  //   · requestTimeout (300s) destroys the socket mid-body, so a 100MB file
+  //     on a slow connection dies at exactly five minutes with a bare 408 —
+  //     no matter how healthily the bytes were still flowing.
+  //   · keepAliveTimeout (5s) below the proxy's own keep-alive causes the
+  //     upstream (Render/Cloudflare) to reuse a socket the app just closed,
+  //     surfacing as random 502s during a multi-request admin session.
+  //
+  // The body is still bounded — multer enforces MAX_UPLOAD_MB, and the
+  // client aborts on genuine stalls — so removing the wall-clock request
+  // timeout does not create an unbounded request. It only stops punishing
+  // uploads for being slow rather than stuck.
+  // ---------------------------------------------------------------------
+  server.requestTimeout = 0;        // no wall-clock cap on a request body
+  server.headersTimeout = 120000;   // headers must still arrive promptly
+  server.keepAliveTimeout = 76000;  // > typical 60s upstream keep-alive
+  server.timeout = 0;               // rely on requestTimeout/stall handling
 }
 
 module.exports = app;

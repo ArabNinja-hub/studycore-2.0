@@ -305,6 +305,18 @@
     updateTypeControls();
   }
 
+  function formatUploadDetail(info) {
+    if (!info || !info.bytesPerSecond) return '';
+    const kbps = info.bytesPerSecond / 1024;
+    const speed = kbps >= 1024 ? `${(kbps / 1024).toFixed(1)} MB/s` : `${Math.round(kbps)} KB/s`;
+    let eta = '';
+    if (info.etaSeconds !== null && info.etaSeconds !== undefined && info.etaSeconds < 86400) {
+      const s = info.etaSeconds;
+      eta = s >= 60 ? ` · about ${Math.ceil(s / 60)} min left` : ` · about ${s}s left`;
+    }
+    return ` — ${speed}${eta}`;
+  }
+
   function buildFormData() {
     const formData = new FormData();
     formData.append('resourceType', $('#caResourceType').value);
@@ -355,8 +367,11 @@
     try {
       const formData = buildFormData();
       const endpoint = editingId ? `/api/content-admin/resources/${encodeURIComponent(editingId)}` : '/api/content-admin/resources';
-      const result = await StudyCoreAPI.uploadWithProgress(endpoint, editingId ? 'PUT' : 'POST', formData, (percent) => {
+      const result = await StudyCoreAPI.uploadWithProgress(endpoint, editingId ? 'PUT' : 'POST', formData, (percent, info) => {
         progressBar.style.width = `${percent}%`;
+        // Percent alone looks frozen on a slow uplink; the live rate and ETA
+        // (announced via the existing status line) show it is still moving.
+        setStatus(status, `Uploading… ${percent}%${formatUploadDetail(info)}`);
       });
       progressBar.style.width = '100%';
       showToast(editingId ? 'Resource updated.' : 'Resource published.', 'success');
