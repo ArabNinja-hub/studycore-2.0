@@ -164,7 +164,7 @@ body[data-page='content-admin'] {
 .ca-stat-value { color: var(--ink); font-family: var(--font-display); font-size: 1.6rem; line-height: 1.1; font-weight: 800; }
 .ca-stat-label { color: var(--muted); font-size: 0.78rem; font-weight: 650; }
 
-.ca-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(270px, 5fr); gap: 20px; }
+.ca-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(min(270px, 100%), 5fr); gap: 20px; }
 .ca-card { padding: 23px 24px; }
 .ca-card h3 { font-size: 1.05rem; }
 .ca-card > p { font-size: 0.88rem; margin-top: 5px; }
@@ -183,7 +183,7 @@ body[data-page='content-admin'] {
 .ca-account-item div { min-width: 0; }
 .ca-account-item small { display: block; color: var(--muted); font-size: 0.75rem; overflow-wrap: anywhere; }
 
-.ca-profile-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(260px, 5fr); gap: 20px; align-items: start; }
+.ca-profile-grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(min(260px, 100%), 5fr); gap: 20px; align-items: start; }
 .ca-profile-summary { padding: 23px 24px; }
 .ca-profile-summary .ca-user-avatar { width: 60px; height: 60px; font-size: 1rem; margin-bottom: 13px; }
 .ca-profile-summary h3 { font-size: 1.14rem; }
@@ -232,7 +232,7 @@ body[data-page='content-admin'] {
 .ca-upload-items { display: grid; }
 .ca-upload-item {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) minmax(130px, 1.3fr) auto;
+  grid-template-columns: 42px minmax(0, 1fr) minmax(min(130px, 100%), 1.3fr) auto;
   align-items: center;
   gap: 14px;
   padding: 16px 22px;

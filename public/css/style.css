@@ -2623,7 +2623,7 @@ body.scroll-reveal-enabled [data-scroll-reveal].sc-reveal-done {
 /* Program management cards */
 .program-mgmt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
   gap: 16px;
 }
 .program-mgmt-card {
@@ -2651,7 +2651,7 @@ body.scroll-reveal-enabled [data-scroll-reveal].sc-reveal-done {
 }
 .target-checkboxes {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
   gap: 8px;
   margin-top: 6px;
 }
@@ -2911,6 +2911,112 @@ a, button, label, summary,
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
   }
+}
+
+/* ── 5. Fitting the screen ───────────────────────────────────────────
+   The rules above make the phone feel good to touch. These make the
+   content actually FIT, which is the other half of "smooth as desktop".
+
+   Three recurring causes of a page that scrolls sideways on a phone:
+     a) a fixed-width child inside a flex/grid item — flex and grid items
+        default to min-width:auto, so they refuse to shrink below their
+        content and push the row past the viewport;
+     b) long unbroken strings (URLs, file keys, email addresses);
+     c) media and embeds with intrinsic widths.
+   `body { overflow-x: hidden }` (line ~100) only HIDES the symptom: the
+   content is still clipped and unreachable. These rules let it reflow. */
+@media (max-width: 900px) {
+  /* (a) Let flex/grid children shrink. Scoped to layout containers so it
+     cannot flatten deliberately-scrolling rails (.chips-row, .tabs). */
+  .card, .card-pad, .dash-section, .dash-stat, .continue-card,
+  .lesson-row, .topic-card, .resource-card, .course-card, .quiz-card,
+  .announcement-card, .status-banner, .ca-card, .ca-stat, .ca-resource-row {
+    min-width: 0;
+  }
+  .card > *, .card-pad > *, .dash-section > *, .form-group,
+  .lesson-row > *, .topic-card > *, .continue-card > * { min-width: 0; }
+
+  /* (b) Long tokens wrap instead of setting the page width. `anywhere` is
+     deliberate: a 60-character R2 object key or a student email has no
+     break opportunity, and `break-word` alone will not split it. */
+  .card, .card-pad, .dash-section, .lesson-row, .topic-card,
+  .resource-card, .quiz-card, .announcement-card, .ca-card,
+  .modal, .empty-state, .table-wrap td {
+    overflow-wrap: anywhere;
+  }
+  /* Headings hyphenate rather than spill on a narrow column. */
+  h1, h2, h3, h4 { overflow-wrap: break-word; hyphens: auto; }
+
+  /* (c) Nothing embedded may exceed its column. */
+  img, svg, video, canvas, iframe, table, pre { max-width: 100%; }
+}
+
+/* ── Wide data tables become cards on a phone ────────────────────────
+   The admin resource table has ten columns. Inside .table-wrap it
+   "works" — it scrolls sideways — but reading one row means dragging
+   the whole table back and forth, and the action buttons live off-screen
+   at the far right. Below the tablet breakpoint each row becomes a
+   self-contained card with its column name as a label, so everything is
+   visible in one vertical scroll like every other page.
+
+   Labels come from the `data-label` attribute rendered in js/admin.js. */
+@media (max-width: 780px) {
+  .table-wrap {
+    border: 0;
+    background: transparent;
+    overflow-x: visible;   /* nothing left to scroll horizontally */
+  }
+  table.table, table.table tbody, table.table tr, table.table td {
+    display: block;
+    width: 100%;
+  }
+  /* The header row is redundant once every cell carries its own label,
+     and clip() keeps it available to screen readers. */
+  table.table thead {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  table.table tr {
+    margin-bottom: 12px;
+    padding: 4px 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+  }
+  table.table tbody tr:hover { background: var(--card); }
+  table.table td {
+    display: grid;
+    grid-template-columns: minmax(88px, 34%) minmax(0, 1fr);
+    gap: 12px;
+    align-items: start;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  table.table tr td:last-child { border-bottom: 0; }
+  table.table td::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  /* A cell with no label (e.g. the "no resources match" colspan row)
+     should still use the full width rather than an empty label column. */
+  table.table td:not([data-label]) {
+    display: block;
+    text-align: center;
+  }
+  /* Actions get a full-width row of real touch targets. */
+  table.table td[data-label='Actions'] { grid-template-columns: 1fr; }
+  table.table td[data-label='Actions']::before { display: none; }
+  .table-actions { flex-wrap: wrap; }
+  .table-actions .btn { flex: 1 1 auto; min-height: 40px; }
 }
 
 /* Retry affordance inside an empty/error state: a dead end that offers a

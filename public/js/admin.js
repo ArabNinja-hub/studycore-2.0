@@ -444,31 +444,31 @@
         const cc = courseCellLabel(r);
         return `
         <tr>
-          <td>
+          <td data-label="Title">
             <div style="display:flex;align-items:center;gap:10px;">
               <span style="color:var(--teal-600);display:inline-flex;">${SC.icon(CATEGORY_ICONS[r.category] || 'file', { size: 17 })}</span>
               <div style="min-width:0;">
-                <strong style="color:var(--ink);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px;">${escapeHtml(r.title)}</strong>
+                <strong style="color:var(--ink);display:block;overflow:hidden;text-overflow:ellipsis;max-width:min(260px, 100%);">${escapeHtml(r.title)}</strong>
                 <span style="font-size:0.72rem;color:var(--muted);">${r.hasFile ? `${escapeHtml(r.fileName || '')} · ${formatFileSize(r.fileSize)}` : 'no file'}</span>
               </div>
             </div>
           </td>
-          <td>${escapeHtml(r.resourceType || CATEGORY_LABELS[r.category] || r.category)}</td>
-          <td>
+          <td data-label="Category">${escapeHtml(r.resourceType || CATEGORY_LABELS[r.category] || r.category)}</td>
+          <td data-label="Uploader">
             <strong style="font-size:0.8rem;color:var(--ink);">${escapeHtml(r.uploaderName || 'Unattributed')}</strong>
             <span style="display:block;font-size:0.7rem;color:var(--muted);">${escapeHtml(r.uploaderRole === 'content_admin' ? 'Content Admin' : (r.uploaderRole === 'admin' ? 'Main Admin' : 'Legacy upload'))}</span>
           </td>
-          <td>${escapeHtml(cc.text)}</td>
-          <td>${window.SCAdminPrograms ? SCAdminPrograms.targetBadge(r) : ''}</td>
-          <td>${escapeHtml(r.topic || '—')}${r.semester ? `<br><span style="font-size:0.72rem;color:var(--muted);">${escapeHtml(r.semester)}</span>` : ''}</td>
-          <td>
+          <td data-label="Course / Subject">${escapeHtml(cc.text)}</td>
+          <td data-label="Target">${window.SCAdminPrograms ? SCAdminPrograms.targetBadge(r) : ''}</td>
+          <td data-label="Topic / Term">${escapeHtml(r.topic || '—')}${r.semester ? `<br><span style="font-size:0.72rem;color:var(--muted);">${escapeHtml(r.semester)}</span>` : ''}</td>
+          <td data-label="Status">
             <button class="btn btn-ghost btn-sm" data-toggle-publish="${r.id}" data-current-status="${r.publishStatus}" style="color:${r.publishStatus === 'published' ? 'var(--green-600)' : 'var(--amber-600)'};">
               ${SC.icon(r.publishStatus === 'published' ? 'check-circle' : 'clock', { size: 14 })} ${r.publishStatus === 'published' ? 'Published' : 'Draft'}
             </button>
           </td>
-          <td>${r.isPremium ? '<span class="badge badge-amber">Premium</span>' : '<span class="badge badge-green">Free</span>'}${r.pinned ? ' <span class="badge badge-neutral">Pinned</span>' : ''}</td>
-          <td>${r.viewCount}</td>
-          <td>
+          <td data-label="Access">${r.isPremium ? '<span class="badge badge-amber">Premium</span>' : '<span class="badge badge-green">Free</span>'}${r.pinned ? ' <span class="badge badge-neutral">Pinned</span>' : ''}</td>
+          <td data-label="Views">${r.viewCount}</td>
+          <td data-label="Actions">
             <div class="table-actions">
               ${['announcement', 'quiz'].includes(r.category) ? '' : `<button class="btn btn-outline btn-sm" data-edit="${r.id}">${SC.icon('edit', { size: 13 })} Edit</button>`}
               ${r.category === 'announcement' ? `<button class="btn btn-ghost btn-sm" data-edit-ann="${r.id}">${SC.icon('bell', { size: 13 })}</button>` : ''}
