@@ -345,60 +345,25 @@
     return formData;
   }
 
-  const PICKER_CONFIG = (window.STUDYCORE_CONFIG && window.STUDYCORE_CONFIG.googlePicker) ? window.STUDYCORE_CONFIG.googlePicker : {};
-  const PICKER_API_KEY = PICKER_CONFIG.apiKey || '';
-  const PICKER_APP_ID = PICKER_CONFIG.appId || '1076280995038';
-  const PICKER_CLIENT_ID = PICKER_CONFIG.clientId || '';
-
-  function openPicker() {
-    if (!window.google || !window.google.picker) {
-      alert('Google Picker is not loaded yet. Please try again shortly.');
-      return;
-    }
-    const tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: PICKER_CLIENT_ID,
-      scope: 'https://www.googleapis.com/auth/drive.file',
-      callback: (tokenResponse) => {
-        if (tokenResponse.access_token) {
-          createPicker(tokenResponse.access_token);
-        }
-      },
-    });
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-  }
-
-  window.openPicker = openPicker;
-
-  function createPicker(accessToken) {
-    const picker = new google.picker.PickerBuilder()
-      .addView(google.picker.ViewId.DOCS)
-      .setOAuthToken(accessToken)
-      .setDeveloperKey(PICKER_API_KEY)
-      .setAppId(PICKER_APP_ID)
-      .setCallback(pickerCallback)
-      .setOrigin(window.location.origin)
-      .build();
-    picker.setVisible(true);
-  }
-
-  function pickerCallback(data) {
-    if (data.action === google.picker.Action.PICKED) {
-      const doc = data.docs[0];
-      $('#caGoogleDriveFileId').value = doc.id || '';
-      $('#caGoogleDriveUrl').value = doc.url || '';
-      $('#caGoogleDriveFileName').value = doc.name || '';
-      $('#caGoogleDriveMimeType').value = doc.mimeType || '';
-      $('#caGoogleDriveFileSize').value = doc.sizeBytes || 0;
-      $('#caFileName').textContent = `Selected: ${doc.name || 'Google Drive Document'}${doc.sizeBytes ? ` (${fileSize(doc.sizeBytes)})` : ''}`;
-      $('#caFile').required = false;
-      $('#caFile').value = '';
-      $('#caFileDropTitle').innerHTML = 'Drive file selected <span style="font-weight:400;color:var(--muted);">(optional — replace with a file upload)</span>';
-      state.selectedFile = null;
-    }
-  }
-
-  window.onPickerApiLoaded = function () {
-    // Picker API loaded; ready to open picker when requested.
+  // ---------------------------------------------------------------
+  // Google Drive Picker hand-off.
+  // The Picker itself is bootstrapped in /js/google-picker.js (it owns
+  // loading api.js + gsi/client, readiness checks and error states). It
+  // calls back here with the picked Drive document so this dashboard can
+  // populate its hidden form fields.
+  // ---------------------------------------------------------------
+  window.onGoogleDriveFilePicked = function (doc) {
+    if (!doc || !doc.id) return;
+    $('#caGoogleDriveFileId').value = doc.id || '';
+    $('#caGoogleDriveUrl').value = doc.url || `https://drive.google.com/file/d/${doc.id}/view`;
+    $('#caGoogleDriveFileName').value = doc.name || '';
+    $('#caGoogleDriveMimeType').value = doc.mimeType || '';
+    $('#caGoogleDriveFileSize').value = doc.sizeBytes || 0;
+    $('#caFileName').textContent = `Selected: ${doc.name || 'Google Drive Document'}${doc.sizeBytes ? ` (${fileSize(doc.sizeBytes)})` : ''}`;
+    $('#caFile').required = false;
+    $('#caFile').value = '';
+    $('#caFileDropTitle').innerHTML = 'Drive file selected <span style="font-weight:400;color:var(--muted);">(optional — replace with a file upload)</span>';
+    state.selectedFile = null;
   };
 
   function validateUpload() {
