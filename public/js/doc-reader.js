@@ -300,7 +300,12 @@
     const statusBox = host.querySelector('#scDocStatus');
     const pageLabel = host.querySelector('#scDocPageLabel');
     const zoomLabel = host.querySelector('#scDocZoomLabel');
-    const fsTarget = reader || stage;
+    // Immersive fullscreen targets the reading *stage*, never the card/shell:
+    // fullscreening the stage hides every piece of StudyCore chrome (site nav,
+    // viewer bar / back button, lesson header) so only the document fills the
+    // screen. This works identically for the standalone /viewer/:id page and
+    // the embedded lesson reader because both render through this reader.
+    const fsTarget = stage;
 
     // Protected content: no right-click "save", no drag-out. In bare mode the
     // reading surface (stage) carries the same protection the card carries in
@@ -310,6 +315,136 @@
       protectEl.addEventListener('contextmenu', (e) => e.preventDefault());
       protectEl.addEventListener('dragstart', (e) => e.preventDefault());
     }
+
+    /* ── Immersive fullscreen overlay ───────── */
+    // While immersive there is no StudyCore toolbar, so we float a thin,
+    // auto-hiding control bar over the document (page nav, zoom, Exit).
+    // Esc exits natively. For PDFs the controls are paged; for an image or
+    // Word/text doc the bar reduces to just Exit.
+    let fsActive = false;
+    let fsHideTimer = null;
+    const fsUi = document.createElement('div');
+    fsUi.className = 'doc-fs-ui';
+    fsUi.setAttribute('role', 'toolbar');
+    fsUi.setAttribute('aria-label', 'Fullscreen document controls');
+    fsUi.hidden = true;
+    fsUi.innerHTML = `
+      <div class="doc-fs-group" data-fsgroup="pager" hidden>
+        <button type="button" class="doc-fs-btn" data-fs="prev" aria-label="Previous page">${icon('arrow-left', 20)}</button>
+        <span class="doc-fs-label" data-fslabel="page" aria-live="polite">1 / 1</span>
+        <button type="button" class="doc-fs-btn" data-fs="next" aria-label="Next page">${icon('arrow-right', 20)}</button>
+      </div>
+      <span class="doc-fs-sep" data-fsgroup="pager" hidden aria-hidden="true"></span>
+      <div class="doc-fs-group" data-fsgroup="zoom" hidden>
+        <button type="button" class="doc-fs-btn" data-fs="zo" aria-label="Zoom out">${icon('zoom-out', 20)}</button>
+        <span class="doc-fs-label" data-fslabel="zoom">100%</span>
+        <button type="button" class="doc-fs-btn" data-fs="zi" aria-label="Zoom in">${icon('zoom-in', 20)}</button>
+        <button type="button" class="doc-fs-btn" data-fs="fit" aria-label="Fit to width">${icon('minimize', 20)}</button>
+      </div>
+      <span class="doc-fs-sep" aria-hidden="true"></span>
+      <button type="button" class="doc-fs-btn doc-fs-exit" data-fs="exit" aria-label="Exit fullscreen">
+        ${icon('minimize', 18)}<span class="doc-fs-exit-label">Exit</span>
+      </button>`;
+    if (stage) stage.appendChild(fsUi);
+
+    function fsInFullscreen() {
+      return !!(document.fullscreenElement || document.webkitFullscreenElement);
+    }
+    function fsExitNative() {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) { try { exit.call(document); } catch { /* noop */ } }
+    }
+    function fsUiEl(sel) { return fsUi ? fsUi.querySelector(sel) : null; }
+    function fsRefreshUi() {
+      if (!fsUi) return;
+      const isPdf = !!pdfDoc;
+      fsUi.querySelectorAll('[data-fsgroup]').forEach((el) => { el.hidden = !isPdf; });
+      const pl = fsUiEl('[data-fslabel="page"]');
+      if (pl) pl.textContent = isPdf ? `${currentPage} / ${pdfDoc.numPages}` : '';
+      const zl = fsUiEl('[data-fslabel="zoom"]');
+      if (zl) zl.textContent = Math.round(zoom * 100) + '%';
+    }
+    function fsShow() { if (fsUi) fsUi.classList.remove('is-fade'); }
+    function fsScheduleHide() {
+      clearTimeout(fsHideTimer);
+      fsHideTimer = setTimeout(() => {
+        if (fsActive && fsInFullscreen() && fsUi) fsUi.classList.add('is-fade');
+      }, 2800);
+    }
+    function fsBump() {
+      if (!fsActive || !fsInFullscreen()) return;
+      fsShow();
+      fsScheduleHide();
+    }
+    function onFullscreenChange() {
+      // fullscreenchange also fires when some other element (e.g. the lesson
+      // page's video player) goes fullscreen. Only act on our own stage.
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      const active = Boolean(fsEl);
+      const ours = active && !!stage && fsEl === stage;
+      if (!active) {
+        fsActive = false;
+        if (fsUi) fsUi.hidden = true;
+        clearTimeout(fsHideTimer);
+      } else if (ours) {
+        fsActive = true;
+        fsUi.hidden = false;
+        fsRefreshUi();
+        fsBump();
+        if (typeof o.onFullscreen === 'function') o.onFullscreen(true);
+      }
+      // Fullscreen changes the reading surface's width; re-raster the pages to
+      // fill the new surface (resize events can arrive before the element is
+      // laid out at full size, so reflow again once the transition settles).
+      if ((!active || ours) && !destroyed && pdfDoc) {
+        requestAnimationFrame(() => {
+          if (!destroyed && pdfDoc) applyZoomSizes();
+        });
+      }
+    }
+    function bindFsUi() {
+      if (!fsUi || !stage) return;
+      fsUi.addEventListener('click', (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest('[data-fs]') : null;
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const act = btn.getAttribute('data-fs');
+        if (act === 'prev') goToPage(currentPage - 1);
+        else if (act === 'next') goToPage(currentPage + 1);
+        else if (act === 'zo') { zoom = Math.max(0.5, Math.round((zoom - 0.25) * 100) / 100); applyZoomSizes(); }
+        else if (act === 'zi') { zoom = Math.min(3, Math.round((zoom + 0.25) * 100) / 100); applyZoomSizes(); }
+        else if (act === 'fit') { zoom = 1; applyZoomSizes(); }
+        else if (act === 'exit') { fsExitNative(); return; }
+        fsRefreshUi();
+        fsBump();
+      });
+      stage.addEventListener('pointermove', fsBump);
+      stage.addEventListener('pointerdown', fsBump);
+    }
+    // Keyboard page/zoom control while immersive. The standalone viewer page
+    // already installs a global key handler of its own, so only the embedded
+    // lesson reader needs this one (adding both would double-page-turn).
+    function fsKeydown(e) {
+      if (!fsActive || !fsInFullscreen() || !pdfDoc) return;
+      const ae = document.activeElement;
+      const tag = (ae && ae.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable);
+      if (typing) return;
+      const k = e.key;
+      let acted = true;
+      if (k === 'ArrowRight') goToPage(currentPage + 1);
+      else if (k === 'ArrowLeft') goToPage(currentPage - 1);
+      else if (k === '+' || k === '=') zoom = Math.min(3, Math.round((zoom + 0.25) * 100) / 100);
+      else if (k === '-') zoom = Math.max(0.5, Math.round((zoom - 0.25) * 100) / 100);
+      else if (k === '0') zoom = 1;
+      else acted = false;
+      if (acted) { e.preventDefault(); applyZoomSizes(); fsRefreshUi(); fsBump(); }
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange);
+    bindFsUi();
+    if (!isBare) document.addEventListener('keydown', fsKeydown);
 
     function setStatus(text) {
       if (!statusBox) return;
@@ -425,6 +560,10 @@
 
     function updatePageLabel() {
       if (pageLabel && pdfDoc) pageLabel.textContent = `${currentPage} / ${pdfDoc.numPages}`;
+      if (fsActive && fsUi && pdfDoc) {
+        const pl = fsUiEl('[data-fslabel="page"]');
+        if (pl) pl.textContent = `${currentPage} / ${pdfDoc.numPages}`;
+      }
       emitState();
     }
 
@@ -712,6 +851,10 @@
         releasePage(entry);
       });
       if (zoomLabel) zoomLabel.textContent = Math.round(zoom * 100) + '%';
+      if (fsActive && fsUi) {
+        const zl = fsUiEl('[data-fslabel="zoom"]');
+        if (zl) zl.textContent = Math.round(zoom * 100) + '%';
+      }
       emitState();
       scheduleVisible();
     }
@@ -867,6 +1010,7 @@
         if (resizeRaf) return;
         resizeRaf = requestAnimationFrame(() => { resizeRaf = null; scheduleVisible(); });
       }, { passive: true });
+      scroll.addEventListener('scroll', fsBump, { passive: true });
 
       scheduleVisible();
       if (typeof o.onOpen === 'function') o.onOpen({ pages: pdf.numPages });
@@ -1126,8 +1270,14 @@
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       clearTimeout(resizeTimer);
+      clearTimeout(fsHideTimer);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', onFullscreenChange);
+      document.removeEventListener('keydown', fsKeydown);
       pageEntries.forEach(releasePage);
       if (pdfDoc) { try { pdfDoc.destroy(); } catch { /* noop */ } pdfDoc = null; }
+      // Never leave the user stuck fullscreen when the reader is torn down.
+      if (fsInFullscreen()) { try { fsExitNative(); } catch { /* noop */ } }
       if (full !== false) host.innerHTML = '';
     }
 
