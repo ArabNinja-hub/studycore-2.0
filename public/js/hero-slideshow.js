@@ -14,6 +14,10 @@
 //     one is prefetched during idle time, never all five.
 //   · A self-scheduling timeout chain (not setInterval)
 //     that cannot pile up while the tab is backgrounded.
+//   · Every photo load has a watchdog: a stalled download (the
+//     browser fires neither onload nor onerror for a hung socket)
+//     is given up on and skipped like any bad frame, so one stall
+//     can never latch the crossfade and freeze the hero on a frame.
 //   · Fully pauses off-screen and on tab hide.
 //   · Honors prefers-reduced-motion and Save-Data /
 //     2G: a single static frame, no rotation, no drift.
@@ -28,6 +32,14 @@
   const FADE_MS = 1600;        // crossfade duration (mirrored in CSS)
   const HOLD_MS = 6400;        // time a photo stays fully visible
   const HOLD_MS_CALM = 9000;   // slower cadence when motion is reduced
+  // Watchdogs for a HUNG photo download. The browser fires neither onload
+  // nor onerror while a socket stalls, so without these budgets one bad
+  // frame would latch `swapping` true and freeze the hero forever. The
+  // up-front first frame is fetched cold, so it gets a generous budget;
+  // swap frames are prefetched during idle and should resolve from cache,
+  // so they get a tighter one before we skip past them.
+  const FIRST_FRAME_TIMEOUT_MS = 20000;
+  const SWAP_FRAME_TIMEOUT_MS = 10000;
 
   function prefersReducedMotion() {
     return Boolean(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -67,16 +79,26 @@
 
   // Load into an <img> and wait until the pixels are actually decoded, so a
   // crossfade never reveals a half-painted frame on a slow phone.
-  function load(img, src) {
+  //
+  // The watchdog is what keeps the show from wedging: a stalled download
+  // (hung socket, or a decode that never settles) fires neither onload nor
+  // onerror, so the promise is force-settled after `timeoutMs` and the
+  // caller's catch path skips the frame instead of latching on it.
+  function load(img, src, timeoutMs) {
     return new Promise((resolve, reject) => {
       let settled = false;
-      const done = (ok) => {
+      let watchdog = null;
+      const done = (ok, error) => {
         if (settled) return;
         settled = true;
+        if (watchdog) clearTimeout(watchdog);
         img.onload = null;
         img.onerror = null;
-        ok ? resolve() : reject(new Error(`hero image failed: ${src}`));
+        ok ? resolve() : reject(error || new Error(`hero image failed: ${src}`));
       };
+      if (timeoutMs > 0) {
+        watchdog = setTimeout(() => done(false, new Error(`hero image timed out: ${src}`)), timeoutMs);
+      }
       img.onload = () => {
         if (typeof img.decode === 'function') img.decode().then(() => done(true), () => done(true));
         else done(true);
@@ -137,7 +159,7 @@
       const nextIndex = (index + 1) % images.length;
       const back = layers[1 - front];
       try {
-        await load(back.img, images[nextIndex]);
+        await load(back.img, images[nextIndex], SWAP_FRAME_TIMEOUT_MS);
       } catch {
         // One bad file must not stop the show — skip past it.
         swapping = false;
@@ -165,7 +187,7 @@
     function stop() { running = false; clear(); }
 
     // ── First frame ──────────────────────────
-    load(a.img, images[0]).then(() => {
+    load(a.img, images[0], FIRST_FRAME_TIMEOUT_MS).then(() => {
       host.classList.add('is-loaded');
       a.layer.classList.add('is-active');
       if (!reduced) a.layer.classList.add('is-drifting');
