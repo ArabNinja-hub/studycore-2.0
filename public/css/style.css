@@ -1669,6 +1669,89 @@ a.video-term-card:hover {
 .doc-reader:fullscreen, .doc-reader:-webkit-full-screen { background: var(--card); border-radius: 0; }
 .doc-reader:fullscreen .doc-reader-scroll,
 .doc-reader:-webkit-full-screen .doc-reader-scroll { max-height: calc(100vh - 62px); }
+/* Immersive fullscreen — the reading *stage* (not the card/shell) is promoted
+   to fullscreen so all StudyCore chrome disappears and the document fills the
+   screen. The scroll region stretches to fill the newly fullsized stage. */
+.doc-reader-stage:fullscreen,
+.doc-reader-stage:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  max-width: 100vw;
+  max-height: 100vh;
+  background: #121820;
+  display: flex;
+  flex-direction: column;
+}
+.doc-reader-stage:fullscreen .doc-reader-scroll,
+.doc-reader-stage:-webkit-full-screen .doc-reader-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+  width: 100%;
+}
+
+/* Floating, auto-hiding control bar shown while immersive fullscreen */
+.doc-fs-ui {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border-radius: 14px;
+  background: rgba(18, 24, 32, 0.9);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  opacity: 1;
+  transition: opacity 0.22s ease;
+  max-width: calc(100vw - 20px);
+}
+.doc-fs-ui[hidden] { display: none; }
+.doc-fs-ui.is-fade { opacity: 0; pointer-events: none; }
+.doc-fs-group { display: inline-flex; align-items: center; gap: 2px; }
+.doc-fs-group[hidden] { display: none; }
+.doc-fs-btn {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.9);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.doc-fs-btn:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+.doc-fs-label {
+  min-width: 58px;
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.doc-fs-sep { width: 1px; height: 22px; background: rgba(255, 255, 255, 0.2); margin: 0 4px; }
+.doc-fs-exit { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.doc-fs-exit:hover { background: rgba(235, 85, 60, 0.85); }
+.doc-fs-exit-label { font-size: 0.82rem; font-weight: 700; margin-left: 4px; }
+@media (max-width: 560px) {
+  .doc-fs-ui { padding: 4px; gap: 2px; top: 10px; }
+  .doc-fs-btn { width: 38px; height: 38px; }
+  .doc-fs-label { min-width: 46px; font-size: 0.76rem; }
+  .doc-fs-exit-label { display: none; }
+  .doc-fs-sep { margin: 0 2px; }
+}
 .player-shell video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .player-shell:fullscreen { border-radius: 0; }
 .player-shell:fullscreen video { height: 100vh; }

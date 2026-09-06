@@ -253,10 +253,16 @@
   }
 
   /* ── Toolbar wiring ──────────────────────── */
-  // Fullscreen targets the whole viewer shell (header + toolbar + surface) so
-  // controls remain available while reading, unlike the embedded reader which
-  // fullscreens just its card.
+  // Fullscreen is driven by the shared reader (StudyCoreReader), which
+  // fullscreens just the reading surface. That hides all StudyCore chrome
+  // (site nav + this header bar) for a clean, immersive full-screen read and
+  // floats its own auto-hiding page/zoom/Exit controls. Esc also exits.
+  // Fall back to native fullscreen on the shell if the reader is not ready.
   function toggleFullscreen() {
+    if (reader && typeof reader.toggleFullscreen === 'function') {
+      reader.toggleFullscreen();
+      return;
+    }
     const el = $('#viewerShell');
     const active = document.fullscreenElement || document.webkitFullscreenElement;
     if (active) {
