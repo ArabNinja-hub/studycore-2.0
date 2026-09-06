@@ -138,6 +138,47 @@ test('document reader is view-only and uses on-demand PDF ranges', () => {
   assert.doesNotMatch(resourceRoutes, /disposition:\s*['"]attachment['"]|INSERT INTO downloads/);
 });
 
+test('Google Drive previews go fullscreen and drop Google/floating buttons', () => {
+  const viewerJs = read('public/js/viewer.js');
+  const viewerCss = read('public/css/viewer.css');
+  const readerJs = read('public/js/doc-reader.js');
+
+  // The Drive branch must keep the toolbar up with only the Fullscreen
+  // button. Hiding the whole toolbar (the old behaviour) left Drive
+  // documents with no way to enter fullscreen at all.
+  const driveBranch = viewerJs.slice(
+    viewerJs.indexOf('if (resource.googleDriveFileId)'),
+    viewerJs.indexOf('Legacy link-only resources')
+  );
+  assert.match(driveBranch, /showDriveToolbar\(\)/, 'Drive preview enables the Drive toolbar');
+  assert.doesNotMatch(driveBranch, />Open in Google Drive<\/a>/, 'no floating "Open in Google Drive" button over the document');
+  assert.doesNotMatch(driveBranch, /doc-reader-drive-preview/, 'old inline-styled Drive wrapper is gone');
+  assert.match(driveBranch, /class="drive-preview-frame"/, 'Drive preview renders the cropped frame');
+
+  // showDriveToolbar hides every control except Fullscreen.
+  const driveToolbarFn = viewerJs.slice(viewerJs.indexOf('function showDriveToolbar'));
+  assert.doesNotMatch(driveToolbarFn.slice(0, driveToolbarFn.indexOf('\n  }')), /viewerFullscreen/, 'Fullscreen must stay visible on Drive previews');
+
+  // With no reader object (Drive path), fullscreen must target the reading
+  // surface so the document fills the screen; the built-in reader still
+  // promotes its own stage.
+  assert.match(viewerJs, /const el = \$\('#viewerHost'\) \|\| \$\('#viewerShell'\);/);
+  assert.match(viewerCss, /\.viewer-stage:fullscreen/);
+  assert.match(readerJs, /const fsTarget = stage/);
+
+  // Google's /preview frame is cross-origin, so its toolbar (which carries
+  // the floating Share button) is cropped off: frame shifted up by the bar
+  // height, grown by the same amount, wrapper clips the strip.
+  assert.match(viewerCss, /\.drive-preview\s*\{[^}]*--drive-toolbar-crop:\s*64px/m);
+  assert.match(viewerCss, /\.drive-preview\s*\{[^}]*overflow: hidden/m);
+  assert.match(viewerCss, /\.drive-preview-frame\s*\{[^}]*top: calc\(-1 \* var\(--drive-toolbar-crop\)\)/m);
+  assert.match(viewerCss, /\.drive-preview-frame\s*\{[^}]*height: calc\(100% \+ var\(--drive-toolbar-crop\)\)/m);
+
+  // Hiding individual viewer controls needs explicit [hidden] suppression —
+  // author display rules outrank the UA default.
+  assert.match(viewerCss, /\.viewer-tool\[hidden\][\s\S]{0,120}?display: none;/);
+});
+
 test('homepage is program-aware and never ships the obsolete subject cards', () => {
   const indexHtml = read('public/index.html');
   const revealJs = read('public/js/scroll-reveal.js');
