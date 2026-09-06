@@ -321,6 +321,11 @@ try {
   // column already exists - fine
 }
 try {
+  db.exec('ALTER TABLE courses ADD COLUMN shared_with_course_id TEXT REFERENCES courses(id) ON DELETE SET NULL');
+} catch {
+  // column already exists - fine
+}
+try {
   db.exec(`
     CREATE TABLE IF NOT EXISTS resource_programs (
       resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,

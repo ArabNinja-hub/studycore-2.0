@@ -32,8 +32,11 @@ const COURSE_TO_SUBJECT = Object.fromEntries(COURSES.map((c) => [c.slug, c.subje
 function publishedSubjectResources(user, subject) {
   const vis = resourceVisibilityClause(user, 'r', 'subjectProgram');
   return db.prepare(`
-    SELECT r.* FROM resources r
-    WHERE LOWER(r.subject) = LOWER(@subject) AND r.publish_status = 'published'
+    SELECT DISTINCT r.* FROM resources r
+    LEFT JOIN courses c ON c.id = r.course_id
+    LEFT JOIN courses counterpart ON counterpart.id = c.shared_with_course_id OR c.id = counterpart.shared_with_course_id
+    WHERE (LOWER(r.subject) = LOWER(@subject) OR LOWER(c.name) = LOWER(@subject) OR LOWER(c.subject) = LOWER(@subject) OR LOWER(counterpart.name) = LOWER(@subject) OR LOWER(counterpart.subject) = LOWER(@subject)) 
+      AND r.publish_status = 'published'
       ${vis.clause ? `AND ${vis.clause}` : ''}
     ORDER BY r.created_at ASC
   `).all({ subject, ...vis.params });
