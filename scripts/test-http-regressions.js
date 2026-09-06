@@ -163,3 +163,41 @@ test('Unicode filenames and PDF byte ranges produce valid response headers', asy
   const invalid = await call('GET', `/api/resources/${row.id}/stream`, { user, headers: { Range: 'bytes=10000-' } });
   assert.equal(invalid.status, 416);
 });
+
+// ---------------------------------------------------------------------------
+// Security headers that the Google Picker / GIS OAuth popup depends on.
+//
+// `same-origin` severs the opener -> popup handle, so GIS reads popup.closed
+// as true and reports error_callback({type:'popup_closed'}) -> "Popup window
+// closed", with the browser warning "Cross-Origin-Opener-Policy policy would
+// block the window.closed call". Google's GIS setup guide requires
+// same-origin-allow-popups for popup flows. The literal value is asserted on
+// purpose: renaming the constant in middleware/security.js must fail here.
+// ---------------------------------------------------------------------------
+test('every response carries a GIS-popup-compatible Cross-Origin-Opener-Policy', async () => {
+  for (const pathname of ['/', '/login', '/api/config', '/js/google-picker.js', '/css/style.css']) {
+    const result = await call('GET', pathname);
+    assert.equal(
+      result.headers.get('cross-origin-opener-policy'),
+      'same-origin-allow-popups',
+      `${pathname} -> ${result.status}`
+    );
+  }
+});
+
+test('the COOP header is sent even on redirects and errors', async () => {
+  // The Content Admin dashboard is the page that opens the OAuth popup, and it
+  // 302s to /login for an anonymous request - the policy must survive that.
+  for (const pathname of ['/content-admin', '/api/resources/does-not-exist/stream']) {
+    const result = await call('GET', pathname);
+    assert.equal(result.headers.get('cross-origin-opener-policy'), 'same-origin-allow-popups', pathname);
+  }
+});
+
+test('Cross-Origin-Embedder-Policy never demands CORP from the Picker iframes', async () => {
+  // require-corp/credentialless would block the accounts.google.com and
+  // docs.google.com frames the Picker renders in.
+  const result = await call('GET', '/api/config');
+  const coep = result.headers.get('cross-origin-embedder-policy');
+  assert.ok(coep === null || coep === 'unsafe-none', `unexpected COEP: ${coep}`);
+});

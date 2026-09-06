@@ -16,15 +16,18 @@
 //
 // Every failure is surfaced in the dashboard status line AND logged to the
 // browser console with the exact error, its full stack trace, and a
-// 10-point diagnostic audit answering each checkpoint of the runbook:
+// 12-point diagnostic audit answering each checkpoint of the runbook:
 //
-//   1. api.js loaded            6. OAuth access token returned
-//   2. gsi/client loaded        7. GOOGLE_CLIENT_ID loaded + well-formed
-//   3. gapi.load('picker') done 8. GOOGLE_API_KEY loaded + well-formed
-//   4. google.picker.PickerBuilder  9. GOOGLE_CLOUD_PROJECT_NUMBER loaded +
-//   5. google.accounts.oauth2         numeric (and matching the client ID)
-//                                    10. Picker only initialized after the
-//                                        libraries + config are ready
+//   1. api.js loaded            7. GOOGLE_CLIENT_ID loaded + well-formed
+//   2. gsi/client loaded        8. GOOGLE_API_KEY loaded + well-formed
+//   3. gapi.load('picker') done 9. GOOGLE_CLOUD_PROJECT_NUMBER loaded +
+//   4. google.picker.PickerBuilder  numeric (and matching the client ID)
+//   5. google.accounts.oauth2  10. Picker only initialized after the
+//   6. OAuth access token          libraries + config are ready
+//                               11. Cross-Origin-Opener-Policy is popup-
+//                                   compatible (see middleware/security.js)
+//                               12. requestAccessToken() runs inside the
+//                                   click's user activation, exactly once
 //
 // A "Retry" button appears next to the status line after any failure, so a
 // transient network hiccup (or a corrected server env var) can be retried
@@ -46,6 +49,12 @@
   // e.g. "studycore-abc123", is NOT accepted: setAppId() needs the number).
   const PROJECT_NUMBER_RE = /^[0-9]{10,20}$/;
   const API_KEY_RE = /^AIza[0-9A-Za-z_-]{30,}$/;
+  // COOP values under which the GIS OAuth popup still works: the opener keeps
+  // a live handle on the popup it opened, so GIS can watch popup.closed.
+  // An ABSENT header means the browser default `unsafe-none`, which also
+  // keeps the handle - so only `same-origin` (and future stricter values)
+  // break the flow.
+  const POPUP_SAFE_COOP = ['same-origin-allow-popups', 'unsafe-none'];
 
   const state = {
     config: null,       // { apiKey, clientId, appId, issues }
@@ -57,7 +66,16 @@
     accessToken: null,
     tokenExpiresAt: 0,
     failed: false,
-    failedStage: null
+    failedStage: null,
+    // True from the moment requestAccessToken() is called until GIS settles
+    // (callback or error_callback). Guards against a second click opening a
+    // second consent popup.
+    authorizing: false,
+    // The Cross-Origin-Opener-Policy StudyCore actually sent, read back off a
+    // same-origin response header. null = probe has not run / did not run.
+    coopPolicy: null,
+    // Was the user still holding the gesture when we asked for the popup?
+    lastUserActivation: null
   };
 
   function statusEl() { return document.getElementById('caDriveStatus'); }
@@ -129,6 +147,58 @@
     return { ok: checks.every((c) => c.ok), checks: checks };
   }
 
+  // ---- Cross-Origin-Opener-Policy compatibility ----------------------------
+  // The GIS OAuth popup only works while this document can read the handle
+  // returned by window.open() (GIS polls popup.closed to learn that Google
+  // has finished). A COOP of `same-origin` severs that handle, so GIS
+  // immediately concludes the user closed the popup and calls
+  // error_callback({type:'popup_closed'}).
+  //
+  // The header StudyCore sends is observable from here: a same-origin fetch
+  // exposes every response header, so we read it straight off /api/config
+  // instead of guessing. This is what tells an operator whether the policy
+  // their app (or the proxy in front of it) is sending is GIS-compatible.
+
+  function coopCompatible(policy) {
+    if (!policy) return true; // no header == browser default unsafe-none
+    return POPUP_SAFE_COOP.indexOf(String(policy).trim().toLowerCase()) !== -1;
+  }
+
+  function probeCoopPolicy() {
+    if (typeof fetch !== 'function') return Promise.resolve(state.coopPolicy);
+    return fetch('/api/config', { cache: 'reload', credentials: 'same-origin' })
+      .then(function (res) {
+        state.coopPolicy = res.headers ? res.headers.get('cross-origin-opener-policy') : null;
+        return state.coopPolicy;
+      })
+      .catch(function () { state.coopPolicy = null; return null; });
+  }
+
+  function coopDetail() {
+    if (state.coopPolicy === null || typeof state.coopPolicy === 'undefined') {
+      return 'no COOP header observed on StudyCore responses (browser default unsafe-none - popup-compatible)';
+    }
+    if (coopCompatible(state.coopPolicy)) {
+      return 'Cross-Origin-Opener-Policy: ' + state.coopPolicy + ' - the opener keeps its popup handle';
+    }
+    return 'Cross-Origin-Opener-Policy: ' + state.coopPolicy + ' - SEVERS the popup handle, so GIS reads ' +
+      'popup.closed as true and reports {type:"popup_closed"}. Set it to same-origin-allow-popups ' +
+      'in middleware/security.js (and remove any same-origin override added by the host/CDN in front of StudyCore).';
+  }
+
+  // True while a click is still being handled. navigator.userActivation is
+  // Chrome/Safari-only and optional; report "n/a" where it is missing rather
+  // than pretending either way.
+  function userActivationActive() {
+    const ua = window.navigator && window.navigator.userActivation;
+    if (!ua || typeof ua.hasBeenActive === 'undefined') return null;
+    return Boolean(ua.isActive);
+  }
+
+  function safeJson(value) {
+    try { return JSON.stringify(value); } catch (e) { return String(value); }
+  }
+
   // ---- Diagnostics ---------------------------------------------------------
 
   function pickerBuilderAvailable() {
@@ -164,7 +234,15 @@
       ['8.  GOOGLE_API_KEY loaded correctly', state.configAudit ? state.configAudit.checks[3].ok : false, auditDetail('GOOGLE_API_KEY')],
       ['9.  GOOGLE_CLOUD_PROJECT_NUMBER loaded correctly', state.configAudit ? state.configAudit.checks.slice(2, 3).every((c) => c.ok) : false, auditDetail('GOOGLE_CLOUD_PROJECT_NUMBER') + ' | ' + auditDetail('Client ID project ↔ GOOGLE_CLOUD_PROJECT_NUMBER')],
       ['10. Picker only initializes after libraries + valid config', state.pickerApiLoaded && state.gisLoaded && pickerBuilderAvailable() && gisAvailable() && Boolean(state.configAudit && state.configAudit.ok),
-        'bootstrap gate enforces: gapi.load("picker") done + GIS ready + all config values valid before the button is enabled']
+        'bootstrap gate enforces: gapi.load("picker") done + GIS ready + all config values valid before the button is enabled'],
+      ['11. Cross-Origin-Opener-Policy is compatible with the GIS OAuth popup', coopCompatible(state.coopPolicy), coopDetail()],
+      ['12. requestAccessToken() runs inside the click gesture, exactly once', state.lastUserActivation !== false,
+        state.lastUserActivation === null
+          ? 'navigator.userActivation is unavailable in this browser; the click handler calls requestAccessToken() synchronously - no await, no timer, no polling'
+          : (state.lastUserActivation
+            ? 'user activation was still active when the popup was requested'
+            : 'NO user activation - requestAccessToken() was called outside the click handler, so the browser will block the popup')
+      ]
     ];
 
     const out = rows.map(function (row) {
@@ -182,6 +260,7 @@
   function fail(stage, err) {
     state.failed = true;
     state.failedStage = stage;
+    state.authorizing = false;
     // Exact error + full stack trace, exactly as requested by the runbook.
     const detail = (err && err.stack) ? err.stack : (err && err.message) ? err.message : String(err);
     console.error('[StudyCore][GooglePicker] FAILURE (' + stage + '):', detail);
@@ -190,6 +269,20 @@
     const btn = buttonEl();
     if (btn) btn.disabled = true;
     showRetry();
+  }
+
+  // A user dismissing the consent popup is NOT a failure. Nothing is broken:
+  // the libraries loaded, the config is valid, the button should stay usable.
+  // The previous behaviour routed popup_closed through fail(), which disabled
+  // "Select from Google Drive" for the rest of the session and dumped a full
+  // diagnostics block on every cancelled popup.
+  function cancelAuthorization(message) {
+    state.authorizing = false;
+    hideRetry();
+    const btn = buttonEl();
+    if (btn) btn.disabled = false;
+    setStatus(message, 'ready');
+    console.info('[StudyCore][GooglePicker] ' + message);
   }
 
   function showRetry() {
@@ -369,6 +462,7 @@
       client_id: state.config.clientId,
       scope: SCOPE,
       callback: function (tokenResponse) {
+        state.authorizing = false;
         if (!tokenResponse || tokenResponse.error) {
           const message = (tokenResponse && (tokenResponse.error_description || tokenResponse.error)) || 'Empty token response';
           fail('OAuth authorization', new Error(message + ' — check that GOOGLE_CLIENT_ID is an OAuth Web client whose authorized JavaScript origins include ' + window.location.origin));
@@ -379,13 +473,57 @@
         console.info('[StudyCore][GooglePicker] OAuth access token received (expires ' + new Date(state.tokenExpiresAt).toISOString() + ')');
         createPicker(state.accessToken);
       },
-      error_callback: function (err) {
-        fail('OAuth authorization', err);
+      // GIS calls this for the NON-OAuth failures, passing a plain object -
+      // not an Error - whose `type` names the reason:
+      //   popup_closed          the consent popup went away before Google
+      //                         returned a token. Three causes, and they need
+      //                         different responses:
+      //                           a) the user closed it        -> benign
+      //                           b) a popup blocker killed it -> benign
+      //                           c) COOP severed the handle   -> config bug
+      //   popup_failed_to_open  window.open() was refused outright
+      //   unknown               anything else the library adds later
+      // https://developers.google.com/identity/oauth2/web/guides/error
+      error_callback: function (nonOAuthError) {
+        const type = (nonOAuthError && nonOAuthError.type) || 'unknown';
+        console.info('[StudyCore][GooglePicker] GIS non-OAuth error: ' + type + ' ' + safeJson(nonOAuthError));
+
+        if (type === 'popup_closed') {
+          cancelAuthorization('Google authorization cancelled (the sign-in popup closed before Google returned a token) — click "Select from Google Drive" to try again');
+          // Re-read the COOP header now that the flow has failed: it is the
+          // one server-side setting that makes GIS report popup_closed even
+          // though the user never touched the popup. Single diagnostic read,
+          // no retry of the OAuth request.
+          probeCoopPolicy().then(function (policy) {
+            if (coopCompatible(policy)) {
+              console.info('[StudyCore][GooglePicker] ' + coopDetail() + ' — the popup was genuinely dismissed, or blocked by the browser. Allow pop-ups for ' + window.location.origin + ' and try again.');
+            } else {
+              console.error('[StudyCore][GooglePicker] ' + coopDetail());
+              setStatus('Google authorization cannot complete — this page sends Cross-Origin-Opener-Policy: ' + policy + ', which blocks the sign-in popup. It must be same-origin-allow-popups.', 'error');
+              showRetry();
+            }
+          });
+          return;
+        }
+
+        if (type === 'popup_failed_to_open') {
+          fail('OAuth authorization', new Error('Google could not open the authorization popup (type: popup_failed_to_open) — allow pop-ups for ' + window.location.origin + ', then click "Select from Google Drive" again'));
+          return;
+        }
+
+        fail('OAuth authorization', new Error('Google reported a non-OAuth error (type: ' + type + ', payload: ' + safeJson(nonOAuthError) + ')'));
       }
     });
     return state.tokenClient;
   }
 
+  // Called ONLY from the button's click listener (and from window.openPicker,
+  // which is that same function). Everything up to requestAccessToken() is
+  // synchronous on purpose: any await, setTimeout or promise hop before the
+  // popup would drop the user activation and the browser would block the
+  // window. There is deliberately NO polling and NO retry of the OAuth
+  // request anywhere in this file - GIS settles the flow through exactly one
+  // of callback / error_callback, and the next attempt is always a click.
   function requestTokenAndOpen() {
     // Re-verify at click time — the libraries can be evicted or blocked.
     if (typeof window.gapi === 'undefined') {
@@ -404,17 +542,27 @@
       fail('Project/App ID', new Error('Google Picker config is incomplete (GOOGLE_CLIENT_ID / GOOGLE_CLOUD_PROJECT_NUMBER missing from /api/config)'));
       return;
     }
+    if (state.authorizing) {
+      // GIS owns the consent popup until its callback/error_callback fires.
+      // A second click must not fire requestAccessToken() again - that is how
+      // one authorization turns into a stack of popups.
+      console.info('[StudyCore][GooglePicker] authorization already in progress — ignoring this click');
+      return;
+    }
 
     try {
       ensureTokenClient();
       if (tokenFresh()) {
         createPicker(state.accessToken);
-      } else {
-        // No token yet, or the previous one expired (1h lifetime on a
-        // long-lived dashboard tab) — ask Google again.
-        state.tokenClient.requestAccessToken({ prompt: '' });
+        return;
       }
+      // No token yet, or the previous one expired (1h lifetime on a
+      // long-lived dashboard tab) — ask Google again.
+      state.lastUserActivation = userActivationActive();
+      state.authorizing = true;
+      state.tokenClient.requestAccessToken({ prompt: '' });
     } catch (err) {
+      state.authorizing = false;
       fail('OAuth authorization', err);
     }
   }
@@ -430,6 +578,7 @@
     state.failedStage = null;
     state.pickerApiLoaded = false;
     state.gisLoaded = false;
+    state.authorizing = false;
     hideRetry();
     setStatus('Loading Google Drive…', 'loading');
     buttonEl().disabled = true;
@@ -461,7 +610,10 @@
         }
         return Promise.all([
           loadPickerApi().catch(function (e) { throw { stage: 'Google API library loading', error: e }; }),
-          loadIdentityServices().catch(function (e) { throw { stage: 'Google Identity Services loading', error: e }; })
+          loadIdentityServices().catch(function (e) { throw { stage: 'Google Identity Services loading', error: e }; }),
+          // Non-fatal on purpose: this only measures the header. It never
+          // rejects, so it can never fail the bootstrap.
+          probeCoopPolicy()
         ]);
       })
       .then(function () {
@@ -470,6 +622,12 @@
             stage: 'Google Picker initialization',
             error: new Error('Readiness check failed — not ready: ' + (readinessProblems().join('; ') || 'unknown reason'))
           };
+        }
+        // Warn up front rather than only after a failed authorization: a
+        // GIS-incompatible COOP makes every consent popup look "closed" and
+        // the operator needs the header named before they start guessing.
+        if (!coopCompatible(state.coopPolicy)) {
+          console.warn('[StudyCore][GooglePicker] ' + coopDetail());
         }
         enableButton();
       })

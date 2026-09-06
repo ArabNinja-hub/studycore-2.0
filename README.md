@@ -192,6 +192,21 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
    `CONTENT_ADMIN_ACCESS_CODE`, `ADMIN_PASSWORD`, `NODE_ENV=production`,
    the four `R2_*` variables. The app refuses to start in production
    without all of them.
+3. **No `Cross-Origin-Opener-Policy: same-origin` injected in front of the app.**
+   StudyCore sends `Cross-Origin-Opener-Policy: same-origin-allow-popups`
+   (see `middleware/security.js`), which is what the Google Picker's OAuth
+   popup needs. If a host, CDN or reverse proxy overrides that with
+   `same-origin`, the sign-in popup is severed from the page and Google
+   Identity Services reports *"Popup window closed"* even though the user never
+   touched it. Check with:
+
+   ```bash
+   curl -sSI https://studycore.academy/api/config | grep -i cross-origin
+   ```
+
+   Exactly one `Cross-Origin-Opener-Policy: same-origin-allow-popups` line is
+   correct. The Content Admin dashboard also self-checks this and names the
+   header in its console audit (row 11 of `window.__STUDYCORE_PICKER_DIAGNOSTICS__()`).
 
 ### Search Console / SEO
 

@@ -50,11 +50,44 @@ const CONTENT_SECURITY_POLICY = [
   "manifest-src 'self'"
 ].join('; ');
 
+// ---------------------------------------------------------------------------
+// Cross-Origin-Opener-Policy.
+//
+// The value matters for the Content Admin "Select from Google Drive" flow.
+// Google Identity Services opens the OAuth consent screen with window.open()
+// and then watches the returned handle (popup.closed) to detect when Google
+// has handed back an access token. Under COOP `same-origin` that popup is
+// placed in a different browsing context group, so the handle is severed:
+// `popup.closed` reads true immediately, the browser logs "Cross-Origin-
+// Opener-Policy policy would block the window.closed call", and GIS reports
+// error_callback({ type: 'popup_closed' }) -> "Popup window closed".
+//
+// `same-origin-allow-popups` is the policy Google documents for exactly this
+// situation ("when FedCM is disabled, set the COOP header to same-origin and
+// include same-origin-allow-popups"; failing to do so "breaks communication
+// between windows, leading to a blank pop-up window"):
+//   https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid#cross_origin_opener_policy
+//
+// It is still hardening relative to what StudyCore sent before this header
+// existed (no COOP at all, i.e. the browser default `unsafe-none`): this
+// document is placed in its own browsing context group, so any page that
+// OPENS StudyCore can no longer reach it through window.opener, while
+// StudyCore keeps the opener -> popup relationship the GIS popup needs.
+// The residual difference from plain `same-origin` is that a popup StudyCore
+// itself opens stays reachable - which is the capability the OAuth flow is
+// built on.
+//
+// Deliberately NOT setting Cross-Origin-Embedder-Policy here: `require-corp`
+// would demand CORP/CORS on every cross-origin subresource and would break
+// the accounts.google.com and docs.google.com iframes the Picker renders in.
+const CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups';
+
 function securityHeaders(req, res, next) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   // SAMEORIGIN keeps protected media embeddable by StudyCore's own viewer
   // while still preventing other sites from framing application responses.
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Cross-Origin-Opener-Policy', CROSS_ORIGIN_OPENER_POLICY);
   res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), fullscreen=(self)');
