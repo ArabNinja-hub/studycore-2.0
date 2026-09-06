@@ -341,12 +341,33 @@
 
     if (resource.googleDriveFileId) {
       $('#viewerTools').hidden = true;
-      const previewUrl = `https://docs.google.com/gview?embedded=1&url=https://drive.google.com/uc?export=view&id=${encodeURIComponent(resource.googleDriveFileId)}`;
-      $('#viewerHost').innerHTML = `
-        <div class="doc-reader doc-reader-drive-preview" style="width:100%;height:calc(100vh - 100px);background:#fff;">
-          <iframe src="${previewUrl}" style="width:100%;height:100%;border:none;" frameborder="0" title="Google Drive Preview" allow="fullscreen"></iframe>
-        </div>
-      `;
+      const isWorkspaceFile = resource.mimeType && resource.mimeType.startsWith('application/vnd.google-apps.');
+      const fileUrl = resource.googleDriveUrl || `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/view`;
+      
+      if (isWorkspaceFile) {
+        $('#viewerHost').innerHTML = `
+          <div style="padding: 60px 20px; text-align: center; max-width: 600px; margin: 0 auto;">
+            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px; box-shadow: var(--shadow-sm);">
+              <div style="margin-bottom: 20px;">
+                ${window.SC ? SC.icon('file-text', { size: 48, color: 'var(--primary)' }) : ''}
+              </div>
+              <h2 style="margin: 0 0 10px; font-size: 1.25rem;">Google Workspace Document</h2>
+              <p style="color: var(--muted); margin: 0 0 24px; line-height: 1.5;">This file type cannot be previewed directly inside StudyCore. Please open it in Google Drive to view or edit.</p>
+              <a href="${fileUrl}" target="_blank" class="btn btn-primary">Open Document</a>
+            </div>
+          </div>
+        `;
+      } else {
+        const previewUrl = `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/preview`;
+        $('#viewerHost').innerHTML = `
+          <div class="doc-reader doc-reader-drive-preview" style="width:100%;height:calc(100vh - 100px);background:#fff;position:relative;">
+            <iframe src="${previewUrl}" style="width:100%;height:100%;border:none;" frameborder="0" title="Google Drive Preview" allow="fullscreen"></iframe>
+            <div style="position:absolute; bottom:20px; right:20px; display:flex; gap:10px;">
+              <a href="${fileUrl}" target="_blank" class="btn btn-primary btn-sm" style="box-shadow: 0 4px 6px rgba(0,0,0,0.1);">Open in Google Drive</a>
+            </div>
+          </div>
+        `;
+      }
       return;
     }
 

@@ -489,9 +489,25 @@ router.post('/admin/courses', (req, res) => {
 router.put('/admin/courses/:id', (req, res) => {
   const course = db.prepare('SELECT * FROM courses WHERE id = ?').get(req.params.id);
   if (!course) return res.status(404).json({ message: 'Course not found.' });
-  const { name, icon, subject } = req.body || {};
-  db.prepare('UPDATE courses SET name = ?, icon = ?, subject = ? WHERE id = ?')
-    .run(name ? String(name).trim() : course.name, icon || course.icon, subject !== undefined ? (subject || null) : course.subject, course.id);
+  const { name, icon, subject, sharedWithCourseId } = req.body || {};
+  let sharedId = course.shared_with_course_id;
+  if (sharedWithCourseId !== undefined) {
+    if (sharedWithCourseId === course.id) return res.status(400).json({ message: 'Course cannot be shared with itself.' });
+    if (sharedWithCourseId) {
+      const target = db.prepare('SELECT id FROM courses WHERE id = ?').get(sharedWithCourseId);
+      if (!target) return res.status(404).json({ message: 'Shared course not found.' });
+      
+      // Remove any existing reverse link from the old counterpart
+      db.prepare('UPDATE courses SET shared_with_course_id = NULL WHERE shared_with_course_id = ?').run(course.id);
+    } else {
+      // If setting to NULL, also remove any reverse link pointing to this course
+      db.prepare('UPDATE courses SET shared_with_course_id = NULL WHERE shared_with_course_id = ?').run(course.id);
+    }
+    sharedId = sharedWithCourseId || null;
+  }
+  
+  db.prepare('UPDATE courses SET name = ?, icon = ?, subject = ?, shared_with_course_id = ? WHERE id = ?')
+    .run(name ? String(name).trim() : course.name, icon || course.icon, subject !== undefined ? (subject || null) : course.subject, sharedId, course.id);
   const row = db.prepare('SELECT * FROM courses WHERE id = ?').get(course.id);
   res.json({ course: serializeCourse(row) });
 });
