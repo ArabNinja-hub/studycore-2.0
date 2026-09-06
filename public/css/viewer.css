@@ -137,6 +137,13 @@ body[data-page='viewer'] .viewer-main {
 }
 .viewer-tools::-webkit-scrollbar { display: none; }
 .viewer-tools[hidden] { display: none; }
+/* Individual controls can be hidden too (a Google Drive preview keeps only
+   the Fullscreen button). Author display rules outrank the UA [hidden]
+   default, so the suppression must be explicit — same pattern as the
+   toolbar rule above. */
+.viewer-tool[hidden],
+.viewer-page-label[hidden],
+.viewer-tool-sep[hidden] { display: none; }
 
 .viewer-tool {
   width: 38px;
@@ -259,6 +266,40 @@ body[data-page='viewer'] .viewer-main {
   height: 100%;
   max-height: none;
   padding: 18px 12px 26px;
+}
+/* A Google Drive preview fullscreens the reading surface itself (there is no
+   StudyCoreReader stage to promote on that path), so size it like the
+   .viewer-shell:fullscreen rule above. */
+.viewer-stage:fullscreen,
+.viewer-stage:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  background: #121820;
+}
+
+/* ── Google Drive preview ─────────────────────
+   Google's /preview embed is a cross-origin document: its own toolbar —
+   which carries the floating Share button — cannot be removed from this
+   DOM. The top of the frame is cropped instead: the frame is shifted up by
+   exactly --drive-toolbar-crop and grown by the same amount, and the
+   wrapper's overflow hides that strip. The document then fills the surface
+   and Google's floating controls are gone. If Google changes the bar
+   height, adjust that one variable. */
+.drive-preview {
+  --drive-toolbar-crop: 64px;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #fff;
+}
+.drive-preview-frame {
+  position: absolute;
+  top: calc(-1 * var(--drive-toolbar-crop));
+  left: 0;
+  width: 100%;
+  height: calc(100% + var(--drive-toolbar-crop));
+  border: 0;
 }
 
 /* ── Full-surface states (error / empty / lock) ── */

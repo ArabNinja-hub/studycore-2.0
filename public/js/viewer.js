@@ -190,6 +190,20 @@
       });
   }
 
+  // Google's embedded /preview frame is cross-origin: page navigation, zoom,
+  // fit and search act on StudyCore's own PDF engine, not on Google's
+  // viewer, so none of them apply to a Drive-hosted document. Fullscreen is
+  // the one control that does — keep the toolbar up with just that button.
+  function showDriveToolbar() {
+    const tools = $('#viewerTools');
+    if (!tools) return;
+    tools.hidden = false;
+    ['#viewerPrev', '#viewerNext', '#viewerZoomOut', '#viewerZoomIn', '#viewerFit',
+     '#viewerSearchBtn', '#viewerPageLabel', '#viewerZoomLabel']
+      .forEach((sel) => { const el = $(sel); if (el) el.hidden = true; });
+    tools.querySelectorAll('.viewer-tool-sep').forEach((el) => { el.hidden = true; });
+  }
+
   function updateState(s) {
     const paged = Boolean(s.numPages && s.numPages > 0);
     $('#viewerPageLabel').textContent = paged ? `${s.page} / ${s.numPages}` : '';
@@ -257,13 +271,15 @@
   // fullscreens just the reading surface. That hides all StudyCore chrome
   // (site nav + this header bar) for a clean, immersive full-screen read and
   // floats its own auto-hiding page/zoom/Exit controls. Esc also exits.
-  // Fall back to native fullscreen on the shell if the reader is not ready.
+  // When no reader exists (a Google Drive preview, or before the reader is
+  // ready), fullscreen the reading surface (#viewerHost) directly so the
+  // document still fills the screen.
   function toggleFullscreen() {
     if (reader && typeof reader.toggleFullscreen === 'function') {
       reader.toggleFullscreen();
       return;
     }
-    const el = $('#viewerShell');
+    const el = $('#viewerHost') || $('#viewerShell');
     const active = document.fullscreenElement || document.webkitFullscreenElement;
     if (active) {
       const exit = document.exitFullscreen || document.webkitExitFullscreen;
@@ -346,11 +362,13 @@
     renderHeader();
 
     if (resource.googleDriveFileId) {
-      $('#viewerTools').hidden = true;
       const isWorkspaceFile = resource.mimeType && resource.mimeType.startsWith('application/vnd.google-apps.');
       const fileUrl = resource.googleDriveUrl || `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/view`;
-      
+
       if (isWorkspaceFile) {
+        // Nothing is embedded for native Docs/Sheets/Slides — a plain
+        // "open in Drive" card — so no toolbar applies at all.
+        $('#viewerTools').hidden = true;
         $('#viewerHost').innerHTML = `
           <div style="padding: 60px 20px; text-align: center; max-width: 600px; margin: 0 auto;">
             <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px; box-shadow: var(--shadow-sm);">
@@ -364,15 +382,22 @@
           </div>
         `;
       } else {
+        // Google-hosted files render through Google's own /preview embed.
+        // That frame is cross-origin, so its toolbar — which carries the
+        // floating Share button — cannot be reached from this DOM. Instead
+        // .drive-preview-frame crops the top of the frame off (see the
+        // .drive-preview rules in viewer.css), and there is deliberately no
+        // floating "Open in Google Drive" button over the document.
+        // Fullscreen still applies to the reading surface; page nav, zoom,
+        // fit and search act on the built-in PDF engine only, so the
+        // toolbar keeps just the Fullscreen button.
         const previewUrl = `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/preview`;
         $('#viewerHost').innerHTML = `
-          <div class="doc-reader doc-reader-drive-preview" style="width:100%;height:calc(100vh - 100px);background:#fff;position:relative;">
-            <iframe src="${previewUrl}" style="width:100%;height:100%;border:none;" frameborder="0" title="Google Drive Preview" allow="fullscreen"></iframe>
-            <div style="position:absolute; bottom:20px; right:20px; display:flex; gap:10px;">
-              <a href="${fileUrl}" target="_blank" class="btn btn-primary btn-sm" style="box-shadow: 0 4px 6px rgba(0,0,0,0.1);">Open in Google Drive</a>
-            </div>
+          <div class="drive-preview">
+            <iframe class="drive-preview-frame" src="${previewUrl}" title="Google Drive Preview" allow="fullscreen"></iframe>
           </div>
         `;
+        showDriveToolbar();
       }
       return;
     }
