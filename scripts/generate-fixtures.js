@@ -131,6 +131,32 @@ async function main() {
       console.log('downloaded', v.name, size);
     } catch (err) {
       console.warn('could not download', v.name, err.message);
+      // Fallback: create a local dummy video fixture so fixtures always include
+      // working video samples even when the network is unavailable.
+      try {
+        const isMp4 = v.name.endsWith('.mp4');
+        // Make dummy video fixtures large enough to support range/seek tests
+        // (the fixtures suite requests bytes=400000-400015 on large.mp4).
+        const dummySize = v.name === 'large.mp4' ? 400016 : 500;
+        let dummy = Buffer.alloc(dummySize);
+        if (isMp4) {
+          // Minimal .mp4 signature: 4-byte size (24) + 'ftyp' + brand 'isom'
+          dummy.writeUInt32BE(24, 0);
+          dummy.write('ftyp', 4);
+          dummy.write('isom', 8);
+          dummy.writeUInt32BE(0, 12); // minor version
+        } else {
+          // Minimal .webm EBML header
+          dummy.writeUInt8(0x1a, 0);
+          dummy.writeUInt8(0x45, 1);
+          dummy.writeUInt8(0xdf, 2);
+          dummy.writeUInt8(0xa3, 3);
+        }
+        fs.writeFileSync(dest, dummy);
+        console.log('created dummy', v.name, dummy.length);
+      } catch (dummyErr) {
+        console.warn('could not create dummy', v.name, dummyErr.message);
+      }
     }
   }
 

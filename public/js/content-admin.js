@@ -39,6 +39,11 @@
     }[ch]));
   }
 
+  // Centralized helper matching the server-side API contract (A12).
+  function quizImageUrl(key) {
+    return StudyCoreAPI ? StudyCoreAPI.quizImageUrl ? StudyCoreAPI.quizImageUrl(key) : `/api/quiz/image/${encodeURIComponent(key)}` : `/api/quiz/image/${encodeURIComponent(key)}`;
+  }
+
   function initials(name) {
     return String(name || '')
       .split(/\s+/)
