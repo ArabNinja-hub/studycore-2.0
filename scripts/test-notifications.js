@@ -315,8 +315,11 @@ test('UI and layout components for notification bell, dropdown, and modal', () =
   assert.match(layout, /openAnnouncementModal/, 'openAnnouncementModal function defined');
   assert.match(layout, /refreshNotifications/, 'refreshNotifications method exposed on SCLayout');
 
-  // 2. Mobile drawer unread indicator
-  assert.match(layout, /id="mobileNavNotifBadge"/, 'Mobile nav drawer announcement badge present');
+  // 2. Mobile unread indicator — the top-bar bell badge is the one indicator
+  // on every screen size (the hamburger drawer is gone; the phone chrome is
+  // a bottom tab bar + account sheet).
+  assert.match(layout, /id="notifBadge"/, 'Notification badge element in layout.js');
+  assert.doesNotMatch(layout, /mobileNavNotifBadge/, 'no orphaned drawer badge reference');
 
   // 3. CSS styles
   assert.match(css, /\.notif-wrapper/, '.notif-wrapper style present');

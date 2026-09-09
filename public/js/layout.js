@@ -1,19 +1,23 @@
 // =============================================
 // STUDYCORE — Shared Layout (js/layout.js)
 // -----------------------------------------------
-// Renders the navbar, flyout submenus, mobile
-// navigation, account menu, global search overlay and
-// footer for every public + student page.
+// Renders the navbar, flyout submenus, mobile tab bar,
+// account sheet, global search overlay and footer for every public +
+// student page.
 //
-// The chrome is intentionally quiet: one sticky island,
-// no promotional top bar, no scroll progress bars, no
-// floating docks. Navigation model (learning-first):
+// The chrome is intentionally quiet: one sticky island on desktop, and on
+// phones/tablets a single thumb-reachable bottom tab bar —
+//   Home · Courses · Search · Resources · Account
+// — shown to every visitor (guests included). No hamburger, no drawer, no
+// nested accordions. The Account tab opens one compact bottom sheet with
+// that user's handful of account actions.
+// Navigation model (learning-first):
 //   Logo/Home · Courses · Resources · Announcements · About · [Search] · [Avatar / Log In]
 // The global navigation stays intentionally small. Video lessons are opened
 // from a course home rather than competing with Courses as a second route to
 // the same content. The dashboard is deliberately NOT a top-level nav item on
 // desktop/tablet — logged-in users reach it from the avatar menu, and mobile
-// users from the Account section of the drawer.
+// users from the Home tab (which is their own dashboard).
 // =============================================
 
 (function (global) {
@@ -86,6 +90,7 @@
   function isActive(id) {
     const page = currentPage();
     if (id === 'courses') return ['courses', 'course', 'lesson', 'videos'].includes(page);
+    if (id === 'quizzes') return page === 'quizzes' || page === 'quiz';
     return page === id;
   }
 
@@ -144,7 +149,8 @@
 
   // For a logged-in student, swap the public subject flyout for their actual
   // program courses (Program → Course). Static fallback remains if the fetch
-  // fails, so navigation never breaks.
+  // fails, so navigation never breaks. On mobile the Courses tab simply goes
+  // to the courses page, which already personalises for the student.
   async function updateCoursesDropdownForUser(user) {
     // Only students have a program enrollment to resolve. Content Admins use
     // their dedicated publishing dashboard instead of student course data.
@@ -162,14 +168,6 @@
       }));
       const host = document.getElementById('navDropdown_courses');
       if (host) host.outerHTML = coursesDropdownHtml(cards);
-      const mobileHost = document.getElementById('mobileSubjectLinks');
-      if (mobileHost) {
-        const hrefFor2 = (c) => (window.SCPrograms ? SCPrograms.courseHref(c) : `/pages/courses.html`);
-        mobileHost.innerHTML = data.courses.map((c) => `
-          <a href="${hrefFor2(c)}" class="mobile-sub-link">
-            ${SC.icon(c.icon || 'book-open', { size: 16 })} ${escapeHtml(c.code)} — ${escapeHtml(c.name)}
-          </a>`).join('');
-      }
     } catch { /* keep the static catalog */ }
   }
 
@@ -333,7 +331,6 @@
           ${notificationBellHtml()}
           <span id="navAuthSlot" aria-live="polite"></span>
         </div>
-        <button class="icon-btn hamburger" id="hamburgerBtn" aria-label="Open menu" aria-expanded="false">${SC.icon('menu', { size: 22 })}</button>
       </div>
     `;
     bindNavSearch();
@@ -480,170 +477,253 @@
     if (logout) logout.addEventListener('click', StudyCoreAuth.logoutUser);
   }
 
-  /* ── Mobile navigation (Smooth Staggered Drawer) ─ */
-  function renderMobileNav() {
+  /* ── Mobile navigation: one bottom tab bar + one account sheet ──
+     Phones and tablets get the standard app pattern instead of a stacked
+     drawer: a thumb-reachable tab bar with the five places people actually
+     go (Home · Courses · Search · Resources · Account), identical for
+     guests and signed-in users. The Account tab opens a compact bottom
+     sheet with that user's handful of account actions — no accordions, no
+     section labels, no duplicated sub-links. Course homes keep their own
+     focused navigation, so the Search tab is omitted there (same rule as
+     the desktop search button). The fullscreen viewer keeps the whole
+     screen for reading. */
+  const MOB_ACTIVE = {
+    courses: ['courses', 'course', 'lesson', 'videos'],
+    resources: ['resources'],
+    search: ['search']
+  };
+
+  function mobileHomeHref(user) {
+    const role = user ? StudyCoreAuth.normalizedRole(user) : '';
+    if (role === 'admin') return '/admin.html';
+    if (role === 'content_admin') return '/content-admin.html';
+    return user ? '/dashboard.html' : '/';
+  }
+
+  function mobTabActive(key, user) {
+    const page = currentPage();
+    if (key === 'home') {
+      // "Home" is each user's own landing page; only that page is current.
+      const role = user ? StudyCoreAuth.normalizedRole(user) : '';
+      const homePage = role === 'admin' ? 'admin'
+        : role === 'content_admin' ? 'content-admin'
+          : user ? 'dashboard' : 'home';
+      return page === homePage;
+    }
+    return (MOB_ACTIVE[key] || []).indexOf(page) !== -1;
+  }
+
+  function mobTabGlyph(label, icon) {
+    return `<span class="mob-tab-ic">${SC.icon(icon, { size: 21 })}</span><span class="mob-tab-lb">${label}</span>`;
+  }
+
+  function tabAttrs(active) {
+    return active ? ' aria-current="page"' : '';
+  }
+
+  function teardownMobileTabs() {
+    const host = document.getElementById('mobTabsHost');
+    if (host) host.remove();
+    document.body.classList.remove('has-mobtabs');
+  }
+
+  function renderMobileTabs(user) {
+    // The fullscreen document viewer keeps the whole screen for reading.
+    if (currentPage() === 'viewer') { teardownMobileTabs(); return; }
+
+    let host = document.getElementById('mobTabsHost');
+    if (!host) {
+      host = document.createElement('nav');
+      host.id = 'mobTabsHost';
+      host.className = 'mob-tabs';
+      host.setAttribute('aria-label', 'Quick navigation');
+      document.body.appendChild(host);
+    }
+
+    const searchTabHtml = globalSearchEnabled()
+      ? `<button type="button" class="mob-tab${mobTabActive('search', user) ? ' active' : ''}" id="mobTabSearch" aria-label="Search StudyCore">${mobTabGlyph('Search', 'search')}</button>`
+      : '';
+    const accountGlyph = user
+      ? `<span class="mob-tab-ic">${StudyCoreAuth.avatarHtml(user, 'avatar-xs')}</span><span class="mob-tab-lb">Account</span>`
+      : mobTabGlyph('Account', 'user');
+
+    host.innerHTML = `
+      <a class="mob-tab${mobTabActive('home', user) ? ' active' : ''}" href="${mobileHomeHref(user)}"${tabAttrs(mobTabActive('home', user))}>${mobTabGlyph('Home', 'home')}</a>
+      <a class="mob-tab${mobTabActive('courses', user) ? ' active' : ''}" href="/pages/courses.html"${tabAttrs(mobTabActive('courses', user))}>${mobTabGlyph('Courses', 'library')}</a>
+      ${searchTabHtml}
+      <a class="mob-tab${mobTabActive('resources', user) ? ' active' : ''}" href="/pages/resources.html"${tabAttrs(mobTabActive('resources', user))}>${mobTabGlyph('Resources', 'file-text')}</a>
+      <button type="button" class="mob-tab" id="mobTabAccount" aria-haspopup="dialog" aria-expanded="false">${accountGlyph}</button>
+    `;
+
+    document.body.classList.add('has-mobtabs');
+
+    const searchTab = document.getElementById('mobTabSearch');
+    if (searchTab) searchTab.addEventListener('click', () => openSearchOverlay());
+    const accountTab = document.getElementById('mobTabAccount');
+    if (accountTab) accountTab.addEventListener('click', () => openAccountSheet());
+  }
+
+  /* ── Account sheet (the Account tab's destination) ── */
+  function sheetThemeRowHtml() {
+    const isDark = (document.body.dataset.theme || 'light') === 'dark';
+    return `
+      <button type="button" class="sheet-row" data-sheet-theme aria-label="${isDark ? 'Switch to light mode' : 'Switch to dark mode'}">
+        ${SC.icon(isDark ? 'sun' : 'moon', { size: 20 })}
+        <span>${isDark ? 'Light Mode' : 'Dark Mode'}</span>
+      </button>`;
+  }
+
+  function accountSheetRows(user) {
+    if (!user) {
+      return `
+        <a class="sheet-row" href="/login.html">${SC.icon('user', { size: 20 })}<span>Log In</span></a>
+        <a class="sheet-row" href="/signup.html">${SC.icon('user-plus', { size: 20 })}<span>Create Account</span></a>
+        <a class="sheet-row" href="/pages/pricing.html">${SC.icon('crown', { size: 20 })}<span>StudyCore Premium</span></a>
+        <a class="sheet-row" href="/pages/announcements.html">${SC.icon('bell', { size: 20 })}<span>Announcements</span></a>
+        <a class="sheet-row" href="/pages/about.html">${SC.icon('info', { size: 20 })}<span>About StudyCore</span></a>
+        ${sheetThemeRowHtml()}`;
+    }
+    const role = StudyCoreAuth.normalizedRole(user);
+    const dashboard = StudyCoreAuth.getDashboardPage(user);
+    if (role === 'content_admin') {
+      return `
+        <a class="sheet-row" href="${dashboard}">${SC.icon('layout-dashboard', { size: 20 })}<span>My Dashboard</span></a>
+        ${sheetThemeRowHtml()}
+        <button type="button" class="sheet-row sheet-row-danger" data-sheet-logout>${SC.icon('log-out', { size: 20 })}<span>Log Out</span></button>`;
+    }
+    if (role === 'admin') {
+      return `
+        <a class="sheet-row" href="${dashboard}">${SC.icon('settings', { size: 20 })}<span>Admin Dashboard</span></a>
+        ${sheetThemeRowHtml()}
+        <button type="button" class="sheet-row sheet-row-danger" data-sheet-logout>${SC.icon('log-out', { size: 20 })}<span>Log Out</span></button>`;
+    }
+    return `
+      <a class="sheet-row" href="${dashboard}">${SC.icon('layout-dashboard', { size: 20 })}<span>My Dashboard</span></a>
+      <a class="sheet-row" href="${dashboard}#profile">${SC.icon('user', { size: 20 })}<span>Profile &amp; photo</span></a>
+      <a class="sheet-row" href="${dashboard}#premium">${SC.icon('crown', { size: 20 })}<span>Premium &amp; billing</span></a>
+      <a class="sheet-row" href="/quiz.html">${SC.icon('circle-help', { size: 20 })}<span>Quizzes</span></a>
+      ${sheetThemeRowHtml()}
+      <button type="button" class="sheet-row sheet-row-danger" data-sheet-logout>${SC.icon('log-out', { size: 20 })}<span>Log Out</span></button>`;
+  }
+
+  function accountSheetHeadHtml(user) {
+    if (!user) {
+      return `
+        <div class="sheet-head">
+          <div class="sheet-head-icon">${SC.icon('user', { size: 22 })}</div>
+          <div>
+            <strong>Welcome to StudyCore</strong>
+            <span>Log in to keep your progress in one place.</span>
+          </div>
+        </div>`;
+    }
+    const label = StudyCoreAuth.subscriptionLabel(user);
+    const badgeCls = { premium: 'badge-amber', trial: '', pending: 'badge-amber', expired: 'badge-red' }[label.cls] || '';
+    return `
+      <div class="sheet-head">
+        ${StudyCoreAuth.avatarHtml(user, 'avatar-sm')}
+        <div style="min-width:0;">
+          <strong>${escapeHtml(user.name)}</strong>
+          <span class="badge ${badgeCls}" style="font-size:0.66rem;padding:2px 9px;">${SC.icon(label.icon, { size: 11 })}${label.label}</span>
+        </div>
+      </div>`;
+  }
+
+  function renderAccountSheet(user) {
     let host = document.getElementById('mobileNavHost');
     if (!host) {
       host = document.createElement('div');
       host.id = 'mobileNavHost';
       document.body.appendChild(host);
     }
-    const activeAttrs = (id) => isActive(id) ? ' class="active" aria-current="page"' : '';
 
-    const subjectList = [
-      { slug: 'mathematics', name: 'Mathematics', icon: 'calculator' },
-      { slug: 'physics', name: 'Physics', icon: 'atom' },
-      { slug: 'chemistry', name: 'Chemistry', icon: 'flask' },
-      { slug: 'biology', name: 'Biology', icon: 'dna' },
-      { slug: 'programming', name: 'Programming', icon: 'code' },
-      { slug: 'communication', name: 'Communication Skills', icon: 'message' }
-    ];
-
-    const subjectLinks = subjectList.map((s) => `
-      <a href="/pages/subjects/${s.slug}.html" class="mobile-sub-link">
-        ${SC.icon(s.icon, { size: 16 })} ${s.name}
-      </a>
-    `).join('');
-    const mobileSearchHtml = globalSearchEnabled()
-      ? `<div class="mobile-nav-search-wrap" style="--idx:0">
-          <button type="button" class="mobile-search-pill" id="mobileSearchBtn" data-close-mobile>
-            ${SC.icon('search', { size: 17 })}
-            <span>Search courses, notes &amp; papers…</span>
-            <span class="kbd">/</span>
-          </button>
-        </div>`
-      : '';
-
-    // The drawer slides in BELOW the floating island, which stays visible on
-    // top with the brand and a hamburger that morphs into a close (X) button.
-    // A second brand row + close button here would only repeat both, so the
-    // drawer opens straight into its content.
-    host.innerHTML = `
-      <div class="nav-backdrop" id="navBackdrop"></div>
-      <nav class="mobile-nav" id="mobileNav" aria-label="Main navigation" aria-hidden="true">
-        ${mobileSearchHtml}
-
-        <div class="mobile-nav-label" style="--idx:1">Study</div>
-
-        <!-- Courses Accordion -->
-        <div class="mobile-accordion" style="--idx:2">
-          <div class="mobile-accordion-header">
-            <a href="/pages/courses.html"${activeAttrs('courses')}>${SC.icon('library', { size: 20 })} Courses</a>
-            <button type="button" class="mobile-accordion-toggle" aria-expanded="false" aria-label="Toggle courses submenu">
-              ${SC.icon('chevron-down', { size: 16 })}
-            </button>
-          </div>
-          <div class="mobile-accordion-body">
-            <div class="mobile-accordion-content" id="mobileSubjectLinks">
-              ${subjectLinks}
-            </div>
-          </div>
+    // The sheet structure + its listeners are created exactly once; session
+    // refreshes only refill the head/rows so listeners never accumulate.
+    if (!document.getElementById('accountSheet')) {
+      host.innerHTML = `
+        <div class="sc-backdrop" id="accountSheetBackdrop"></div>
+        <div class="account-sheet" id="accountSheet" role="dialog" aria-modal="true" aria-label="Account" aria-hidden="true">
+          <button type="button" class="icon-btn sheet-close" id="accountSheetClose" aria-label="Close account menu">${SC.icon('x', { size: 18 })}</button>
+          <div class="sheet-grab" aria-hidden="true"></div>
+          <div id="accountSheetHead"></div>
+          <div class="sheet-body" id="accountSheetBody"></div>
         </div>
+      `;
 
-        <!-- Resources Accordion -->
-        <div class="mobile-accordion" style="--idx:3">
-          <div class="mobile-accordion-header">
-            <a href="/pages/resources.html"${activeAttrs('resources')}>${SC.icon('file-text', { size: 20 })} Resources</a>
-            <button type="button" class="mobile-accordion-toggle" aria-expanded="false" aria-label="Toggle resources submenu">
-              ${SC.icon('chevron-down', { size: 16 })}
-            </button>
-          </div>
-          <div class="mobile-accordion-body">
-            <div class="mobile-accordion-content">
-              <a href="/pages/resources.html?type=past_paper" class="mobile-sub-link">${SC.icon('file', { size: 16 })} Past Papers</a>
-              <a href="/pages/resources.html?type=document" class="mobile-sub-link">${SC.icon('file-text', { size: 16 })} Study Notes</a>
-              <a href="/pages/resources.html?type=tutorial" class="mobile-sub-link">${SC.icon('book-open', { size: 16 })} Tutorial Sheets</a>
-            </div>
-          </div>
-        </div>
+      const sheet = document.getElementById('accountSheet');
+      const backdrop = document.getElementById('accountSheetBackdrop');
+      const closeBtn = document.getElementById('accountSheetClose');
+      let lastFocused = null;
 
-        <div class="mobile-nav-divider" style="--idx:4"></div>
-        <div class="mobile-nav-label" style="--idx:5">More</div>
-        <a href="/pages/announcements.html"${activeAttrs('announcements')} style="--idx:6" id="mobileNavAnnouncementsLink">${SC.icon('bell', { size: 20 })} <span>Announcements</span><span class="notif-badge-inline" id="mobileNavNotifBadge" style="display:none;"></span></a>
-        <a href="/pages/pricing.html" style="--idx:7">${SC.icon('crown', { size: 20 })} Premium</a>
-        <a href="/pages/about.html"${activeAttrs('about')} style="--idx:8">${SC.icon('info', { size: 20 })} About StudyCore</a>
+      function setOpen(open, { restoreFocus = true } = {}) {
+        if (open) lastFocused = document.activeElement;
+        sheet.classList.toggle('open', open);
+        sheet.setAttribute('aria-hidden', String(!open));
+        if ('inert' in sheet) sheet.inert = !open;
+        backdrop.classList.toggle('open', open);
+        SC.setScrollLock('account-sheet', open);
+        const accountTab = document.getElementById('mobTabAccount');
+        if (accountTab) accountTab.setAttribute('aria-expanded', String(open));
+        if (open) {
+          setTimeout(() => sheet.querySelector('a, button:not(.sheet-close)')?.focus(), 40);
+        } else if (restoreFocus && lastFocused && document.contains(lastFocused)) {
+          lastFocused.focus();
+        }
+      }
 
-        <div class="mobile-nav-divider" style="--idx:9"></div>
-        <div class="mobile-nav-label" style="--idx:10">Practice</div>
-        <a href="/quiz.html"${activeAttrs('quizzes')} style="--idx:11" id="mobileNavQuizzesLink">
-          ${SC.icon('circle-help', { size: 20 })} <span>Quizzes</span>
-        </a>
-        <a href="${WHATSAPP_CHANNEL_URL}" target="_blank" rel="noopener" class="mobile-whatsapp-link" style="--idx:12">
-          ${SC.icon('whatsapp', { size: 20 })} WhatsApp Academic Channel
-        </a>
-
-        <div class="mobile-nav-divider" style="--idx:13"></div>
-        <div class="mobile-nav-label" style="--idx:14">Account</div>
-        <button type="button" data-theme-toggle style="--idx:15" aria-label="Switch to dark mode">${SC.icon('moon', { size: 20 })} <span>Dark Mode</span></button>
-        <div id="mobileAuthSlot" style="--idx:16"></div>
-      </nav>
-    `;
-    const searchBtn = document.getElementById('mobileSearchBtn');
-    if (searchBtn) searchBtn.addEventListener('click', () => openSearchOverlay());
-
-    // Theme toggle in mobile sidebar
-    const themeBtn = host.querySelector('[data-theme-toggle]');
-    if (themeBtn) {
-      // Set correct icon/label based on current theme
-      const isDark = (document.body.dataset.theme || 'light') === 'dark';
-      themeBtn.innerHTML = `${SC.icon(isDark ? 'sun' : 'moon', { size: 20 })} <span>${isDark ? 'Light Mode' : 'Dark Mode'}</span>`;
-      themeBtn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-      themeBtn.addEventListener('click', () => {
-        toggleTheme();
-        // Update the label text too
-        const nowDark = (document.body.dataset.theme || 'light') === 'dark';
-        themeBtn.querySelector('span').textContent = nowDark ? 'Light Mode' : 'Dark Mode';
+      closeBtn.addEventListener('click', () => setOpen(false));
+      backdrop.addEventListener('click', () => setOpen(false));
+      document.addEventListener('keydown', (e) => {
+        if (!sheet.classList.contains('open')) return;
+        if (e.key === 'Escape') { setOpen(false); return; }
+        if (e.key !== 'Tab') return;
+        // Keep Tab cycling inside the open sheet (same contract the old
+        // drawer had): the close button is first, the last row is last.
+        const focusable = [...sheet.querySelectorAll('a, button:not([disabled])')]
+          .filter((el) => !el.hidden && el.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       });
+      // Rotating/resizing up to desktop closes the sheet — it has no trigger
+      // there (the tab bar is phone/tablet only).
+      const desktopMedia = window.matchMedia('(min-width: 1181px)');
+      const closeAtDesktop = (event) => {
+        if (event.matches) setOpen(false, { restoreFocus: false });
+      };
+      if (desktopMedia.addEventListener) desktopMedia.addEventListener('change', closeAtDesktop);
+      else desktopMedia.addListener(closeAtDesktop); // Older iOS Safari.
+      sheet.addEventListener('click', (e) => {
+        if (e.target.closest('a, button:not([data-sheet-theme])')) setOpen(false);
+        const themeRow = e.target.closest('[data-sheet-theme]');
+        if (themeRow) {
+          toggleTheme();
+          // Rebuild the row so the icon + label stay in sync with the theme.
+          themeRow.outerHTML = sheetThemeRowHtml();
+          sheet.querySelector('[data-sheet-theme]')?.focus();
+        }
+      });
+
+      global.SCAccountSheet = { setOpen };
     }
 
-    bindMobileAccordions();
+    // (Re)fill the content for whoever is signed in right now.
+    document.getElementById('accountSheetHead').innerHTML = accountSheetHeadHtml(user);
+    const body = document.getElementById('accountSheetBody');
+    body.innerHTML = accountSheetRows(user);
+    const logout = body.querySelector('[data-sheet-logout]');
+    if (logout) logout.addEventListener('click', StudyCoreAuth.logoutUser);
   }
 
-  function bindMobileAccordions() {
-    const accordions = document.querySelectorAll('.mobile-accordion');
-    accordions.forEach((acc) => {
-      const toggle = acc.querySelector('.mobile-accordion-toggle');
-      if (!toggle) return;
-      toggle.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const open = acc.classList.toggle('open');
-        toggle.setAttribute('aria-expanded', String(open));
-      });
-    });
-  }
-
-  async function renderMobileNavAuth() {
-    const slot = document.getElementById('mobileAuthSlot');
-    if (!slot) return;
-    const user = await StudyCoreAuth.fetchSession();
-    if (user) {
-      // Mirrors the desktop avatar menu and never routes a Content Admin to
-      // the student dashboard.
-      const role = StudyCoreAuth.normalizedRole(user);
-      const dashboard = StudyCoreAuth.getDashboardPage(user);
-      const accountLinks = role === 'content_admin' ? `
-        <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
-        <a href="${dashboard}#profile">${SC.icon('user', { size: 20 })} Profile</a>
-        <a href="${dashboard}#upload">${SC.icon('upload', { size: 20 })} Upload Resource</a>
-        <a href="${dashboard}#uploads">${SC.icon('library', { size: 20 })} My Uploads</a>`
-        : role === 'admin' ? `
-        <a href="${dashboard}">${SC.icon('settings', { size: 20 })} Admin Dashboard</a>`
-        : `
-        <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 20 })} Dashboard</a>
-        <a href="${dashboard}#profile">${SC.icon('user', { size: 20 })} Profile</a>`;
-      slot.innerHTML = `
-        ${accountLinks}
-        <button type="button" id="mobileLogoutBtn" style="color:var(--red-600);">${SC.icon('log-out', { size: 20 })} Log Out</button>
-      `;
-      const lo = document.getElementById('mobileLogoutBtn');
-      if (lo) lo.addEventListener('click', StudyCoreAuth.logoutUser);
-    } else {
-      slot.innerHTML = `
-        <a href="/login.html">${SC.icon('user', { size: 20 })} Log In</a>
-        <a href="/signup.html">${SC.icon('user-plus', { size: 20 })} Create Account</a>
-      `;
-    }
+  function openAccountSheet() {
+    if (global.SCAccountSheet) global.SCAccountSheet.setOpen(true);
   }
 
   /* ── Global search overlay ──────────────── */
@@ -1056,7 +1136,6 @@
     updateBadge(count) {
       this.unreadCount = count;
       const badge = document.getElementById('notifBadge');
-      const mobileBadge = document.getElementById('mobileNavNotifBadge');
       const pill = document.getElementById('notifUnreadCountPill');
       const markAllBtn = document.getElementById('notifMarkAllBtn');
 
@@ -1069,16 +1148,6 @@
           badge.style.display = 'none';
           badge.textContent = '';
           badge.removeAttribute('aria-label');
-        }
-      }
-
-      if (mobileBadge) {
-        if (count > 0) {
-          mobileBadge.style.display = 'inline-flex';
-          mobileBadge.textContent = count > 99 ? '99+' : String(count);
-        } else {
-          mobileBadge.style.display = 'none';
-          mobileBadge.textContent = '';
         }
       }
 
@@ -1269,109 +1338,6 @@
     }
   };
 
-  /* ── Mobile bottom dock (quick navigation) ──
-     A modern, thumb-reachable dock that keeps the handful of places a user
-     actually goes one tap away, so nobody has to dig through the drawer or
-     scroll a very long dashboard on a phone. It is role- and page-aware:
-       - A student / Main-Admin dashboard (each a single, long page) becomes a
-         set of in-page shortcuts that jump straight to its sections instead
-         of endless scrolling.
-       - Everywhere else it offers that user's top-level destinations.
-     Shown only at phone/tablet widths and only for signed-in student &
-     Main-Admin accounts (Content Admin uses its own workspace chrome, and
-     guests keep the simpler drawer). Full-screen pages such as the document
-     viewer keep the whole screen for reading. */
-  const MOB_TOP_PAGES = {
-    home: ['home', 'dashboard', 'admin'],
-    courses: ['courses', 'course', 'lesson', 'videos'],
-    resources: ['resources', 'viewer'],
-    quizzes: ['quizzes'],
-    announcements: ['announcements']
-  };
-
-  function dockIsCurrent(key) {
-    const page = currentPage();
-    return (MOB_TOP_PAGES[key] || []).indexOf(page) !== -1;
-  }
-
-  function dockGlyph(label, icon) {
-    return `<span class="mob-dock-ic">${SC.icon(icon, { size: 21 })}</span><span class="mob-dock-lb">${label}</span>`;
-  }
-
-  function dockItem(label, icon, opts) {
-    const o = opts || {};
-    if (o.href) {
-      return `<a class="mob-dock-item${o.active ? ' active' : ''}" href="${o.href}"${o.active ? ' aria-current="page"' : ''}>${dockGlyph(label, icon)}</a>`;
-    }
-    const target = o.scroll || 'top';
-    return `<a class="mob-dock-item" href="#${target === 'top' ? '' : target}" data-scroll="${target}">${dockGlyph(label, icon)}</a>`;
-  }
-
-  function teardownMobileDock() {
-    const host = document.getElementById('mobDockHost');
-    if (host) host.remove();
-    document.body.classList.remove('has-mobtabs');
-  }
-
-  function renderMobileDock(user) {
-    const role = user ? StudyCoreAuth.normalizedRole(user) : '';
-    // Only signed-in student & Main-Admin accounts get the dock.
-    if (!user || (role !== 'student' && role !== 'admin')) { teardownMobileDock(); return; }
-    // Keep the whole screen for full-screen reading / dedicated workspaces.
-    if (currentPage() === 'viewer' || currentPage() === 'content-admin') { teardownMobileDock(); return; }
-
-    const page = currentPage();
-    let items;
-    if (page === 'dashboard') {
-      // A student's dashboard is one long page: offer section shortcuts.
-      items = [
-        dockItem('Overview', 'home', { scroll: 'top' }),
-        dockItem('Continue', 'play', { scroll: 'continueSlot' }),
-        dockItem('Courses', 'library', { scroll: 'myCoursesList' }),
-        dockItem('Premium', 'crown', { scroll: 'premium' }),
-        dockItem('Profile', 'user', { scroll: 'profile' })
-      ];
-    } else if (page === 'admin') {
-      // The Main-Admin dashboard is one long page: offer section shortcuts.
-      items = [
-        dockItem('Overview', 'home', { scroll: 'top' }),
-        dockItem('Announce', 'bell', { scroll: 'announcementForm' }),
-        dockItem('Content', 'file-text', { scroll: 'adminResourceTableWrap' }),
-        dockItem('Students', 'users', { scroll: 'usersList' }),
-        dockItem('Payments', 'wallet', { scroll: 'paymentsList' })
-      ];
-    } else {
-      // Top-level destinations for this account across the whole site.
-      const homeHref = role === 'admin' ? '/admin.html' : '/dashboard.html';
-      items = [
-        dockItem('Home', 'home', { href: homeHref, active: dockIsCurrent('home') }),
-        dockItem('Courses', 'library', { href: '/pages/courses.html', active: dockIsCurrent('courses') }),
-        dockItem('Quizzes', 'circle-help', { href: '/quiz.html', active: dockIsCurrent('quizzes') }),
-        dockItem('Announcements', 'bell', { href: '/pages/announcements.html', active: dockIsCurrent('announcements') })
-      ];
-    }
-
-    let host = document.getElementById('mobDockHost');
-    if (!host) {
-      host = document.createElement('nav');
-      host.id = 'mobDockHost';
-      host.className = 'mob-dock';
-      host.setAttribute('aria-label', 'Quick navigation');
-      document.body.appendChild(host);
-    }
-    host.innerHTML = `<div class="mob-dock-inner">${items.join('')}</div>`;
-    host.querySelectorAll('[data-scroll]').forEach((a) => {
-      a.addEventListener('click', (e) => {
-        e.preventDefault();
-        const target = a.getAttribute('data-scroll');
-        if (target === 'top') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-        const el = document.getElementById(target);
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      });
-    });
-    document.body.classList.add('has-mobtabs');
-  }
-
   function ensureMobileMeta() {
     const vp = document.querySelector('meta[name="viewport"]');
     if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover');
@@ -1450,21 +1416,15 @@
     ensureMobileMeta();
     bindPageTransitions();
     renderNav();
-    renderMobileNav();
     renderFooter();
-    // One failing sub-initialiser must not silently kill the rest of the
-    // chrome (e.g. the Log In / Get Started buttons in the nav).
-    try {
-      StudyCoreAuth.initMobileNav();
-    } catch (err) {
-      console.error('StudyCore: mobile nav init failed', err);
-    }
     const user = await StudyCoreAuth.fetchSession();
     renderNavAuth();
-    renderMobileNavAuth();
-    renderMobileDock(user);
-    // Swap the public course flyout/drawer for the student's own program
-    // courses once we know who they are.
+    // The mobile tab bar shows each user's own Home destination and avatar,
+    // so it (and the account sheet) render once the session is known.
+    renderMobileTabs(user);
+    renderAccountSheet(user);
+    // Swap the public course flyout for the student's own program courses
+    // once we know who they are.
     updateCoursesDropdownForUser(user).catch(() => {});
     NotificationManager.init(user);
 
@@ -1492,8 +1452,8 @@
     global.addEventListener('sc:session:refreshed', (event) => {
       const fresh = event && event.detail ? event.detail.user : StudyCoreAuth.getCurrentUser();
       renderNavAuth();
-      renderMobileNavAuth();
-      renderMobileDock(fresh);
+      renderMobileTabs(fresh);
+      renderAccountSheet(fresh);
       updateCoursesDropdownForUser(fresh).catch(() => {});
       NotificationManager.init(fresh);
     });

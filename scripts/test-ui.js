@@ -50,7 +50,7 @@ test('course homes do not render the shared search controls', () => {
   assert.match(layout, /function globalSearchEnabled\(\)/);
   assert.match(layout, /return currentPage\(\) !== 'course'/);
   assert.match(layout, /const searchButtonHtml = globalSearchEnabled\(\)/);
-  assert.match(layout, /const mobileSearchHtml = globalSearchEnabled\(\)/);
+  assert.match(layout, /const searchTabHtml = globalSearchEnabled\(\)/);
   assert.match(layout, /function bindNavSearch\(\) \{\s*if \(!globalSearchEnabled\(\)\) return;/);
   assert.match(layout, /function openSearchOverlay\(\) \{\s*if \(!globalSearchEnabled\(\)\) return;/);
   assert.doesNotMatch(courseCss, /course-search-row/, 'remove the obsolete course search styles');
@@ -83,15 +83,44 @@ test('global navigation keeps videos within the course hierarchy', () => {
   assert.match(navBlock, /label: 'Resources'/);
   assert.doesNotMatch(navBlock, /label: 'Home'/);
   assert.doesNotMatch(navBlock, /label: 'Video Lessons'/);
-  assert.doesNotMatch(layout.match(/function renderMobileNav\(\).*?\n  }/s)?.[0] || '', /> Video Lessons</);
+  assert.doesNotMatch(layout.match(/function renderMobileTabs\(user\) \{[\s\S]*?\n  \}/)?.[0] || '', /> Video Lessons</);
 });
 
-test('mobile course controls and drawer styles are present', () => {
+test('mobile course controls and tab bar styles are present', () => {
   const css = read('public/css/style.css');
-  assert.match(css, /\.mobile-nav\.open \{ transform: translateX\(0\)/);
+  assert.match(css, /body\.has-mobtabs \.mob-tabs \{ display: flex; \}/);
   assert.match(css, /body\[data-page='course'\] \.course-subnav \.subnav-links \{ display: none; \}/);
   assert.match(css, /\.course-jump \{ display: flex;/);
   assert.match(css, /body\[data-page='courses'\] \.course-card/);
+});
+
+test('mobile navigation is one tab bar and one account sheet', () => {
+  const layout = read('public/js/layout.js');
+  const auth = read('public/js/auth.js');
+  const css = read('public/css/style.css');
+
+  // The hamburger drawer and its accordions are gone for good.
+  assert.doesNotMatch(layout, /hamburgerBtn|mobile-accordion|mobileSubjectLinks|navBackdrop/);
+  assert.doesNotMatch(auth, /initMobileNav/);
+  assert.doesNotMatch(css, /\.mobile-nav|\.hamburger|\.mob-dock/);
+
+  // One bottom tab bar, rendered for every visitor (no signed-in gate).
+  assert.match(layout, /function renderMobileTabs\(user\) \{/);
+  assert.match(layout, /host\.id = 'mobTabsHost'/);
+  assert.match(layout, /id="mobTabAccount"/);
+  assert.match(layout, /teardownMobileTabs\(\); return;/);
+  const renderTabs = layout.match(/function renderMobileTabs\(user\) \{[\s\S]*?\n  \}/)?.[0] || '';
+  assert.doesNotMatch(renderTabs, /if \(!user/, 'guests get the tab bar too');
+
+  // The Account tab opens a compact bottom sheet, not another page.
+  assert.match(layout, /function renderAccountSheet\(user\) \{/);
+  assert.match(layout, /function openAccountSheet\(\) \{/);
+  assert.match(css, /\.account-sheet\.open \{ transform: translateY\(0\); visibility: visible;/);
+  assert.match(css, /\.sc-backdrop\.open \{ opacity: 1; pointer-events: auto; \}/);
+
+  // The tab bar is phone/tablet only and always above the content offsets.
+  assert.match(css, /@media \(min-width: 1181px\) \{\s*\.mob-tabs, \.sc-backdrop, \.account-sheet \{ display: none !important; \}/);
+  assert.match(css, /body\.has-mobtabs \{ padding-bottom: calc\(68px \+ env\(safe-area-inset-bottom, 0px\)\); \}/);
 });
 
 test('scroll reveal is shared, progressive, and reduced-motion aware', () => {

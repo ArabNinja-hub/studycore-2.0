@@ -8,7 +8,7 @@
      1. renders on every page (brand, links, dropdowns, footer)
      2. pins on scroll (is-scrolled)
      3. flyout panels are clamped into the viewport (—dd-shift)
-     4. mobile drawer opens/closes via the hamburger
+     4. the mobile tab bar renders and the account sheet opens/closes
    Run with:  node server.js  (in one terminal)
               node scripts/debug-nav-smoke.js  (in another)
    ============================================================= */
@@ -126,8 +126,8 @@ async function testDesktop(path) {
     isCourseHome ? !nav?.querySelector('#navSearchBtn') : !!nav?.querySelector('#navSearchBtn')
   );
   check(
-    isCourseHome ? 'mobile search bar omitted from course home' : 'mobile search bar present',
-    isCourseHome ? !document.getElementById('mobileSearchBtn') : !!document.getElementById('mobileSearchBtn')
+    isCourseHome ? 'search tab omitted from course home' : 'search tab present in the mobile bar',
+    isCourseHome ? !document.getElementById('mobTabSearch') : !!document.getElementById('mobTabSearch')
   );
   if (isCourseHome) {
     document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '/', bubbles: true }));
@@ -147,7 +147,7 @@ async function testDesktop(path) {
   if (document.getElementById('siteFooter')) {
     check('footer rendered', !!document.querySelector('.footer'));
   }
-  check('mobile drawer host rendered', !!document.getElementById('mobileNav'));
+  check('mobile tab bar rendered', !!document.getElementById('mobTabsHost'));
 
   // Scroll: island should pin (is-scrolled).
   await scrollWindow(window, 420);
@@ -192,32 +192,35 @@ async function testMobile() {
   const { document } = window;
 
   check('no uncaught page errors', pageErrors.length === 0, pageErrors.join(' | '));
-  const nav = document.getElementById('siteNav');
-  const burger = document.getElementById('hamburgerBtn');
-  const drawer = document.getElementById('mobileNav');
-  check('hamburger rendered on mobile', !!burger);
-  check('drawer starts closed', !!drawer && !drawer.classList.contains('open'));
 
-  burger?.click();
-  check('drawer opens on hamburger click', drawer?.classList.contains('open'));
-  check('hamburger reports expanded', burger?.getAttribute('aria-expanded') === 'true');
-  check('backdrop active', document.getElementById('navBackdrop')?.classList.contains('open'));
+  // One thumb-reachable tab bar for everyone; no hamburger, no drawer.
+  const tabs = document.getElementById('mobTabsHost');
+  check('tab bar rendered', !!tabs);
+  check('body flagged with has-mobtabs', document.body.classList.contains('has-mobtabs'));
+  check('no hamburger anywhere', !document.getElementById('hamburgerBtn'));
+  check('no drawer anywhere', !document.getElementById('mobileNav'));
+  const tabCount = tabs?.querySelectorAll('.mob-tab').length || 0;
+  check('5 tabs rendered (Home/Courses/Search/Resources/Account)', tabCount === 5, `got ${tabCount}`);
 
-  // The drawer slides in under the floating island, which keeps the brand
-  // and turns the hamburger into the close control — no duplicate brand row
-  // or close button inside the drawer itself.
-  check('no duplicate brand row in drawer', !drawer?.querySelector('.mobile-nav-header'));
-  check('no duplicate close button in drawer', !drawer?.querySelector('#mobileNavClose'));
-  check('hamburger morphs to close control', burger?.getAttribute('aria-label') === 'Close menu');
+  const accountTab = document.getElementById('mobTabAccount');
+  const sheet = document.getElementById('accountSheet');
+  check('account sheet exists and starts closed', !!sheet && !sheet.classList.contains('open'));
 
-  // Close it again through the island hamburger (X).
-  burger?.click();
-  check('drawer closes via island hamburger', !drawer?.classList.contains('open'));
-  check('hamburger reports collapsed', burger?.getAttribute('aria-expanded') === 'false');
+  accountTab?.click();
+  check('account sheet opens on Account tab', sheet?.classList.contains('open'));
+  check('account tab reports expanded', accountTab?.getAttribute('aria-expanded') === 'true');
+  check('backdrop active', document.getElementById('accountSheetBackdrop')?.classList.contains('open'));
+  check('guest sheet offers Log In', !!sheet?.querySelector('a[href="/login.html"]'));
 
-  burger?.click();
-  document.getElementById('navBackdrop')?.click();
-  check('drawer closes via backdrop click', !drawer?.classList.contains('open'));
+  document.getElementById('accountSheetBackdrop')?.click();
+  check('sheet closes via backdrop click', !sheet?.classList.contains('open'));
+
+  accountTab?.click();
+  document.getElementById('accountSheetClose')?.click();
+  check('sheet closes via its close button', !sheet?.classList.contains('open'));
+
+  document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check('escape is safe with the sheet closed', true);
 
   window.close();
 }
