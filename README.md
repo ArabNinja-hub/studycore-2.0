@@ -233,9 +233,13 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
 - Standalone **Documents** and **Videos** pages removed - documents/videos live inside
   courses, lessons and the unified **Resources** page (filterable by course and type).
 - Global navigation redesigned to a learning-first model
-  (logo/Home · Courses · Resources · Announcements · About · Search · Dashboard · Profile)
-  with a compact mobile drawer. Course pages use five clear desktop shortcuts and a
-  native mobile section picker instead of a long horizontally scrolling sub-navigation.
+  (logo/Home · Courses · Resources · Announcements · About · Search · Dashboard · Profile).
+- **Mobile navigation simplified to one bottom tab bar** (Home · Courses · Search ·
+  Resources · Account) shown to every visitor — no hamburger drawer, no accordions, no
+  section labels. The Account tab opens one compact bottom sheet (dashboard, profile,
+  premium, theme, log out); "Home" is the signed-in user's own dashboard. The top bar
+  collapses to brand + notification bell, edge-to-edge. Course pages keep their native
+  mobile section picker instead of a long horizontally scrolling sub-navigation.
 - **Premium dashboard section** (`/dashboard.html#premium`) with real subscription
   states, trial countdown, payment flow and renewal; Pricing page connects into it.
 - **Profile pictures** with server-side validation, plus achievements, study streak,

@@ -851,6 +851,7 @@ body[data-theme='dark'] .notif-unread-dot {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 .account-trigger:hover .avatar { transform: translateY(-1px) scale(1.03); }
+.avatar-sm { width: 44px; height: 44px; }
 .avatar-lg { width: 76px; height: 76px; border-width: 3px; }
 .avatar-fallback { font-family: var(--font-display); font-weight: 700; font-size: 1rem; letter-spacing: 0.02em; }
 .avatar-fallback.avatar-lg { font-size: 1.5rem; }
@@ -873,169 +874,137 @@ body[data-theme='dark'] .notif-unread-dot {
 .account-panel .danger { color: var(--red-600); }
 .account-panel .danger:hover { background: var(--red-100); color: var(--red-600); }
 
-/* Mobile nav — a short, single-level drawer rather than a second full page. */
-.hamburger { display: none; width: 42px; height: 42px; }
-.mobile-nav {
-  position: fixed; top: 0; right: 0; bottom: 0; z-index: 999;
-  width: min(380px, 88vw);
-  background: color-mix(in srgb, var(--card) 96%, transparent);
-  backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
-  padding: 20px 20px calc(32px + env(safe-area-inset-bottom, 0px));
-  box-shadow: -18px 0 48px rgba(8, 23, 38, 0.2);
-  transform: translateX(105%); visibility: hidden;
+/* ── Mobile account sheet ──────────────────
+   The Account tab in the bottom bar opens this compact bottom sheet: the
+   user's handful of account actions, one tap each, no nesting. */
+.sc-backdrop {
+  position: fixed; inset: 0; z-index: 1140;
+  background: rgba(8, 23, 38, 0.5);
+  opacity: 0; pointer-events: none; transition: opacity 0.25s;
+}
+.sc-backdrop.open { opacity: 1; pointer-events: auto; }
+.account-sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 1150;
+  margin: 0 auto; max-width: 520px;
+  max-height: min(80dvh, 640px);
+  display: flex; flex-direction: column;
+  background: color-mix(in srgb, var(--card) 97%, transparent);
+  backdrop-filter: blur(22px) saturate(175%); -webkit-backdrop-filter: blur(22px) saturate(175%);
+  border: 1px solid var(--border); border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -14px 44px rgba(8, 23, 38, 0.22);
+  padding: 6px 10px calc(12px + env(safe-area-inset-bottom, 0px));
+  transform: translateY(105%); visibility: hidden;
   transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.32s;
-  overflow-y: auto; overscroll-behavior: contain;
 }
-.mobile-nav.open { transform: translateX(0); visibility: visible; transition-delay: 0s; }
-.mobile-search-pill {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 10px 14px; border-radius: 9999px; background: var(--bg-alt);
-  border: 1px solid var(--border); color: var(--muted); font-size: 0.88rem;
-  margin-bottom: 14px; transition: border-color 0.18s ease, background 0.18s ease;
+.account-sheet.open { transform: translateY(0); visibility: visible; transition-delay: 0s; }
+.account-sheet .sheet-grab {
+  width: 42px; height: 4px; border-radius: 999px;
+  background: var(--border-strong); margin: 4px auto 2px; flex: 0 0 auto;
 }
-.mobile-search-pill:hover { border-color: var(--teal-400); color: var(--ink); }
-.mobile-search-pill .kbd {
-  margin-left: auto; font-size: 0.7rem; padding: 2px 7px; border-radius: 6px;
-  background: var(--card); border: 1px solid var(--border);
+.account-sheet .sheet-close { position: absolute; top: 12px; right: 12px; }
+.sheet-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 12px 10px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--border); flex: 0 0 auto;
 }
-.mobile-nav.open [style*="--idx"] {
-  animation: mobileNavStagger 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
-  animation-delay: calc(var(--idx) * 28ms);
+.sheet-head-icon {
+  width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--teal-50); color: var(--teal-700);
 }
-@keyframes mobileNavStagger {
-  from { opacity: 0; transform: translateX(16px); }
-  to { opacity: 1; transform: translateX(0); }
+body[data-theme='dark'] .sheet-head-icon { background: #143530; color: var(--teal-400); }
+.sheet-head strong { display: block; font-size: 0.98rem; color: var(--ink); }
+.sheet-head span { display: flex; margin-top: 4px; font-size: 0.78rem; color: var(--muted); }
+.sheet-body { overflow-y: auto; overscroll-behavior: contain; padding: 6px 4px 2px; }
+.sheet-row {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  min-height: 50px; padding: 12px 14px; border-radius: 12px;
+  font-size: 0.96rem; font-weight: 600; color: var(--ink);
+  text-align: left; text-decoration: none; background: none; border: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.mobile-accordion { margin-bottom: 4px; border-radius: 12px; transition: background 0.18s ease; }
-.mobile-accordion.open { background: var(--bg-alt); }
-.mobile-nav .mobile-accordion-header { display: flex; align-items: center; justify-content: space-between; }
-/* Higher specificity than the generic ".mobile-nav a, .mobile-nav button"
-   row rule, so the header link and its 44px chevron target keep their own
-   sizing instead of inheriting the row's 48px height / 12px 14px padding. */
-.mobile-nav .mobile-accordion-header a { flex: 1; margin-bottom: 0; }
-.mobile-nav .mobile-accordion-toggle {
-  width: 44px; height: 44px; min-height: 44px; padding: 0;
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  color: var(--muted); border-radius: 10px;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), color 0.18s ease;
-}
-.mobile-accordion.open .mobile-accordion-toggle { transform: rotate(180deg); color: var(--teal-600); }
-.mobile-accordion-body {
-  display: grid; grid-template-rows: 0fr;
-  transition: grid-template-rows 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  overflow: hidden;
-}
-.mobile-accordion.open .mobile-accordion-body { grid-template-rows: 1fr; }
-.mobile-accordion-content { min-height: 0; padding: 0 10px 10px 24px; display: flex; flex-direction: column; gap: 2px; }
-.mobile-sub-link {
-  display: flex !important; align-items: center !important; gap: 10px !important;
-  min-height: 38px !important; padding: 8px 12px !important; border-radius: 10px !important;
-  font-size: 0.88rem !important; font-weight: 500 !important; color: var(--muted) !important;
-}
-.mobile-sub-link:hover { color: var(--teal-600) !important; background: var(--card) !important; }
-.mobile-sub-all { font-weight: 700 !important; color: var(--teal-600) !important; margin-top: 4px; }
-.mobile-whatsapp-link {
-  color: #128c7e !important; background: rgba(37, 211, 102, 0.1) !important;
-  border: 1px solid rgba(37, 211, 102, 0.25) !important;
-}
-.mobile-whatsapp-link:hover { background: rgba(37, 211, 102, 0.18) !important; }
+.sheet-row:hover { background: var(--bg-alt); color: var(--teal-600); }
+.sheet-row:active { background: var(--bg-alt); }
+.sheet-row svg { flex: 0 0 auto; color: var(--muted); }
+.sheet-row-danger, .sheet-row-danger svg { color: var(--red-600); }
+.sheet-row-danger:hover, .sheet-row-danger:active { background: var(--red-100); color: var(--red-600); }
+body[data-theme='dark'] .sheet-row-danger:hover, body[data-theme='dark'] .sheet-row-danger:active { background: rgba(248, 113, 113, 0.12); }
 
-.mobile-nav a, .mobile-nav button {
-  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 48px;
-  padding: 12px 14px; border-radius: 12px; font-size: 0.96rem; font-weight: 600;
-  color: var(--ink); text-decoration: none; margin-bottom: 3px; text-align: left;
+/* ── Mobile bottom tab bar ─────────────────
+   One thumb-reachable tab bar for every visitor on phones/tablets:
+   Home · Courses · Search · Resources · Account (see layout.js). Same five
+   destinations on every page, so nobody re-learns the navigation when the
+   page changes. Edge-to-edge with safe-area padding — the native app
+   pattern, no floating dock. */
+.mob-tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 980;
+  display: flex; align-items: stretch; gap: 2px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: blur(22px) saturate(175%); -webkit-backdrop-filter: blur(22px) saturate(175%);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -6px 24px rgba(8, 23, 38, 0.08);
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
 }
-.mobile-nav a:hover, .mobile-nav button:hover { background: var(--bg-alt); color: var(--teal-600); }
-.mobile-nav a.active { background: var(--teal-50); color: var(--teal-700); }
-.mobile-nav .mobile-nav-divider { height: 1px; background: var(--border); margin: 10px 0; }
-.mobile-nav .mobile-nav-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--faint); padding: 7px 14px 4px; }
-.nav-backdrop { position: fixed; inset: 0; background: rgba(8, 23, 38, 0.5); z-index: 998; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
-.nav-backdrop.open { opacity: 1; pointer-events: auto; }
-
-/* ── Mobile bottom dock (quick navigation) ──
-   A slim floating tab dock for signed-in student & Main-Admin accounts on
-   phones/tablets. It keeps the handful of places a user actually goes one
-   thumb-tap away and turns the very long single-page dashboards into
-   tap-to-jump sections, so nobody has to dig through the drawer or scroll
-   endlessly on a phone. Hidden on desktop and never rendered for guests or
-   Content Admins (see layout.js). */
-.mob-dock {
-  position: fixed; left: 50%; bottom: 10px;
-  transform: translateX(-50%) translateY(8px);
-  z-index: 955; /* below the drawer (999) so the drawer slides over it */
-  display: none;
-  width: calc(100vw - 24px); max-width: 520px;
-  padding: 6px;
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--card) 86%, transparent);
-  backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 78%, var(--teal-500) 22%);
-  box-shadow: 0 12px 34px -8px rgba(8, 23, 38, 0.24), 0 3px 10px rgba(8, 23, 38, 0.08);
-  opacity: 0; visibility: hidden;
-  transition: opacity 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1), visibility 0s linear 0.25s;
-}
-.mob-dock-inner { display: flex; align-items: stretch; gap: 2px; }
-.mob-dock-item {
+.mob-tab {
   flex: 1 1 0; min-width: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; padding: 6px 2px 5px; border-radius: 16px;
-  color: var(--muted); text-decoration: none;
+  gap: 3px; min-height: 54px; padding: 7px 2px 6px; border-radius: 14px;
+  border: none; background: none; cursor: pointer;
+  color: var(--muted); text-decoration: none; font-family: inherit;
   -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   transition: color 0.15s ease, background 0.15s ease, transform 0.12s ease;
 }
-.mob-dock-item:hover { color: var(--teal-600); background: color-mix(in srgb, var(--bg-alt) 70%, transparent); }
-.mob-dock-item:active { transform: scale(0.96); }
-.mob-dock-ic { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
-.mob-dock-item.active { color: var(--teal-700); }
-.mob-dock-item.active .mob-dock-ic {
+.mob-tab:hover { color: var(--teal-600); }
+.mob-tab:active { transform: scale(0.94); }
+.mob-tab-ic { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; }
+.mob-tab-ic .avatar { width: 26px; height: 26px; }
+.mob-tab-ic .avatar svg { width: 14px; height: 14px; }
+.mob-tab.active { color: var(--teal-700); }
+.mob-tab.active .mob-tab-ic {
   background: color-mix(in srgb, var(--teal-50) 90%, var(--card));
   border-radius: 9px; color: var(--teal-700);
 }
-.mob-dock-lb {
+body[data-theme='dark'] .mob-tab.active { color: var(--teal-400); }
+body[data-theme='dark'] .mob-tab.active .mob-tab-ic { background: #143530; color: var(--teal-400); }
+.mob-tab-lb {
   max-width: 100%; font-size: 0.62rem; font-weight: 600; line-height: 1;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.01em;
 }
-@media (max-width: 1180px) {
-  body.has-mobtabs .mob-dock {
-    display: block;
-    opacity: 1; visibility: visible;
-    transform: translateX(-50%) translateY(0);
-    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  }
-  body.has-mobtabs { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
-}
 @media (max-width: 480px) {
-  .mob-dock-lb { font-size: 0.58rem; }
-  .mob-dock-item { padding-left: 0; padding-right: 0; gap: 3px; }
-  .mob-dock-ic { width: 24px; height: 24px; }
-}
-/* Dock section-shortcut targets land below the floating nav island (the
-   shared top chrome stays sticky), not hidden underneath it. */
-body.has-mobtabs #continueSlot,
-body.has-mobtabs #myCoursesList,
-body.has-mobtabs #premium,
-body.has-mobtabs #profile,
-body.has-mobtabs #announcementForm,
-body.has-mobtabs #adminResourceTableWrap,
-body.has-mobtabs #usersList,
-body.has-mobtabs #paymentsList {
-  scroll-margin-top: calc(var(--nav-h) + var(--nav-float) + 18px);
+  .mob-tab-lb { font-size: 0.58rem; }
+  .mob-tab { gap: 2px; }
+  .mob-tab-ic { width: 24px; height: 24px; }
+  .mob-tab-ic .avatar { width: 24px; height: 24px; }
 }
 
+/* Phone/tablet: the top bar goes edge-to-edge and keeps only the brand and
+   the notification bell — everything else lives in the bottom tab bar. */
 @media (max-width: 1180px) {
+  /* The island floats on desktop only; on mobile the bar is edge-to-edge. */
+  :root { --nav-float: 0px; }
   .nav-links,
+  .nav-search-btn,
+  .nav-theme-btn,
   .nav-actions .btn-primary,
   .nav-actions .btn-ghost,
   .nav-actions .account-menu,
   #navAuthSlot { display: none !important; }
-  .hamburger { display: inline-flex; }
   .nav-inner { gap: 10px; }
-  /* Tablet/phone: the island keeps floating, with tighter side margins. */
-  .navbar { top: 8px; margin-top: 8px; max-width: calc(100vw - 20px); }
-  .navbar.is-scrolled { top: 6px; }
-  /* The drawer sits under the island (z-index), so its content must start
-     below the island on every width where the hamburger is shown. */
-  .mobile-nav { padding-top: calc(var(--nav-h) + var(--nav-float) + 14px); }
+  .navbar {
+    top: 0; margin-top: 0;
+    max-width: none; border-radius: 0;
+    border-left: none; border-right: none;
+    background: color-mix(in srgb, var(--card) 78%, transparent);
+  }
+  .navbar.is-scrolled { top: 0; }
+  body.has-mobtabs .mob-tabs { display: flex; }
+  /* Content never slides under the fixed tab bar. */
+  body.has-mobtabs { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+}
+@media (min-width: 1181px) {
+  .mob-tabs, .sc-backdrop, .account-sheet { display: none !important; }
 }
 
 /* ── Hero (home) ────────────────────────
@@ -2288,7 +2257,7 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .plans-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
-  :root { --nav-h: 60px; --nav-float: 8px; }
+  :root { --nav-h: 60px; }
   .container {
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -2468,12 +2437,6 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   }
   .doc-page { border-radius: 4px; }
   #scToastContainer { left: 12px; right: 12px; max-width: none; }
-  .hamburger { width: 44px; height: 44px; }
-  .mobile-nav {
-    /* Top padding clears the floating island (nav + its float gap). */
-    padding: calc(var(--nav-h) + var(--nav-float) + 14px) 18px calc(28px + env(safe-area-inset-bottom, 0px));
-  }
-  .mobile-nav a, .mobile-nav button { min-height: 48px; padding: 14px 14px; }
   .account-panel { right: 8px; width: min(250px, calc(100vw - 24px)); }
   .notif-panel {
     position: fixed;
@@ -2784,7 +2747,7 @@ html {
 body.is-scroll-locked { overscroll-behavior: none; }
 a, button, label, summary,
 .btn, .chip, .tab, .icon-btn, .card, .course-card, .resource-card,
-.lesson-row, .topic-card, .mob-dock-item, .search-result {
+.lesson-row, .topic-card, .mob-tab, .sheet-row, .search-result {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -2801,30 +2764,31 @@ a, button, label, summary,
 
   /* One shared press language: a small, fast, uniform depress. */
   .btn:active, .chip:active, .tab:active, .icon-btn:active,
-  .mob-dock-item:active, .whatsapp-btn:active, .password-toggle-btn:active {
+  .mob-tab:active, .sheet-row:active, .whatsapp-btn:active, .password-toggle-btn:active {
     transform: scale(0.96);
     transition-duration: 60ms;
   }
   .card-hover:active, .course-card:active, .resource-card:active,
   .topic-card:active, .course-mini:active, .achievement:active,
-  .search-result:active, .lesson-row:active, .mobile-nav a:active,
+  .search-result:active, .lesson-row:active, .sheet-row:active,
   .nav-dropdown-card:active {
     transform: scale(0.985);
     transition-duration: 60ms;
   }
   /* Tapping a whole card should tint it, the way a native list row does. */
-  .lesson-row:active, .search-result:active, .mobile-nav a:active {
+  .lesson-row:active, .search-result:active {
     background: var(--bg-alt);
   }
 }
 
 /* Anything the finger has to hit is at least a comfortable target. */
 @media (pointer: coarse) {
-  .icon-btn, .password-toggle-btn, .mobile-accordion-toggle,
-  .nav-search-btn, .notif-bell-btn, .hamburger {
+  .icon-btn, .password-toggle-btn, .nav-search-btn, .notif-bell-btn {
     min-width: 44px;
     min-height: 44px;
   }
+  .mob-tab { min-height: 54px; }
+  .sheet-row { min-height: 50px; }
   .chip, .tab { min-height: 40px; }
   .btn-sm { min-height: 38px; }
 }
@@ -2833,7 +2797,7 @@ a, button, label, summary,
    Momentum everywhere it is scrollable, and no scroll chaining out of
    overlays into the page behind them (the classic "the menu scrolled the
    article" bug on iOS). */
-.mobile-nav,
+.sheet-body,
 .search-results,
 .notif-panel-list,
 .notif-list,
@@ -2898,8 +2862,8 @@ a, button, label, summary,
 
   /* Halve every backdrop blur: the compositor cost scales with radius and
      the frosted look survives perfectly well at half strength. */
-  .navbar, .nav-dropdown, .account-panel, .notif-panel, .mobile-nav,
-  .search-overlay, .modal-overlay, .liquid-nav {
+  .navbar, .nav-dropdown, .account-panel, .notif-panel, .account-sheet,
+  .mob-tabs, .search-overlay, .modal-overlay {
     backdrop-filter: blur(10px) saturate(150%);
     -webkit-backdrop-filter: blur(10px) saturate(150%);
   }
@@ -2962,10 +2926,10 @@ a, button, label, summary,
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.35; transform: scale(0.72); }
 }
-/* Lift the mobile dock so the strip never covers the primary navigation. */
+/* Lift the network strip so it never covers the bottom tab bar. */
 @media (max-width: 1180px) {
   body.has-mobtabs .sc-net-strip {
-    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -2981,13 +2945,13 @@ a, button, label, summary,
     flex-direction: column-reverse;
   }
   body.has-mobtabs #scToastContainer {
-    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
   }
   body.has-net-strip #scToastContainer {
     bottom: calc(62px + env(safe-area-inset-bottom, 0px));
   }
   body.has-mobtabs.has-net-strip #scToastContainer {
-    bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(122px + env(safe-area-inset-bottom, 0px));
   }
   .sc-toast { animation: toast-in-up 0.22s ease; }
   @keyframes toast-in-up {
