@@ -249,15 +249,15 @@
     const role = StudyCoreAuth.normalizedRole(user);
     const dashboard = StudyCoreAuth.getDashboardPage(user);
     const contentAdminLinks = role === 'content_admin' ? `
-      <a href="/content-admin.html">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
-      <a href="/content-admin.html#profile">${SC.icon('user', { size: 17 })} Profile</a>
-      <a href="/content-admin.html#upload">${SC.icon('upload', { size: 17 })} Upload Resource</a>
-      <a href="/content-admin.html#uploads">${SC.icon('library', { size: 17 })} My Uploads</a>` : '';
+      <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
+      <a href="${dashboard}#profile">${SC.icon('user', { size: 17 })} Profile</a>
+      <a href="${dashboard}#upload">${SC.icon('upload', { size: 17 })} Upload Resource</a>
+      <a href="${dashboard}#uploads">${SC.icon('library', { size: 17 })} My Uploads</a>` : '';
     const studentLinks = role === 'student' ? `
-      <a href="/dashboard.html">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
+      <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
       <a href="/quiz.html">${SC.icon('circle-help', { size: 17 })} Quizzes</a>
-      <a href="/dashboard.html#profile">${SC.icon('user', { size: 17 })} Profile &amp; photo</a>
-      <a href="/dashboard.html#premium">${SC.icon('crown', { size: 17 })} Premium &amp; billing</a>` : '';
+      <a href="${dashboard}#profile">${SC.icon('user', { size: 17 })} Profile &amp; photo</a>
+      <a href="${dashboard}#premium">${SC.icon('crown', { size: 17 })} Premium &amp; billing</a>` : '';
     const mainAdminLinks = role === 'admin'
       ? `<a href="${dashboard}">${SC.icon('settings', { size: 17 })} Admin Dashboard</a>`
       : '';

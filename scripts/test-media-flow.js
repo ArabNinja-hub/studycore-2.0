@@ -132,14 +132,16 @@ async function main() {
   const trial = await register({
     name: 'Trial Student',
     email: `trial.${Date.now()}@studycore.test`,
-    password: 'password1'
+    password: 'password1',
+    program: 'SMMS'
   });
   pass('trial register');
 
   const expired = await register({
     name: 'Expired Student',
     email: `expired.${Date.now()}@studycore.test`,
-    password: 'password1'
+    password: 'password1',
+    program: 'SMMS'
   });
   // Expire trial via sqlite
   const dbPath = path.join(__dirname, '..', 'data', 'studycore.sqlite');
@@ -155,7 +157,8 @@ c.commit()
   const premium = await register({
     name: 'Premium Student',
     email: `premium.${Date.now()}@studycore.test`,
-    password: 'password1'
+    password: 'password1',
+    program: 'SMMS'
   });
   spawnSync('python3', ['-c', `
 import sqlite3
