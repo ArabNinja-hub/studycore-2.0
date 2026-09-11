@@ -115,12 +115,15 @@ test('mobile navigation is one tab bar and one account sheet', () => {
   // The Account tab opens a compact bottom sheet, not another page.
   assert.match(layout, /function renderAccountSheet\(user\) \{/);
   assert.match(layout, /function openAccountSheet\(\) \{/);
-  assert.match(css, /\.account-sheet\.open \{ transform: translateY\(0\); visibility: visible;/);
-  assert.match(css, /\.sc-backdrop\.open \{ opacity: 1; pointer-events: auto; \}/);
+  assert.match(css, /\.account-sheet\.open \{[^}]*transform:\s*translateY\(0\)/);
+  assert.match(css, /\.account-sheet\.open \{[^}]*visibility:\s*visible/);
+  assert.match(css, /\.sc-backdrop\.open \{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/);
 
   // The tab bar is phone/tablet only and always above the content offsets.
   assert.match(css, /@media \(min-width: 1181px\) \{\s*\.mob-tabs, \.sc-backdrop, \.account-sheet \{ display: none !important; \}/);
-  assert.match(css, /body\.has-mobtabs \{ padding-bottom: calc\(68px \+ env\(safe-area-inset-bottom, 0px\)\); \}/);
+  // Content must reserve room for the bottom dock plus the home indicator.
+  // The exact height changes with the dock design, so assert the shape.
+  assert.match(css, /body\.has-mobtabs \{ padding-bottom: calc\(\d+px \+ env\(safe-area-inset-bottom, 0px\)\); \}/);
 });
 
 test('scroll reveal is shared, progressive, and reduced-motion aware', () => {
