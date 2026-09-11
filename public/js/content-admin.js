@@ -98,19 +98,14 @@
 
   function setNavActive(section) {
     document.querySelectorAll('[data-ca-nav]').forEach((link) => {
-      link.classList.toggle('active', link.getAttribute('data-ca-nav') === section);
+      const isCurrent = link.getAttribute('data-ca-nav') === section;
+      link.classList.toggle('active', isCurrent);
+      // Keep the horizontally-scrolling section bar showing where you are on
+      // narrow screens, where not every section fits at once.
+      if (isCurrent && link.scrollIntoView) {
+        link.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
     });
-  }
-
-  function closeMobileNav() {
-    const menu = $('#caMobileNav');
-    const toggle = $('#caMenuToggle');
-    if (!menu || !toggle) return;
-    menu.classList.remove('open');
-    menu.setAttribute('aria-hidden', 'true');
-    toggle.setAttribute('aria-expanded', 'false');
-    toggle.setAttribute('aria-label', 'Open Content Admin navigation');
-    toggle.innerHTML = icon('menu', 21);
   }
 
   function renderProfile(profile) {
@@ -507,21 +502,10 @@
   }
 
   function bindEvents() {
-    $('#caLogoutBtn').addEventListener('click', StudyCoreAuth.logoutUser);
-    $('#caMobileLogoutBtn').addEventListener('click', StudyCoreAuth.logoutUser);
-    $('#caMenuToggle').addEventListener('click', () => {
-      const menu = $('#caMobileNav');
-      const open = !menu.classList.contains('open');
-      menu.classList.toggle('open', open);
-      menu.setAttribute('aria-hidden', String(!open));
-      $('#caMenuToggle').setAttribute('aria-expanded', String(open));
-      $('#caMenuToggle').setAttribute('aria-label', open ? 'Close Content Admin navigation' : 'Open Content Admin navigation');
-      $('#caMenuToggle').innerHTML = icon(open ? 'x' : 'menu', 21);
-    });
-
+    // Logout, the account menu and site-wide navigation all live in the
+    // shared chrome rendered by layout.js — this page no longer ships its own.
     document.querySelectorAll('[data-ca-nav]').forEach((link) => link.addEventListener('click', () => {
       setNavActive(link.getAttribute('data-ca-nav'));
-      closeMobileNav();
     }));
     $('#caHeroUploadBtn').addEventListener('click', () => setNavActive('upload'));
     $('#caUploadsNewBtn').addEventListener('click', () => {
@@ -602,9 +586,6 @@
       return;
     }
 
-    $('#caLogoutBtn').innerHTML = `${icon('log-out', 17)}<span>Logout</span>`;
-    $('#caLogoutBtn').setAttribute('aria-label', 'Log out');
-    $('#caMenuToggle').innerHTML = icon('menu', 21);
     $('#caTotalIcon').innerHTML = icon('library', 22);
     $('#caPublishedIcon').innerHTML = icon('check-circle', 22);
     $('#caDraftIcon').innerHTML = icon('clock', 22);

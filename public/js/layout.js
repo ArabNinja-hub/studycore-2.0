@@ -68,12 +68,58 @@
   const complaintsWaLink = (phone) => `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent('Hello 18_ghtɛɛn! am having trouble with certain stuff')}`;
 
   const NAV_LINKS = [
-    { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library' },
-    { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text' },
+    { id: 'courses', label: 'Courses', href: '/pages/courses.html', icon: 'library', dropdown: 'courses' },
+    { id: 'resources', label: 'Resources', href: '/pages/resources.html', icon: 'file-text', dropdown: 'resources' },
     { id: 'quizzes', label: 'Quizzes', href: '/quiz.html', icon: 'circle-help' },
     { id: 'announcements', label: 'Announcements', href: '/pages/announcements.html', icon: 'bell' },
     { id: 'about', label: 'About', href: '/pages/about.html', icon: 'info' }
   ];
+
+  /* ── Content Admin navigation ─────────────
+     A Content Admin is a publisher, not a student: the student library
+     (courses, lessons, resources, announcements, quizzes-as-a-learner) is
+     closed to them server-side, so linking there would only bounce them back
+     here. What they DO get is the rest of the site — the public pages every
+     visitor can read — plus a real menu into every part of their own
+     workspace, instead of being stranded on one dashboard screen. */
+  const CONTENT_ADMIN_NAV_LINKS = [
+    { id: 'home', label: 'Home', href: '/', icon: 'home' },
+    { id: 'workspace', label: 'Workspace', href: '/content-admin.html', icon: 'layout-dashboard', dropdown: 'workspace' },
+    { id: 'premium', label: 'Premium', href: '/pages/pricing.html', icon: 'crown' },
+    { id: 'about', label: 'About', href: '/pages/about.html', icon: 'info' }
+  ];
+
+  // The Content Admin workspace sections, used by the desktop flyout, the
+  // account menu, the account sheet and the mobile tab bar so every surface
+  // offers the same destinations.
+  const CONTENT_ADMIN_SECTIONS = [
+    { slug: 'dashboard', hash: '#dashboard', name: 'Dashboard', icon: 'layout-dashboard', desc: 'Upload summary and recent activity' },
+    { slug: 'upload', hash: '#upload', name: 'Upload Resource', icon: 'upload', desc: 'Publish notes, papers, guides and video' },
+    { slug: 'uploads', hash: '#uploads', name: 'My Uploads', icon: 'library', desc: 'Edit or remove resources you published' },
+    { slug: 'quizzes', hash: '#quizzes', name: 'Quizzes', icon: 'circle-help', desc: 'Author practice quizzes for your programs' },
+    { slug: 'profile', hash: '#profile', name: 'Profile', icon: 'user', desc: 'Your name, email and account type' }
+  ];
+
+  const CONTENT_ADMIN_HOME = '/content-admin.html';
+
+  // The public pages a Content Admin may read. Everything else in the student
+  // library is denied by the server, so it is never offered in their chrome.
+  const CONTENT_ADMIN_SITE_LINKS = [
+    { href: '/', icon: 'home', label: 'StudyCore Home' },
+    { href: '/pages/pricing.html', icon: 'crown', label: 'StudyCore Premium' },
+    { href: '/pages/about.html', icon: 'info', label: 'About StudyCore' }
+  ];
+
+  // Role is only ever a rendering hint here — the server decides access.
+  let navUser = null;
+  function isContentAdminUser(user) {
+    const u = user === undefined ? navUser : user;
+    return Boolean(u) && StudyCoreAuth.normalizedRole(u) === 'content_admin';
+  }
+
+  function navLinksFor(user) {
+    return isContentAdminUser(user) ? CONTENT_ADMIN_NAV_LINKS : NAV_LINKS;
+  }
 
   function currentPage() {
     return document.body.dataset.page || '';
@@ -83,14 +129,25 @@
   // navigation. Keep the shared global search out of those pages so it does
   // not compete with the course controls; search remains available everywhere
   // else and through the dedicated Search page.
+  //
+  // Global search is also hidden from Content Admins: the search endpoint
+  // scopes results to a student's program, so a publisher would only ever get
+  // an empty panel back.
   function globalSearchEnabled() {
-    return currentPage() !== 'course';
+    return currentPage() !== 'course' && !isContentAdminUser();
+  }
+
+  // The bell reads /api/notifications, which is student/admin only. Showing it
+  // to a Content Admin would render a control that can only ever fail.
+  function notificationsEnabled() {
+    return !isContentAdminUser();
   }
 
   function isActive(id) {
     const page = currentPage();
     if (id === 'courses') return ['courses', 'course', 'lesson', 'videos'].includes(page);
     if (id === 'quizzes') return page === 'quizzes' || page === 'quiz';
+    if (id === 'workspace') return page === 'content-admin';
     return page === id;
   }
 
@@ -211,6 +268,49 @@
     `;
   }
 
+  // Flyout listing every section of the Content Admin workspace, so the
+  // publisher can jump straight to Upload/My Uploads/Quizzes from anywhere on
+  // the site rather than having to land on the dashboard and scroll.
+  function workspaceDropdownHtml() {
+    const cards = CONTENT_ADMIN_SECTIONS.map((s) => `
+      <a class="nav-dropdown-card" href="${CONTENT_ADMIN_HOME}${s.hash}">
+        <span class="nd-icon">${SC.icon(s.icon, { size: 18 })}</span>
+        <div class="nd-content">
+          <strong>${s.name}</strong>
+          <span>${s.desc}</span>
+        </div>
+        <span class="nd-arrow">${SC.icon('chevron-right', { size: 14 })}</span>
+      </a>
+    `).join('');
+
+    return `
+      <div class="nav-dropdown nav-dropdown-resources" id="navDropdown_workspace" role="region" aria-label="Workspace submenu">
+        <div class="nav-dropdown-inner">
+          <div class="nav-dropdown-header">
+            <span class="eyebrow">${SC.icon('shield', { size: 13 })} Publishing Workspace</span>
+            <p>Everything you can manage as a Content Admin, one click away.</p>
+          </div>
+          <div class="nav-dropdown-grid nav-dropdown-grid-2">
+            ${cards}
+          </div>
+          <div class="nav-dropdown-footer">
+            <a href="${CONTENT_ADMIN_HOME}" class="nd-footer-link">
+              <span>Open the full Content Admin dashboard</span>
+              ${SC.icon('arrow-right', { size: 14 })}
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function dropdownHtmlFor(kind) {
+    if (kind === 'courses') return coursesDropdownHtml();
+    if (kind === 'resources') return resourcesDropdownHtml();
+    if (kind === 'workspace') return workspaceDropdownHtml();
+    return '';
+  }
+
   /* ── Navbar ─────────────────────────────── */
   function notificationBellHtml() {
     return `
@@ -246,11 +346,17 @@
     const badgeCls = { premium: 'badge-amber', trial: '', pending: 'badge-amber', expired: 'badge-red' }[label.cls] || '';
     const role = StudyCoreAuth.normalizedRole(user);
     const dashboard = StudyCoreAuth.getDashboardPage(user);
+    // Content Admins get their workspace sections AND the public pages they
+    // are allowed to read, so the avatar menu is a way off the dashboard
+    // rather than a set of links back into it.
     const contentAdminLinks = role === 'content_admin' ? `
       <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
-      <a href="${dashboard}#profile">${SC.icon('user', { size: 17 })} Profile</a>
       <a href="${dashboard}#upload">${SC.icon('upload', { size: 17 })} Upload Resource</a>
-      <a href="${dashboard}#uploads">${SC.icon('library', { size: 17 })} My Uploads</a>` : '';
+      <a href="${dashboard}#uploads">${SC.icon('library', { size: 17 })} My Uploads</a>
+      <a href="${dashboard}#quizzes">${SC.icon('circle-help', { size: 17 })} Quizzes</a>
+      <a href="${dashboard}#profile">${SC.icon('user', { size: 17 })} Profile</a>
+      <div class="account-panel-sep" role="separator"></div>
+      ${CONTENT_ADMIN_SITE_LINKS.map((l) => `<a href="${l.href}">${SC.icon(l.icon, { size: 17 })} ${l.label}</a>`).join('')}` : '';
     const studentLinks = role === 'student' ? `
       <a href="${dashboard}">${SC.icon('layout-dashboard', { size: 17 })} Dashboard</a>
       <a href="/quiz.html">${SC.icon('circle-help', { size: 17 })} Quizzes</a>
@@ -290,10 +396,10 @@
       document.body.prepend(host);
     }
 
-    const linksHtml = NAV_LINKS.map((l) => {
+    const linksHtml = navLinksFor().map((l) => {
       const active = isActive(l.id);
-      const hasDrop = l.id === 'courses' || l.id === 'resources';
-      const dropdownHtml = l.id === 'courses' ? coursesDropdownHtml() : (l.id === 'resources' ? resourcesDropdownHtml() : '');
+      const hasDrop = Boolean(l.dropdown);
+      const dropdownHtml = hasDrop ? dropdownHtmlFor(l.dropdown) : '';
       const chevronHtml = hasDrop ? `<span class="nav-chevron">${SC.icon('chevron-down', { size: 13 })}</span>` : '';
       // Unread pill (currently only the Community room carries one).
       const badgeHtml = l.badge
@@ -328,7 +434,7 @@
         <div class="nav-actions" id="navActions">
           ${searchButtonHtml}
           ${themeToggleHtml}
-          ${notificationBellHtml()}
+          ${notificationsEnabled() ? notificationBellHtml() : ''}
           <span id="navAuthSlot" aria-live="polite"></span>
         </div>
       </div>
@@ -493,6 +599,21 @@
     search: ['search']
   };
 
+  // Content Admins get a publisher tab bar — Home (their dashboard), Upload,
+  // My Uploads, Site (the public pages they may read) and Account — so the
+  // phone experience is a real menu instead of a single trapped screen.
+  function contentAdminTabsHtml(user) {
+    const onDash = currentPage() === 'content-admin';
+    const accountGlyph = `<span class="mob-tab-ic">${StudyCoreAuth.avatarHtml(user, 'avatar-xs')}</span><span class="mob-tab-lb">Account</span>`;
+    return `
+      <a class="mob-tab${onDash ? ' active' : ''}" href="${CONTENT_ADMIN_HOME}"${tabAttrs(onDash)}>${mobTabGlyph('Home', 'layout-dashboard')}</a>
+      <a class="mob-tab" href="${CONTENT_ADMIN_HOME}#upload">${mobTabGlyph('Upload', 'upload')}</a>
+      <a class="mob-tab" href="${CONTENT_ADMIN_HOME}#uploads">${mobTabGlyph('Uploads', 'library')}</a>
+      <a class="mob-tab${currentPage() === 'home' ? ' active' : ''}" href="/"${tabAttrs(currentPage() === 'home')}>${mobTabGlyph('Site', 'globe')}</a>
+      <button type="button" class="mob-tab" id="mobTabAccount" aria-haspopup="dialog" aria-expanded="false">${accountGlyph}</button>
+    `;
+  }
+
   function mobileHomeHref(user) {
     const role = user ? StudyCoreAuth.normalizedRole(user) : '';
     if (role === 'admin') return '/admin.html';
@@ -540,20 +661,24 @@
       document.body.appendChild(host);
     }
 
-    const searchTabHtml = globalSearchEnabled()
-      ? `<button type="button" class="mob-tab${mobTabActive('search', user) ? ' active' : ''}" id="mobTabSearch" aria-label="Search StudyCore">${mobTabGlyph('Search', 'search')}</button>`
-      : '';
-    const accountGlyph = user
-      ? `<span class="mob-tab-ic">${StudyCoreAuth.avatarHtml(user, 'avatar-xs')}</span><span class="mob-tab-lb">Account</span>`
-      : mobTabGlyph('Account', 'user');
+    if (isContentAdminUser(user)) {
+      host.innerHTML = contentAdminTabsHtml(user);
+    } else {
+      const searchTabHtml = globalSearchEnabled()
+        ? `<button type="button" class="mob-tab${mobTabActive('search', user) ? ' active' : ''}" id="mobTabSearch" aria-label="Search StudyCore">${mobTabGlyph('Search', 'search')}</button>`
+        : '';
+      const accountGlyph = user
+        ? `<span class="mob-tab-ic">${StudyCoreAuth.avatarHtml(user, 'avatar-xs')}</span><span class="mob-tab-lb">Account</span>`
+        : mobTabGlyph('Account', 'user');
 
-    host.innerHTML = `
-      <a class="mob-tab${mobTabActive('home', user) ? ' active' : ''}" href="${mobileHomeHref(user)}"${tabAttrs(mobTabActive('home', user))}>${mobTabGlyph('Home', 'home')}</a>
-      <a class="mob-tab${mobTabActive('courses', user) ? ' active' : ''}" href="/pages/courses.html"${tabAttrs(mobTabActive('courses', user))}>${mobTabGlyph('Courses', 'library')}</a>
-      ${searchTabHtml}
-      <a class="mob-tab${mobTabActive('resources', user) ? ' active' : ''}" href="/pages/resources.html"${tabAttrs(mobTabActive('resources', user))}>${mobTabGlyph('Resources', 'file-text')}</a>
-      <button type="button" class="mob-tab" id="mobTabAccount" aria-haspopup="dialog" aria-expanded="false">${accountGlyph}</button>
-    `;
+      host.innerHTML = `
+        <a class="mob-tab${mobTabActive('home', user) ? ' active' : ''}" href="${mobileHomeHref(user)}"${tabAttrs(mobTabActive('home', user))}>${mobTabGlyph('Home', 'home')}</a>
+        <a class="mob-tab${mobTabActive('courses', user) ? ' active' : ''}" href="/pages/courses.html"${tabAttrs(mobTabActive('courses', user))}>${mobTabGlyph('Courses', 'library')}</a>
+        ${searchTabHtml}
+        <a class="mob-tab${mobTabActive('resources', user) ? ' active' : ''}" href="/pages/resources.html"${tabAttrs(mobTabActive('resources', user))}>${mobTabGlyph('Resources', 'file-text')}</a>
+        <button type="button" class="mob-tab" id="mobTabAccount" aria-haspopup="dialog" aria-expanded="false">${accountGlyph}</button>
+      `;
+    }
 
     document.body.classList.add('has-mobtabs');
 
@@ -588,6 +713,11 @@
     if (role === 'content_admin') {
       return `
         <a class="sheet-row" href="${dashboard}">${SC.icon('layout-dashboard', { size: 20 })}<span>My Dashboard</span></a>
+        <a class="sheet-row" href="${dashboard}#upload">${SC.icon('upload', { size: 20 })}<span>Upload Resource</span></a>
+        <a class="sheet-row" href="${dashboard}#uploads">${SC.icon('library', { size: 20 })}<span>My Uploads</span></a>
+        <a class="sheet-row" href="${dashboard}#quizzes">${SC.icon('circle-help', { size: 20 })}<span>Quizzes</span></a>
+        <a class="sheet-row" href="${dashboard}#profile">${SC.icon('user', { size: 20 })}<span>Profile</span></a>
+        ${CONTENT_ADMIN_SITE_LINKS.map((l) => `<a class="sheet-row" href="${l.href}">${SC.icon(l.icon, { size: 20 })}<span>${l.label}</span></a>`).join('')}
         ${sheetThemeRowHtml()}
         <button type="button" class="sheet-row sheet-row-danger" data-sheet-logout>${SC.icon('log-out', { size: 20 })}<span>Log Out</span></button>`;
     }
@@ -863,6 +993,50 @@
   }
 
   /* ── Footer ─────────────────────────────── */
+  // The Study and Account columns list student destinations. A Content Admin
+  // is denied those server-side, so they get their workspace and the public
+  // pages instead — dead links are worse than no links.
+  function footerStudyColumnHtml() {
+    if (isContentAdminUser()) {
+      return `
+        <h4>Workspace</h4>
+        <ul class="footer-links">
+          ${CONTENT_ADMIN_SECTIONS.map((s) => `<li><a href="${CONTENT_ADMIN_HOME}${s.hash}">${s.name}</a></li>`).join('')}
+        </ul>`;
+    }
+    return `
+      <h4>Study</h4>
+      <ul class="footer-links">
+        <li><a href="/pages/courses.html">Explore Courses</a></li>
+        <li><a href="/pages/resources.html">Open Resources</a></li>
+        <li><a href="/pages/resources.html?type=past_paper">View Past Papers</a></li>
+        <li><a href="/pages/announcements.html">Announcements</a></li>
+        <li><a href="/quiz.html">Quizzes</a></li>
+        <li><a href="/pages/search.html">Search</a></li>
+      </ul>`;
+  }
+
+  function footerAccountColumnHtml() {
+    if (isContentAdminUser()) {
+      return `
+        <h4>StudyCore</h4>
+        <ul class="footer-links">
+          <li><a href="/">Home</a></li>
+          <li><a href="/pages/about.html">About StudyCore</a></li>
+          <li><a href="/pages/pricing.html">StudyCore Premium</a></li>
+          <li><a href="${CONTENT_ADMIN_HOME}">Content Admin Dashboard</a></li>
+        </ul>`;
+    }
+    return `
+      <h4>Account</h4>
+      <ul class="footer-links">
+        <li><a href="/login.html">Log In</a></li>
+        <li><a href="/signup.html">Create Account</a></li>
+        <li><a href="/pages/pricing.html">StudyCore Premium</a></li>
+        <li><a href="/dashboard.html">Student Dashboard</a></li>
+      </ul>`;
+  }
+
   function renderFooter() {
     const host = document.getElementById('siteFooter');
     if (!host) return;
@@ -879,24 +1053,10 @@
             <p style="margin-top:10px;font-size:0.8rem;">${SITE} is the official StudyCore website.</p>
           </div>
           <div>
-            <h4>Study</h4>
-            <ul class="footer-links">
-              <li><a href="/pages/courses.html">Explore Courses</a></li>
-              <li><a href="/pages/resources.html">Open Resources</a></li>
-              <li><a href="/pages/resources.html?type=past_paper">View Past Papers</a></li>
-              <li><a href="/pages/announcements.html">Announcements</a></li>
-              <li><a href="/quiz.html">Quizzes</a></li>
-              <li><a href="/pages/search.html">Search</a></li>
-            </ul>
+            ${footerStudyColumnHtml()}
           </div>
           <div>
-            <h4>Account</h4>
-            <ul class="footer-links">
-              <li><a href="/login.html">Log In</a></li>
-              <li><a href="/signup.html">Create Account</a></li>
-              <li><a href="/pages/pricing.html">StudyCore Premium</a></li>
-              <li><a href="/dashboard.html">Student Dashboard</a></li>
-            </ul>
+            ${footerAccountColumnHtml()}
           </div>
           <div id="footerCommunity">
             <h4>Stay Connected</h4>
@@ -1482,9 +1642,21 @@
     applyTheme();
     ensureMobileMeta();
     bindPageTransitions();
+    // The Content Admin workspace knows its own role from the server-gated
+    // page itself, so its chrome can be drawn correctly on the first paint
+    // instead of flashing the student navbar and swapping it out.
+    if (currentPage() === 'content-admin') navUser = { role: 'content_admin' };
     renderNav();
     renderFooter();
     const user = await StudyCoreAuth.fetchSession();
+    // Navigation is role-shaped: a Content Admin has no student library to
+    // link to, so redraw the chrome once we know who is signed in.
+    const roleChanged = isContentAdminUser(user) !== isContentAdminUser();
+    navUser = user;
+    if (roleChanged) {
+      renderNav();
+      renderFooter();
+    }
     renderNavAuth();
     // The mobile tab bar shows each user's own Home destination and avatar,
     // so it (and the account sheet) render once the session is known.
@@ -1493,7 +1665,9 @@
     // Swap the public course flyout for the student's own program courses
     // once we know who they are.
     updateCoursesDropdownForUser(user).catch(() => {});
-    NotificationManager.init(user);
+    // The bell is not rendered for publishers (the endpoint is student/admin
+    // only), so there is nothing to initialise.
+    if (notificationsEnabled()) NotificationManager.init(user);
 
     // Footer group button (official invite link from the server)
     whatsappLinks().then((links) => {
@@ -1518,11 +1692,17 @@
     // instead of leaving the student looking at a signed-out nav bar.
     global.addEventListener('sc:session:refreshed', (event) => {
       const fresh = event && event.detail ? event.detail.user : StudyCoreAuth.getCurrentUser();
+      const changed = isContentAdminUser(fresh) !== isContentAdminUser();
+      navUser = fresh;
+      if (changed) {
+        renderNav();
+        renderFooter();
+      }
       renderNavAuth();
       renderMobileTabs(fresh);
       renderAccountSheet(fresh);
       updateCoursesDropdownForUser(fresh).catch(() => {});
-      NotificationManager.init(fresh);
+      if (notificationsEnabled()) NotificationManager.init(fresh);
     });
   }
 

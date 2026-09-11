@@ -324,6 +324,17 @@
                 cta: '<a class="btn btn-primary" href="/content-admin.html">Open Content Admin dashboard</a>'
               });
               links.innerHTML = '';
+              // The signed-out hero CTAs ("Choose My Program" / "Log In") are
+              // dead ends for a signed-in publisher — /signup.html and
+              // /login.html both bounce them straight back. Point the hero at
+              // the work they actually came here to do.
+              document.getElementById('homeEyebrow').textContent = 'Publishing workspace';
+              document.getElementById('homeTitle').innerHTML = `Welcome back.<br />Your <em>workspace</em> is ready.`;
+              document.getElementById('homeLead').textContent = 'Publish notes, past papers, study guides, lecture material and quizzes into the StudyCore library — and manage everything you have uploaded.';
+              document.getElementById('homePrimaryCta').textContent = 'Upload a Resource';
+              document.getElementById('homePrimaryCta').href = '/content-admin.html#upload';
+              document.getElementById('homeSecondaryCta').textContent = 'My Uploads';
+              document.getElementById('homeSecondaryCta').href = '/content-admin.html#uploads';
             } else {
               const { programs } = await StudyCoreAPI.listPrograms(true);
               document.getElementById('programCount').textContent = programs.length;

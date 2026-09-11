@@ -101,7 +101,7 @@
             <div class="card card-pad"><div class="card-icon" data-icon="image"></div><h3 style="margin-top:14px;">Image questions</h3><p>Admins can post an image and ask a question about it — perfect for diagrams and maps.</p></div>
           </div>
           <div style="text-align:center;margin-top:18px;">
-            <a class="btn btn-primary" href="/quiz.html">Open Quizzes</a>
+            <a class="btn btn-primary" href="/quiz.html" id="aboutQuizCta">Open Quizzes</a>
           </div>
         </div>
       </section>
@@ -139,10 +139,20 @@
     <script src="/js/programs.js"></script>
     <script src="/js/scroll-reveal.js"></script>
     <script>
-      document.addEventListener('DOMContentLoaded', () => {
+      document.addEventListener('DOMContentLoaded', async () => {
         document.querySelectorAll('[data-icon]').forEach((el) => { el.innerHTML = SC.icon(el.getAttribute('data-icon'), { size: 22 }); });
         document.getElementById('contactCta').innerHTML = `${SC.icon('whatsapp', { size: 17 })} Message StudyCore`;
         document.getElementById('complaintsCta').innerHTML = `${SC.icon('flag', { size: 17 })} Report a Problem (Developer)`;
+
+        // /quiz.html is the student surface for taking quizzes. A Content
+        // Admin authors them instead, so send them to the authoring section
+        // rather than a page the server will redirect away from.
+        const user = await StudyCoreAuth.fetchSession();
+        if (user && StudyCoreAuth.isContentAdmin(user)) {
+          const quizCta = document.getElementById('aboutQuizCta');
+          quizCta.textContent = 'Create a Quiz';
+          quizCta.href = '/content-admin.html#quizzes';
+        }
       });
     </script>
   </body>

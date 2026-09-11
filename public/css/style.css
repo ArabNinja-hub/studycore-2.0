@@ -1087,6 +1087,14 @@ body[data-theme='dark'] .account-panel button:hover {
 .account-panel .danger { color: var(--red-600); }
 .account-panel .danger:hover { background: rgba(199,62,62,0.10); color: var(--red-600); }
 body[data-theme='dark'] .account-panel .danger:hover { background: rgba(248,113,113,0.12); }
+/* Divides a role's own workspace links from the wider-site links below them
+   (used by the Content Admin menu, which lists both). */
+.account-panel-sep {
+  height: 1px;
+  margin: 7px 12px;
+  background: rgba(255,255,255,0.18);
+}
+body[data-theme='dark'] .account-panel-sep { background: rgba(255,255,255,0.08); }
 
 /* ── Mobile account sheet — iPhone bottom sheet glass ────────────────── */
 .sc-backdrop {
