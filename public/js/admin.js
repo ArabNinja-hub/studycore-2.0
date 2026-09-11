@@ -152,18 +152,23 @@
       label.textContent = file ? `Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)` : '';
     }
 
+    // The dashed border is on the shell, so that is what highlights while a
+    // file is dragged over it. Binding the drag events to the shell too means
+    // the whole padded box is a drop target, not just the inner column.
+    const shell = document.getElementById('dropZoneShell') || dropZone;
+
     dropZone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => chooseFile(e.target.files[0]));
 
-    ['dragenter', 'dragover'].forEach((evt) => dropZone.addEventListener(evt, (e) => {
+    ['dragenter', 'dragover'].forEach((evt) => shell.addEventListener(evt, (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = 'var(--teal-500)';
+      shell.classList.add('is-dragging');
     }));
-    ['dragleave', 'drop'].forEach((evt) => dropZone.addEventListener(evt, (e) => {
+    ['dragleave', 'drop'].forEach((evt) => shell.addEventListener(evt, (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = '';
+      shell.classList.remove('is-dragging');
     }));
-    dropZone.addEventListener('drop', (e) => {
+    shell.addEventListener('drop', (e) => {
       const file = e.dataTransfer.files[0];
       if (file) chooseFile(file);
     });

@@ -126,37 +126,6 @@ function computeStreak(userId) {
   return streak;
 }
 
-// Academic achievements, computed from real records - never faked client-side.
-// Each achievement is either earned or not, with the number that got the
-// student there, so the dashboard can render an honest "2/10" state.
-function computeAchievements(user) {
-  const totalLessons = db.prepare('SELECT COUNT(*) c FROM lesson_progress WHERE user_id = ?').get(user.id).c;
-  const streak = computeStreak(user.id);
-  const subjectsCompleted = new Set();
-  for (const course of COURSES) {
-    const rows = db.prepare(`SELECT * FROM resources WHERE LOWER(subject) = LOWER(?) AND category != 'announcement'`).all(course.subject);
-    if (!rows.length) continue;
-    const done = rows.filter((r) => db.prepare('SELECT 1 x FROM lesson_progress WHERE user_id = ? AND resource_id = ?').get(user.id, r.id));
-    if (done.length === rows.length) subjectsCompleted.add(course.subject);
-  }
-  const physicsLessons = db.prepare(`
-    SELECT COUNT(*) c FROM lesson_progress lp
-    JOIN resources r ON r.id = lp.resource_id
-    WHERE lp.user_id = ? AND LOWER(r.subject) = 'physics'
-  `).get(user.id).c;
-
-  const defs = [
-    { id: 'first-lesson', name: 'First Lesson', icon: 'graduation-cap', detail: 'Complete your first lesson', earned: totalLessons >= 1, value: totalLessons, target: 1 },
-    { id: 'ten-lessons', name: '10 Lessons Completed', icon: 'check-circle', detail: 'Complete 10 lessons', earned: totalLessons >= 10, value: totalLessons, target: 10 },
-    { id: 'fifty-lessons', name: '50 Lessons Completed', icon: 'book-open', detail: 'Complete 50 lessons', earned: totalLessons >= 50, value: totalLessons, target: 50 },
-    { id: 'seven-day-streak', name: '7-Day Study Streak', icon: 'flame', detail: 'Study 7 days in a row', earned: streak >= 7, value: streak, target: 7 },
-    { id: 'thirty-day-streak', name: '30-Day Study Streak', icon: 'flame', detail: 'Study 30 days in a row', earned: streak >= 30, value: streak, target: 30 },
-    { id: 'physics-explorer', name: 'Physics Explorer', icon: 'atom', detail: 'Complete 10 Physics lessons', earned: physicsLessons >= 10, value: physicsLessons, target: 10 },
-    { id: 'course-completed', name: 'Course Completed', icon: 'award', detail: 'Complete every lesson in a course', earned: subjectsCompleted.size >= 1, value: subjectsCompleted.size, target: 1, courses: [...subjectsCompleted] }
-  ];
-  return { achievements: defs, totalLessons, streak, coursesCompleted: [...subjectsCompleted] };
-}
-
 // GET /api/courses - public course directory (no auth required, so the
 // Courses page can show real, current content counts to every visitor).
 router.get('/', (req, res) => {
@@ -377,7 +346,6 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
     tutorials: flatLessons.filter((l) => l.category === 'tutorial'),
     pastPapers: flatLessons.filter((l) => l.category === 'past_paper'),
     announcements: announcements.map(withState),
-    achievements: computeAchievements(user),
     access: { premium: access.premium, trial: access.trial }
   });
 });

@@ -54,16 +54,6 @@
 
   function uid() { return 'q-' + Math.random().toString(36).slice(2, 9); }
 
-  function flattenCourses(programs) {
-    const out = [];
-    (programs || []).forEach((p) => {
-      (p.courses || []).forEach((c) => out.push({
-        id: c.id, code: c.code, name: c.name, programCode: p.code, programName: p.name
-      }));
-    });
-    return out;
-  }
-
   function targetBadgeLabel(quiz) {
     if (quiz.targetAll) return 'All Programs';
     if (!quiz.programCodes || !quiz.programCodes.length) return 'No audience';

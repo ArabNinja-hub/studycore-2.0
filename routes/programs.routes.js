@@ -27,6 +27,40 @@ router.use((req, res, next) => {
 const LEARN_CATEGORIES = ['video', 'document', 'tutorial', 'past_paper'];
 const CATEGORY_ORDER = { video: 0, document: 1, tutorial: 2, past_paper: 3 };
 
+// Consecutive days (ending today, or yesterday if nothing yet today) on which
+// the student completed a lesson or took a quiz. A whole-platform habit
+// measure, so it is identical on the course home and the dashboard.
+function studyStreak(userId) {
+  const rows = db.prepare(`
+    SELECT completed_at AS t FROM lesson_progress WHERE user_id = @userId
+    UNION ALL
+    SELECT created_at AS t FROM quiz_attempts WHERE user_id = @userId
+  `).all({ userId });
+  const days = new Set(
+    rows
+      .map((r) => {
+        const d = new Date(r.t);
+        return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+      })
+      .filter(Boolean)
+  );
+  if (days.size === 0) return 0;
+
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  let cursor = new Date();
+  cursor.setUTCHours(0, 0, 0, 0);
+  // Studying earlier today is not required to keep a streak alive — the run
+  // is still counted from yesterday until today ends.
+  if (!days.has(cursor.toISOString().slice(0, 10))) cursor = new Date(cursor.getTime() - oneDayMs);
+
+  let streak = 0;
+  while (days.has(cursor.toISOString().slice(0, 10))) {
+    streak += 1;
+    cursor = new Date(cursor.getTime() - oneDayMs);
+  }
+  return streak;
+}
+
 function accessFor(user) {
   const now = Date.now();
   const subEnd = new Date(user.subscription_end || 0).getTime();
@@ -139,8 +173,48 @@ router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
     });
   });
 
-  res.json({ program: serializeProgram(program), courses });
+  res.json({
+    program: serializeProgram(program),
+    courses,
+    achievements: computeAchievements(user, courses)
+  });
 });
+
+// Academic achievements for the dashboard, computed from real records —
+// never faked client-side. Each badge is either earned or not, and carries
+// the number that got the student there so the UI can show an honest "2/10".
+//
+// This is program-aware: "courses completed" counts the student's OWN
+// program courses (already serialized with progress above), rather than the
+// legacy fixed subject list, so a Law student is measured against Law.
+// Everything comes from three aggregate queries — no per-resource lookups.
+function computeAchievements(user, courses) {
+  const lessons = db.prepare(
+    'SELECT COUNT(*) AS c FROM lesson_progress WHERE user_id = ?'
+  ).get(user.id).c || 0;
+
+  const quizzesPassed = db.prepare(`
+    SELECT COUNT(DISTINCT resource_id) AS c FROM quiz_attempts
+    WHERE user_id = ? AND total > 0 AND (score * 100.0 / total) >= 50
+  `).get(user.id).c || 0;
+
+  const streak = studyStreak(user.id);
+
+  // A course counts as complete only when it actually has lessons in it, so
+  // an empty course can never award the badge.
+  const withLessons = (courses || []).filter((c) => c.progress && c.progress.total > 0);
+  const coursesCompleted = withLessons.filter((c) => c.progress.completed === c.progress.total).length;
+
+  return [
+    { id: 'first-lesson', name: 'First Lesson', icon: 'graduation-cap', detail: 'Complete your first lesson', earned: lessons >= 1, value: lessons, target: 1 },
+    { id: 'ten-lessons', name: '10 Lessons Completed', icon: 'check-circle', detail: 'Complete 10 lessons', earned: lessons >= 10, value: lessons, target: 10 },
+    { id: 'fifty-lessons', name: '50 Lessons Completed', icon: 'book-open', detail: 'Complete 50 lessons', earned: lessons >= 50, value: lessons, target: 50 },
+    { id: 'seven-day-streak', name: '7-Day Study Streak', icon: 'flame', detail: 'Study 7 days in a row', earned: streak >= 7, value: streak, target: 7 },
+    { id: 'thirty-day-streak', name: '30-Day Study Streak', icon: 'flame', detail: 'Study 30 days in a row', earned: streak >= 30, value: streak, target: 30 },
+    { id: 'quiz-taker', name: 'Quiz Taker', icon: 'circle-help', detail: 'Pass 5 quizzes', earned: quizzesPassed >= 5, value: quizzesPassed, target: 5 },
+    { id: 'course-completed', name: 'Course Completed', icon: 'award', detail: 'Complete every lesson in one of your courses', earned: coursesCompleted >= 1, value: coursesCompleted, target: 1 }
+  ];
+}
 
 // ---- Student: one course home -------------------------------------------
 // :key accepts course id, slug (ma110) or code (MA110). Access is enforced:
@@ -264,25 +338,7 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
   }
 
   // Study streak (whole-platform habit).
-  const streak = (() => {
-    const completions = db.prepare('SELECT completed_at as t FROM lesson_progress WHERE user_id = ?').all(user.id);
-    const quizzes = db.prepare('SELECT created_at as t FROM quiz_attempts WHERE user_id = ?').all(user.id);
-    const days = new Set(
-      [...completions, ...quizzes].map((r) => new Date(r.t).toISOString().slice(0, 10))
-    );
-    if (days.size === 0) return 0;
-    const oneDayMs = 24 * 60 * 60 * 1000;
-    let cursor = new Date();
-    cursor.setUTCHours(0, 0, 0, 0);
-    const todayKey = cursor.toISOString().slice(0, 10);
-    if (!days.has(todayKey)) cursor = new Date(cursor.getTime() - oneDayMs);
-    let s = 0;
-    while (days.has(cursor.toISOString().slice(0, 10))) {
-      s += 1;
-      cursor = new Date(cursor.getTime() - oneDayMs);
-    }
-    return s;
-  })();
+  const streak = studyStreak(user.id);
 
   res.json({
     course: serializeCourse(course, { subject: course.subject }),

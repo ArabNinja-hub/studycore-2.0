@@ -640,21 +640,6 @@ body[data-theme='dark'] .notif-badge { border-color: #10202f; }
 }
 body[data-theme='dark'] .nav-badge-pill { background: var(--teal-500); }
 
-/* Community activity pills on the admin dashboard's community card. */
-.community-stat-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
-  color: var(--muted);
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 4px 11px;
-}
-.community-stat-pill svg { color: var(--teal-600); }
-.community-stat-pill strong { color: var(--ink); font-family: var(--font-display); }
-
 .notif-panel {
   position: absolute;
   top: calc(100% + 14px);
@@ -1740,19 +1725,7 @@ body[data-theme='dark'] .resource-lock-overlay .lock-ring {
 .announcement-body p { font-size: 0.9rem; }
 .announcement-meta { display: flex; gap: 10px; align-items: center; font-size: 0.78rem; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
 
-/* ── WhatsApp / community ──────────────────
-   A quiet light card — the dark navy + gradient treatment is reserved for
-   the hero and the single Premium callout. */
-.community-panel {
-  display: block;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 36px 40px;
-}
-.community-panel h2 { margin: 10px 0 12px; }
-.community-panel p { margin-bottom: 22px; max-width: 640px; }
-.community-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+/* ── WhatsApp call-to-action ─────────────── */
 .whatsapp-btn { background: #25d366; color: #06281a; font-weight: 700; }
 .whatsapp-btn:hover { background: #3ce07b; color: #06281a; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37, 211, 102, 0.35); }
 
@@ -2268,6 +2241,25 @@ body[data-theme='dark'] .resource-lock-overlay .lock-ring {
   padding: 11px 14px; margin-bottom: 20px; font-weight: 500;
 }
 
+/* ── Admin upload dropzone ───────────────────
+   The dashed border lives on the shell (not the inner #dropZone), because
+   the shell is what the admin actually sees as the drop target. The
+   drag-over state is a class so the highlight is real, themable and
+   reverts cleanly — previously the JS set an inline borderColor on the
+   inner div, which has no border, so dragging a file gave no feedback. */
+.admin-dropzone {
+  background: var(--bg-alt);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 26px;
+  text-align: center;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+.admin-dropzone.is-dragging {
+  border-color: var(--teal-500);
+  background: var(--teal-50);
+}
+
 /* ── Tables (admin) ──────────────────────── */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
 table.table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
@@ -2728,7 +2720,6 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .dash-grid > * { grid-column: span 12 !important; }
   .achievement-grid { grid-template-columns: repeat(2, 1fr); }
   .footer-grid { grid-template-columns: 1fr; gap: 30px; padding: 44px 0 30px; }
-  .community-panel { padding: 22px 18px; }
   .course-hero { padding: 34px 0 40px; }
   /* Keep the ambient layers quiet on phones — the copy is the focus and
      bandwidth/GPU should stay low on small devices. */
@@ -3260,8 +3251,7 @@ a, button, label, summary,
    article" bug on iOS). */
 .sheet-body,
 .search-results,
-.notif-panel-list,
-.notif-list,
+.notif-panel-body,
 .modal,
 .table-wrap,
 .chips-row,

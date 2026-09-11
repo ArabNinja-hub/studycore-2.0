@@ -367,8 +367,10 @@
       const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));
       return request(`/api/admin/resources?${qs.toString()}`);
     },
-    adminCreateResource: (formData) => request('/api/admin/resources', { method: 'POST', body: formData }),
-    adminUpdateResource: (id, formData) => request(`/api/admin/resources/${id}`, { method: 'PUT', body: formData }),
+    // NOTE: creating/updating a resource uploads a file, so it goes through
+    // StudyCoreAPI.uploadWithProgress (below) rather than request(). That is
+    // the only path with a progress bar and upload stall detection — plain
+    // fetch() cannot report progress, so no create/update wrapper lives here.
     adminDeleteResource: (id) => request(`/api/admin/resources/${id}`, { method: 'DELETE' }),
     adminListUsers: (params = {}) => {
       const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ''));
@@ -392,8 +394,8 @@
     contentAdminCatalog: () => request('/api/content-admin/catalog'),
     contentAdminListResources: () => request('/api/content-admin/resources'),
     contentAdminGetResource: (id) => request(`/api/content-admin/resources/${encodeURIComponent(id)}`),
-    contentAdminCreateResource: (formData) => request('/api/content-admin/resources', { method: 'POST', body: formData }),
-    contentAdminUpdateResource: (id, formData) => request(`/api/content-admin/resources/${encodeURIComponent(id)}`, { method: 'PUT', body: formData }),
+    // As above: publishing a resource uploads a file and therefore uses
+    // StudyCoreAPI.uploadWithProgress, not request().
     contentAdminDeleteResource: (id) => request(`/api/content-admin/resources/${encodeURIComponent(id)}`, { method: 'DELETE' })
   };
 
