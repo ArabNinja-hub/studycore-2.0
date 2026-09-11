@@ -90,7 +90,16 @@ function securityHeaders(req, res, next) {
   res.setHeader('Cross-Origin-Opener-Policy', CROSS_ORIGIN_OPENER_POLICY);
   res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), fullscreen=(self)');
+  // `display-capture=()` is the browser-enforced half of the content
+  // privacy work (see public/js/privacy-guard.js): no script in this
+  // document or any frame it embeds may call getDisplayMedia() to record
+  // the tab. It does NOT stop an OS screenshot tool - nothing on the web
+  // can - but it does close the one screen-recording route that lives
+  // inside the page, including via an injected or compromised script.
+  res.setHeader(
+    'Permissions-Policy',
+    'geolocation=(), microphone=(), camera=(), display-capture=(), fullscreen=(self)'
+  );
 
   // HSTS: only in production AND only when the request actually arrived
   // over HTTPS (req.secure is honored through the configured proxy).
