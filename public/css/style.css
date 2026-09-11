@@ -2647,7 +2647,14 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .hero-stat .num { font-size: 1.35rem; }
-  .hero-stat .label { font-size: 0.63rem; letter-spacing: 0.05em; }
+  /* Every label needs two lines at this width. Left to itself the browser
+     breaks them late ("FREE TRIAL ON / SIGNUP"), which leaves a stranded
+     word under a full line. Balancing evens the two lines out and keeps a
+     tidy baseline across all three stats. */
+  .hero-stat .label {
+    font-size: 0.63rem; letter-spacing: 0.05em;
+    line-height: 1.3; text-wrap: balance;
+  }
   .hero-actions { width: 100%; }
   .hero-actions .btn { flex: 1 1 160px; }
   .course-grid,
@@ -2835,6 +2842,12 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .hero-actions .btn,
   .dash-hero-actions .btn { flex: 1 1 100%; width: 100%; }
   .course-hero .hero-actions { grid-template-columns: 1fr; }
+  /* Four hero stats across a 320px screen leaves ~63px of usable width per
+     stat, which clips the two-word labels ("Video lessons", "Past papers").
+     Two rows of two gives each label ~135px and keeps all four visible
+     without shrinking the type into unreadability. */
+  .course-hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 16px; }
+  .course-hero-stat:nth-child(3) { padding-left: 0; border-left: 0; }
   .achievement-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .player-skip-btn { display: none; }
   .nav-brand-text { font-size: 1.08rem; }
