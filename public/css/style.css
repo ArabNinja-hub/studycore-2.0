@@ -2835,6 +2835,12 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
   .hero-actions .btn,
   .dash-hero-actions .btn { flex: 1 1 100%; width: 100%; }
   .course-hero .hero-actions { grid-template-columns: 1fr; }
+  /* Four hero stats across a 320px screen leaves ~63px of usable width per
+     stat, which clips the two-word labels ("Video lessons", "Past papers").
+     Two rows of two gives each label ~135px and keeps all four visible
+     without shrinking the type into unreadability. */
+  .course-hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 16px; }
+  .course-hero-stat:nth-child(3) { padding-left: 0; border-left: 0; }
   .achievement-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .player-skip-btn { display: none; }
   .nav-brand-text { font-size: 1.08rem; }
