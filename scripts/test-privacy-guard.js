@@ -67,12 +67,10 @@ test('every learning page loads the privacy guard, and loads it in the right ord
     const headEnd = html.indexOf('</head>');
     assert.ok(headEnd > 0 && html.indexOf('/css/privacy-guard.css') < headEnd, `${page}: guard css belongs in <head>`);
 
-    // The guard reads the session for the watermark, so it must come after
-    // auth.js; it must come before the scripts that build the player and the
-    // document reader so their surfaces are stamped as they appear.
-    const authAt = html.indexOf('/js/auth.js');
+    // It must come before the scripts that build the player and the document
+    // reader so their surfaces are tagged as they appear.
     const guardAt = html.indexOf('/js/privacy-guard.js');
-    assert.ok(authAt > 0 && guardAt > authAt, `${page}: guard loads after auth.js`);
+    assert.ok(guardAt > 0, `${page}: guard loads`);
 
     for (const later of ['/js/player.js', '/js/doc-reader.js', '/js/lesson.js', '/js/viewer.js']) {
       const at = html.indexOf(later);
@@ -106,10 +104,10 @@ test('the guard only arms itself on learning pages', () => {
   }
 });
 
-test('the reader and player surfaces are the ones watermarked', () => {
+test('the reader and player surfaces are the ones tagged for the scoped guards', () => {
   const js = read('public/js/privacy-guard.js');
   // These selectors must keep matching the real markup the player and reader
-  // build, otherwise the watermark silently stops appearing.
+  // build, otherwise the scoped capture guards silently stop applying.
   assert.match(js, /'\.player-shell'/);
   assert.match(js, /'\.doc-reader-stage'/);
 
@@ -120,36 +118,12 @@ test('the reader and player surfaces are the ones watermarked', () => {
   assert.match(reader, /class="doc-reader-stage"/, 'reader still builds .doc-reader-stage');
 
   // In embedded (lesson) mode the reader nests .doc-reader-stage INSIDE the
-  // .doc-reader card. Watermarking both would stamp that page twice.
+  // .doc-reader card. Tagging both would mark that page twice.
   const cardAt = reader.indexOf('class="card doc-reader"');
   const stageAt = reader.indexOf('class="doc-reader-stage"');
   assert.ok(cardAt > 0 && stageAt > cardAt, 'the reader still nests the stage inside the card');
-  assert.doesNotMatch(js, /'\.doc-reader'/, 'the wrapping card must not be a watermark surface too');
+  assert.doesNotMatch(js, /'\.doc-reader'/, 'the wrapping card must not be a tagged surface too');
   assert.match(js, /parentElement\.closest\('\.sc-protected-surface'\)/, 'nested surfaces are skipped at runtime');
-});
-
-test('the watermark survives fullscreen and never covers the controls', () => {
-  const css = read('public/css/privacy-guard.css');
-  const style = read('public/css/style.css');
-
-  // The watermark must sit above the content but below every control, or a
-  // student cannot read the seek bar / error messages.
-  const wm = css.match(/\.sc-watermark \{[^}]*\}/)[0];
-  const z = Number(/z-index:\s*(\d+)/.exec(wm)[1]);
-  assert.equal(z, 2, 'watermark sits above the media');
-  for (const [selector, layer] of [['.player-title', 3], ['.player-state', 4], ['.doc-fs-ui', 20]]) {
-    assert.ok(style.includes(selector), `${selector} still exists`);
-    assert.ok(z < layer, `watermark stays under ${selector} (z-index ${layer})`);
-  }
-
-  // Rotated text is clipped to the surface, never spilling onto the page.
-  assert.match(wm, /overflow:\s*hidden/);
-  assert.match(css, /\.sc-watermark-inner \{[^}]*inset:\s*-40%/, 'inner layer overhangs so the tile covers every corner');
-
-  // Fullscreen paints only the fullscreened element's subtree, so the
-  // watermarked surfaces must be the same elements that get fullscreened.
-  assert.match(read('public/js/player.js'), /req\.call\(shell\)/, '.player-shell is the fullscreen target');
-  assert.match(read('public/js/doc-reader.js'), /const fsTarget = stage;/, '.doc-reader-stage is the fullscreen target');
 });
 
 test('typing still works: inputs are exempt from the selection and copy locks', () => {
@@ -172,15 +146,6 @@ test('typing still works: inputs are exempt from the selection and copy locks', 
   }
 });
 
-test('the curtain outranks every other layer and is opaque, not blurred', () => {
-  const css = read('public/css/privacy-guard.css');
-  assert.match(css, /\.sc-privacy-curtain\s*\{[^}]*z-index:\s*2147483647/, 'curtain sits above modals and fullscreen chrome');
-  assert.match(css, /\.sc-privacy-curtain\s*\{[^}]*background:\s*#05090d/, 'curtain is fully opaque');
-  assert.doesNotMatch(css, /\.sc-privacy-curtain\s*\{[^}]*filter:\s*blur/, 'a blur is recoverable; do not use one');
-  // Watermark must never swallow a click on the play button or the scroller.
-  assert.match(css, /\.sc-watermark\s*\{[^}]*pointer-events:\s*none/);
-});
-
 test('printing and "Save as PDF" are blanked', () => {
   const css = read('public/css/privacy-guard.css');
   assert.match(css, /@media print/);
@@ -191,99 +156,17 @@ test('printing and "Save as PDF" are blanked', () => {
 test('display-capture and picture-in-picture are blocked by the Permissions-Policy header', () => {
   const security = read('middleware/security.js');
   assert.match(security, /display-capture=\(\)/, 'no script in the page may record the tab');
-  // PiP floats the video in an OS window the privacy curtain cannot cover,
-  // and the header (unlike the <video> attribute) also reaches the
-  // cross-origin Cloudflare Stream iframe's own PiP button.
-  assert.match(security, /picture-in-picture=\(\)/, 'PiP is a hole straight through the curtain');
+  // PiP floats the video in an OS window no in-page guard can cover, and the
+  // header (unlike the <video> attribute) also reaches the cross-origin
+  // Cloudflare Stream iframe's own PiP button.
+  assert.match(security, /picture-in-picture=\(\)/, 'PiP is a hole straight through the in-page guards');
   // Fullscreen must survive: fullscreen watching and fullscreen document
-  // reading are core features, and the watermark is painted inside the
-  // element that gets fullscreened.
+  // reading are core features.
   assert.ok(security.includes('fullscreen=(self)'), 'fullscreen stays available');
   // The existing hardening must survive the edit.
   for (const directive of ['geolocation=()', 'microphone=()', 'camera=()']) {
     assert.ok(security.includes(directive), `kept ${directive}`);
   }
-});
-
-test('the watermark identifies the account without publishing anything sensitive', () => {
-  const js = read('public/js/privacy-guard.js');
-
-  // A watermark ends up in WhatsApp groups and on strangers' phones. It is a
-  // publication surface, so it must never carry a contact detail or anything
-  // that could be used against the student it names.
-  assert.doesNotMatch(js, /identity\.email/, 'the email address must never be stamped on content');
-  assert.match(js, /identity = \{ name: '', ref: '' \}/, 'identity carries a name and an opaque ref only');
-  assert.match(js, /accountRef\(user\.id\)/, 'the ref is derived from the random account id');
-
-  // The ref must be opaque and short: traceable in the admin tools, and
-  // meaningless (and non-reversible) to whoever finds a leaked screenshot.
-  const { win } = runGuard({ page: 'lesson' });
-  const ref = win.SCPrivacy.accountRef('user-9f8e7d6c-1111-2222-3333-a1b2c3d4e5f6');
-  assert.equal(ref, 'SC-C3D4E5F6', 'the tail of the random account id, uppercased');
-  assert.ok(ref.length <= 12, 'short enough to sit in a tile without hurting readability');
-  assert.doesNotMatch(ref, /@/, 'never an email');
-
-  // Branding is always present, even before the session resolves, so an
-  // anonymous frame is still identifiable as StudyCore material.
-  assert.match(win.SCPrivacy.watermarkText(), /^StudyCore · /);
-});
-
-test('the watermark moves, so it cannot be cropped or patched out once', () => {
-  const js = read('public/js/privacy-guard.js');
-  const css = read('public/css/privacy-guard.css');
-
-  assert.match(js, /DRIFT_STEPS/, 'there is a set of positions to move between');
-  assert.match(js, /setInterval\(driftWatermarks, \d+\)/, 'the stamp is repositioned on a timer');
-
-  // Every step must stay well inside the tile's 40% overhang, or drifting
-  // would uncover a corner of the content — the exact gap a cropper wants.
-  const steps = js.match(/\{ x: (-?\d+), y: (-?\d+), r: (-?\d+) \}/g) || [];
-  assert.ok(steps.length >= 3, 'more than a couple of positions');
-  for (const step of steps) {
-    const [, x, y] = /\{ x: (-?\d+), y: (-?\d+)/.exec(step);
-    assert.ok(Math.abs(Number(x)) <= 10 && Math.abs(Number(y)) <= 10,
-      `${step} stays inside the tile overhang and does not shove text across the page`);
-  }
-
-  // Motion is a protection, so reduced-motion drops the ANIMATION but must
-  // not drop the repositioning itself.
-  assert.match(css, /prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.sc-watermark-inner \{ transition: none; \}/,
-    'reduced motion removes the glide, not the protection');
-});
-
-test('the curtain shows the StudyCore capture message and never strands the student', () => {
-  const js = read('public/js/privacy-guard.js');
-  assert.match(js, /<h2>Protected StudyCore content<\/h2>/);
-  assert.match(js, /Content viewing has been temporarily paused\./);
-  // Every trigger gets an explanation, and none of them accuse the student —
-  // alt-tabbing and a notification stealing focus are the common causes.
-  for (const reason of ['hidden', 'focus', 'print', 'flash', 'capture', 'devtools']) {
-    assert.match(js, new RegExp(`${reason}: '`), `curtain hint for "${reason}"`);
-  }
-  // Restoring must be unconditional: a student stuck behind a black panel is
-  // a worse bug than any leak this prevents.
-  assert.match(js, /else hideCurtain\('hidden'\)/);
-  // And it must never log anyone out or reload the page.
-  assert.doesNotMatch(js, /location\s*=|location\.href|logout\(/, 'the guard never navigates or signs anyone out');
-});
-
-test('backgrounding the page on mobile raises the curtain (Page Visibility + iOS/Android lifecycle)', () => {
-  const js = read('public/js/privacy-guard.js');
-  // Android/iOS have no window "blur" the way a desktop does; visibilitychange
-  // is what actually fires when the student hits recent-apps, pulls down the
-  // notification shade, or takes a system screenshot.
-  assert.match(js, /document\.addEventListener\('visibilitychange'/);
-  // iOS Safari uses pagehide/pageshow (bfcache) instead.
-  assert.match(js, /addEventListener\('pagehide'/);
-  assert.match(js, /addEventListener\('pageshow'/);
-  // Chrome on Android freezes/discards backgrounded tabs.
-  assert.match(js, /addEventListener\('freeze'/);
-  assert.match(js, /addEventListener\('resume'/);
-
-  const { win, fire } = runGuard({ page: 'lesson' });
-  win.document.hidden = true;
-  fire('visibilitychange', {});
-  assert.equal(win.SCPrivacy.policy, 'strict', 'the guard survived the event without throwing');
 });
 
 test('the in-page routes that copy the content itself are closed on protected surfaces only', () => {
@@ -305,17 +188,6 @@ test('the in-page routes that copy the content itself are closed on protected su
   // the browsers that open it automatically when a tab is hidden.
   assert.match(js, /requestPictureInPicture/);
   assert.match(js, /enterpictureinpicture/);
-});
-
-test('protected media is paused behind the curtain, and only what we paused resumes', () => {
-  const js = read('public/js/privacy-guard.js');
-  assert.match(js, /function pauseProtectedMedia/);
-  assert.match(js, /function resumeProtectedMedia/);
-  // A video the student had already paused must stay paused when they return.
-  assert.match(js, /if \(v\.paused \|\| v\.ended\) return;/);
-  assert.match(js, /autoPaused\.add\(v\)/);
-  // A momentary capture flash must not interrupt a lecture.
-  assert.match(js, /if \(reason !== 'flash'\) pauseProtectedMedia\(\)/);
 });
 
 test('the browser is never handed a permanent URL for protected bytes', () => {
@@ -494,16 +366,13 @@ test('the page cannot record itself with getDisplayMedia', async () => {
   );
 });
 
-test('listing pages get the deterrents without the curtain or watermark', () => {
+test('listing pages get the deterrents without the in-page guards', () => {
   const { win, fire } = runGuard({ page: 'resources' });
   assert.equal(win.SCPrivacy.policy, 'basic');
 
   const menu = fakeEvent({});
   fire('contextmenu', menu);
   assert.equal(menu.prevented, true, 'right-click is still blocked on a listing page');
-  // No identity is loaded and no watermark is applied in basic mode, so the
-  // browse experience stays completely ordinary to look at.
-  assert.match(win.SCPrivacy.watermarkText(), /StudyCore/);
 });
 
 test('unprotected pages are untouched: no listeners, no patched print', () => {

@@ -672,8 +672,8 @@
 
     // The iframe's `allow` list deliberately omits picture-in-picture. PiP
     // floats the video in an OS-level window that lives outside this page, so
-    // the privacy curtain cannot cover it and a student could keep the lesson
-    // visible while switching to a recorder. Fullscreen, autoplay and
+    // none of the in-page guards can cover it and a student could keep the
+    // lesson visible while switching to a recorder. Fullscreen, autoplay and
     // encrypted-media (needed for HLS/DRM playback) are kept — dropping those
     // would break normal watching.
     container.innerHTML = `

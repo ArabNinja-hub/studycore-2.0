@@ -99,15 +99,14 @@ function securityHeaders(req, res, next) {
   //
   // `picture-in-picture=()` closes a real hole in the capture protection:
   // PiP floats the video in an OS-level window that lives OUTSIDE the
-  // document, where the privacy curtain cannot cover it and the student can
-  // keep the lesson on screen while switching to a recorder. Blocking it in
-  // the header (rather than only on the <video> element) also covers the
+  // document, where none of the in-page guards can reach it and the student
+  // can keep the lesson on screen while switching to a recorder. Blocking it
+  // in the header (rather than only on the <video> element) also covers the
   // cross-origin Cloudflare Stream iframe, whose own player would otherwise
   // offer its PiP button.
   //
   // `fullscreen=(self)` is unchanged and deliberately kept - fullscreen
-  // watching and fullscreen document reading are core features, and the
-  // watermark is painted inside the element that gets fullscreened.
+  // watching and fullscreen document reading are core features.
   res.setHeader(
     'Permissions-Policy',
     'geolocation=(), microphone=(), camera=(), display-capture=(), picture-in-picture=(), fullscreen=(self)'
