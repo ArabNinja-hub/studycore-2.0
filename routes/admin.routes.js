@@ -7,7 +7,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
-const { offloadResourceToStream } = require('../lib/stream-ingest');
+const { queueOffload } = require('../lib/stream-ingest');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
@@ -313,15 +313,21 @@ router.post('/resources', upload.single('file'), asyncHandler(async (req, res) =
   syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
 
   // Offload videos to Cloudflare Stream for adaptive-bitrate playback with a
-  // real quality selector (Auto / 1080p / 720p / …). No-op unless Stream is
-  // configured; on any failure the video stays on the R2 progressive player.
+  // real quality selector (Auto / 1080p / 720p / …). This is deliberately
+  // scheduled in the BACKGROUND rather than awaited: the upload itself is
+  // already complete and durable in R2 at this point, and making the admin
+  // wait while the server re-downloads the video from R2 and re-uploads it to
+  // Cloudflare doubled the wait and frequently tripped the client's
+  // "server did not confirm the upload in time" guard on a video that had
+  // uploaded fine. Until encoding lands, students watch it on the existing
+  // progressive player.
   let streamNote = null;
   if (category === 'video' && req.file && stream.isConfigured()) {
-    const result = await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(id));
-    if (!result.offloaded && result.reason === 'too_large_for_stream') {
+    if ((Number(req.file.size) || 0) > stream.uploadBasicMaxBytes()) {
       streamNote = 'This video is larger than the 200MB Cloudflare Stream limit, so it will play at its original quality without the HD quality selector.';
-    } else if (!result.offloaded && (result.reason === 'upload_failed' || result.reason === 'read_failed')) {
-      streamNote = 'The video was saved and will play, but sending it to Cloudflare Stream for HD quality options failed - it will use the standard player.';
+    } else {
+      queueOffload(id);
+      streamNote = 'HD quality options are being prepared in the background — the video is already published and playable.';
     }
   }
 
@@ -471,9 +477,11 @@ router.put('/resources/:id', upload.single('file'), asyncHandler(async (req, res
   `).run(updated);
 
   // A newly-replaced video file gets re-encoded on Cloudflare Stream. No-op
-  // unless Stream is configured and the (new) file is a video.
+  // unless Stream is configured and the (new) file is a video. Queued rather
+  // than awaited so saving an edit returns as soon as the row is written —
+  // see lib/stream-ingest.js.
   if (req.file && updated.category === 'video' && stream.isConfigured()) {
-    await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(existing.id));
+    queueOffload(existing.id);
   }
 
   const saved = resourceWithUploader(existing.id);

@@ -65,6 +65,28 @@ function publishedSubjectResources(user, subject) {
   `).all({ subject, ...vis.params });
 }
 
+const VIDEO_TERMS = ['Term 1', 'Term 2', 'Term 3'];
+
+// Video lessons for one subject, optionally narrowed to a single term, in
+// SQL. Used by the Video Lessons page (?view=videos), which renders exactly
+// this set — loading the whole subject library there wasted bandwidth and
+// query time on notes/past papers it never displays. Same visibility clause
+// as publishedSubjectResources: a narrower read of the same authorized rows.
+function publishedSubjectVideos(user, subject, term) {
+  const vis = resourceVisibilityClause(user, 'r', 'subjectProgram');
+  return db.prepare(`
+    SELECT DISTINCT r.* FROM resources r
+    LEFT JOIN courses c ON c.id = r.course_id
+    LEFT JOIN courses counterpart ON counterpart.id = c.shared_with_course_id OR c.id = counterpart.shared_with_course_id
+    WHERE (LOWER(r.subject) = LOWER(@subject) OR LOWER(c.name) = LOWER(@subject) OR LOWER(c.subject) = LOWER(@subject) OR LOWER(counterpart.name) = LOWER(@subject) OR LOWER(counterpart.subject) = LOWER(@subject))
+      AND r.publish_status = 'published'
+      AND r.category = 'video'
+      ${term ? 'AND r.semester = @term' : ''}
+      ${vis.clause ? `AND ${vis.clause}` : ''}
+    ORDER BY r.created_at ASC
+  `).all({ subject, ...(term ? { term } : {}), ...vis.params });
+}
+
 function serializeResource(row, extra = {}) {
   let mime = row.mime_type;
   const fName = String(row.file_name || '').trim();
@@ -232,6 +254,63 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
   const key = String(req.params.subject).trim().toLowerCase();
   const subject = SUBJECT_TO_COURSE[key] || COURSE_TO_SUBJECT[key] || req.params.subject;
   const access = accessFor(user);
+
+  // Compact payload for /pages/videos.html — one subject, one term. See the
+  // matching branch in routes/programs.routes.js: the Video Lessons page used
+  // to download the entire course home (all topics, notes, tutorials, past
+  // papers, announcements, recommendations, streak) to render a single list.
+  const view = String(req.query.view || '').trim().toLowerCase();
+  if (view === 'videos') {
+    const requestedTerm = String(req.query.term || '').trim();
+    const term = VIDEO_TERMS.includes(requestedTerm) ? requestedTerm : null;
+    const videoRows = publishedSubjectVideos(user, subject, term);
+    const ids = videoRows.map((r) => r.id);
+    const completedById = new Map();
+    const positions = new Map();
+    if (ids.length) {
+      const placeholders = ids.map(() => '?').join(',');
+      for (const r of db.prepare(
+        `SELECT resource_id, completed_at FROM lesson_progress WHERE user_id = ? AND resource_id IN (${placeholders})`
+      ).all(user.id, ...ids)) completedById.set(r.resource_id, r.completed_at);
+      for (const r of db.prepare(
+        `SELECT resource_id, position, duration, updated_at FROM video_progress WHERE user_id = ? AND resource_id IN (${placeholders})`
+      ).all(user.id, ...ids)) positions.set(r.resource_id, r);
+    }
+    const lessons = videoRows.map((row) => {
+      const item = serializeResource(row, {
+        completed: completedById.has(row.id),
+        completedAt: completedById.get(row.id) || null
+      });
+      const reason = canAccess(row, access) ? null : lockReason(row, access);
+      if (reason) item.locked = reason;
+      const vp = positions.get(row.id);
+      if (vp) {
+        item.videoPosition = vp.position;
+        item.videoDuration = vp.duration;
+      }
+      return item;
+    });
+    const watched = lessons
+      .filter((l) => positions.has(l.id))
+      .sort((a, b) => String(positions.get(b.id).updated_at || '')
+        .localeCompare(String(positions.get(a.id).updated_at || '')));
+    const continueLearning = watched.length
+      ? { ...watched[0], via: 'recent' }
+      : (lessons.find((l) => !l.completed) ? { ...lessons.find((l) => !l.completed), via: 'next' } : null);
+
+    return res.json({
+      subject,
+      slug: COURSES.find((c) => c.subject === subject)?.slug || key,
+      term,
+      videoTerms: VIDEO_TERMS.map((t) => ({
+        term: t,
+        lessons: term === null || t === term ? lessons.filter((l) => l.term === t) : []
+      })),
+      lectures: lessons,
+      continueLearning,
+      access: { premium: access.premium, trial: access.trial }
+    });
+  }
 
   const rows = publishedSubjectResources(user, subject);
 

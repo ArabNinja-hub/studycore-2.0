@@ -108,6 +108,19 @@ function createUser(overrides = {}) {
   return row;
 }
 
+// Columns a test may set on a fixture resource. The INSERT is built from the
+// keys actually supplied so a test can pin behaviour that depends on any of
+// them (e.g. `semester`, which drives the Term 1/2/3 video grouping) without
+// every caller having to spell out the full column list.
+const RESOURCE_COLUMNS = [
+  'id', 'title', 'description', 'category', 'resource_type', 'subject', 'course', 'course_id',
+  'target_all', 'topic', 'year_level', 'semester', 'tags', 'file_name', 'stored_name',
+  'file_size', 'mime_type', 'content_hash', 'external_url', 'quiz_data', 'due_date',
+  'is_premium', 'pinned', 'publish_status', 'uploaded_by', 'uploader_role', 'uploader_name',
+  'uploader_email', 'uploaded_at', 'created_at', 'updated_at', 'storage_provider',
+  'google_drive_file_id', 'google_drive_url', 'stream_uid', 'stream_status', 'stream_duration'
+];
+
 function createResource(overrides = {}, programs = []) {
   const id = `resource-${randomUUID()}`;
   const now = new Date().toISOString();
@@ -129,11 +142,12 @@ function createResource(overrides = {}, programs = []) {
     updated_at: now,
     ...overrides
   };
+  const unknown = Object.keys(row).filter((key) => !RESOURCE_COLUMNS.includes(key));
+  if (unknown.length) throw new Error(`createResource: unknown column(s) ${unknown.join(', ')}`);
+  const columns = Object.keys(row);
   db.prepare(`
-    INSERT INTO resources (id, title, category, subject, course_id, target_all, is_premium, publish_status,
-      quiz_data, file_name, stored_name, file_size, mime_type, created_at, updated_at)
-    VALUES (@id, @title, @category, @subject, @course_id, @target_all, @is_premium, @publish_status,
-      @quiz_data, @file_name, @stored_name, @file_size, @mime_type, @created_at, @updated_at)
+    INSERT INTO resources (${columns.join(', ')})
+    VALUES (${columns.map((c) => `@${c}`).join(', ')})
   `).run(row);
   const insert = db.prepare('INSERT INTO resource_programs (resource_id, program_code) VALUES (?, ?)');
   for (const program of programs) insert.run(row.id, program);

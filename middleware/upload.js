@@ -26,6 +26,8 @@ const MIME_TO_EXT = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
   'application/vnd.ms-powerpoint': '.ppt',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+  'application/vnd.ms-excel': '.xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
   'text/plain': '.txt',
   'text/csv': '.csv',
   'image/jpeg': '.jpg',
@@ -34,10 +36,18 @@ const MIME_TO_EXT = {
   'image/webp': '.webp',
   'video/mp4': '.mp4',
   'video/x-m4v': '.m4v',
+  'video/m4v': '.m4v',
   'video/webm': '.webm',
   'video/quicktime': '.mov',
+  'video/x-quicktime': '.mov',
   'video/x-msvideo': '.avi',
-  'video/x-matroska': '.mkv'
+  'video/avi': '.avi',
+  'video/msvideo': '.avi',
+  'video/x-matroska': '.mkv',
+  'audio/mpeg': '.mp3',
+  'audio/mp3': '.mp3',
+  'audio/wav': '.wav',
+  'audio/x-wav': '.wav'
 };
 
 // ---------------------------------------------------------------------------
@@ -82,9 +92,15 @@ const SIGNATURES = {
   avi: { bytes: [0x52, 0x49, 0x46, 0x46], bytes2: [0x41, 0x56, 0x49, 0x20], offset2: 8, min: 12 },
   // WAV: "RIFF"....."WAVE"
   wav: { bytes: [0x52, 0x49, 0x46, 0x46], bytes2: [0x57, 0x41, 0x56, 0x45], offset2: 8, min: 12 },
-  // MP4 / MOV: ISO-BMFF "ftyp" brand at offset 4
-  mp4: { bytes: [0x66, 0x74, 0x79, 0x70], offset: 4, min: 8 },
-  mov: { bytes: [0x66, 0x74, 0x79, 0x70], offset: 4, min: 8 },
+  // MP4 / MOV: ISO-BMFF / QuickTime. The first box is USUALLY "ftyp", but it
+  // legitimately is not always: QuickTime files written by cameras, phones and
+  // several editors start with "moov", "mdat", "wide", "free", "skip" or
+  // "pnot" instead, and a faststart-less export can begin with "mdat". The
+  // old check demanded "ftyp" at offset 4 and therefore deleted perfectly
+  // valid lecture recordings with "does not match its file type" - see
+  // isoBmffBox() below, which accepts any known top-level atom.
+  mp4: { isoBmff: true, min: 8 },
+  mov: { isoBmff: true, min: 8 },
   // WebM / MKV: EBML header
   webm: { bytes: [0x1a, 0x45, 0xdf, 0xa3], min: 4 },
   mkv: { bytes: [0x1a, 0x45, 0xdf, 0xa3], min: 4 },
@@ -123,6 +139,22 @@ const EXT_TO_SIGNATURE = {
   '.rar': 'rar'
 };
 
+// ISO base-media / QuickTime container check. Bytes 4-8 carry the FourCC of
+// the first top-level atom; anything in this set means a real MP4/MOV/M4V.
+// Requiring "ftyp" alone rejected valid recordings (phones, screen recorders
+// and non-faststart exports lead with moov/mdat/wide/free), which showed up
+// to admins as a random "the uploaded file does not match its file type"
+// failure on some videos but not others.
+const ISO_BMFF_BOXES = new Set([
+  'ftyp', 'moov', 'mdat', 'free', 'skip', 'wide', 'pnot', 'uuid', 'styp', 'sidx', 'junk'
+]);
+
+function isoBmffBox(buf) {
+  if (!buf || buf.length < 8) return false;
+  const box = buf.toString('latin1', 4, 8).toLowerCase();
+  return ISO_BMFF_BOXES.has(box);
+}
+
 function matchesSignature(buf, ext) {
   const name = EXT_TO_SIGNATURE[ext];
   if (!name) return true; // text formats (.txt/.csv) have no reliable signature
@@ -130,6 +162,7 @@ function matchesSignature(buf, ext) {
   if (!sig) return true;
   if (!buf || buf.length === 0) return true; // empty object: nothing to falsify
   if (buf.length < sig.min) return true; // too short to decide - do not over-reject
+  if (sig.isoBmff) return isoBmffBox(buf);
   if (sig.bytes) {
     const off = sig.offset || 0;
     for (let i = 0; i < sig.bytes.length; i += 1) {
@@ -275,4 +308,7 @@ const avatarUpload = multer({
   limits: { fileSize: AVATAR_MAX_BYTES }
 });
 
-module.exports = { upload, avatarUpload, ALLOWED_EXTENSIONS, resolveMaxUploadMb };
+// matchesSignature is exported for tests: the magic-byte rules decide whether
+// a legitimate upload is kept or deleted, so they need to be verifiable
+// directly rather than only through a full multipart round trip.
+module.exports = { upload, avatarUpload, ALLOWED_EXTENSIONS, resolveMaxUploadMb, matchesSignature };

@@ -292,11 +292,22 @@
     listCourses: () => request('/api/courses'),
     courseHome: (subject) => request(`/api/courses/${encodeURIComponent(subject)}`),
     lessonFlow: (id) => request(`/api/courses/lesson/${encodeURIComponent(id)}`),
+    // Video Lessons page: one subject, one term. Deliberately NOT courseHome —
+    // that returns every topic, note, tutorial, past paper and announcement in
+    // the course, all of which this page discards. The server builds the same
+    // list under the same access rules, just without the payload.
+    courseVideos: (subject, term) => request(
+      `/api/courses/${encodeURIComponent(subject)}?view=videos${term ? `&term=${encodeURIComponent(term)}` : ''}`
+    ),
 
     // Programs (multi-program platform)
     listPrograms: (counts) => request(`/api/programs${counts ? '?counts=1' : ''}`),
     myProgram: () => request('/api/programs/mine'),
     programCourseHome: (key) => request(`/api/programs/course/${encodeURIComponent(key)}`),
+    // Compact program-course equivalent of courseVideos (see above).
+    programCourseVideos: (key, term) => request(
+      `/api/programs/course/${encodeURIComponent(key)}?view=videos${term ? `&term=${encodeURIComponent(term)}` : ''}`
+    ),
     programLessonFlow: (id) => request(`/api/programs/lesson/${encodeURIComponent(id)}`),
     setMyProgram: (program) => request('/api/auth/program', { method: 'PUT', body: JSON.stringify({ program }) }),
 

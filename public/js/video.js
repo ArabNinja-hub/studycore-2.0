@@ -51,8 +51,30 @@
     const host = $('#termSubnavLinks');
     if (!host) return;
     host.innerHTML = TERMS.map((term) =>
-      `<li><a href="${termHref(term)}"${term === focusTerm ? ' class="active" aria-current="page"' : ''}>${escapeHtml(term)}</a></li>`
+      `<li><a href="${termHref(term)}" data-term="${escapeHtml(term)}"${term === focusTerm ? ' class="active" aria-current="page"' : ''}>${escapeHtml(term)}</a></li>`
     ).join('');
+  }
+
+  // Switching terms re-downloads and re-parses every script on the page when
+  // it goes through a normal navigation. The three terms belong to the same
+  // course, so swap them in place and just update the URL — the back button
+  // still works via popstate below.
+  function bindTermNav() {
+    const host = $('#termSubnavLinks');
+    if (!host) return;
+    host.addEventListener('click', (event) => {
+      const link = event.target.closest('a[data-term]');
+      if (!link || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+      const term = link.getAttribute('data-term');
+      if (!TERMS.includes(term) || term === focusTerm) {
+        if (term === focusTerm) event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      focusTerm = term;
+      history.pushState({ term }, '', termHref(term));
+      loadTerm();
+    });
   }
 
   function setPageChrome(data) {
@@ -124,8 +146,39 @@
         });
   }
 
+  // Term switching is a client-side swap, not a page load. The three terms
+  // of one course are a small payload, so once a term has been fetched it is
+  // kept and re-rendered instantly instead of re-requesting it (and re-showing
+  // a skeleton) every time the student taps between Term 1/2/3.
+  const termCache = new Map();
+
+  async function fetchTerm(term) {
+    if (termCache.has(term)) return termCache.get(term);
+    const data = isProgram
+      ? await StudyCoreAPI.programCourseVideos(courseSlug, term)
+      : await StudyCoreAPI.courseVideos(courseSubject(), term);
+    termCache.set(term, data);
+    return data;
+  }
+
+  function lessonsFor(data, term) {
+    const group = (data.videoTerms || []).find((item) => item.term === term);
+    return group ? (group.lessons || []) : (data.lectures || []).filter((l) => l.term === term);
+  }
+
+  function paint(data) {
+    setPageChrome(data);
+    renderTermNav();
+    renderLessons(lessonsFor(data, focusTerm));
+    renderContinue(data.continueLearning);
+  }
+
   async function loadTerm() {
     renderTermNav();
+    if (termCache.has(focusTerm)) {
+      paint(termCache.get(focusTerm));
+      return;
+    }
     $('#videoList').innerHTML = '<div class="skeleton skeleton-row"></div><div class="skeleton skeleton-row"></div>';
 
     const session = await StudyCoreAuth.fetchSession();
@@ -135,17 +188,7 @@
     }
 
     try {
-      const data = isProgram
-        ? await StudyCoreAPI.programCourseHome(courseSlug)
-        : await StudyCoreAPI.courseHome(courseSubject());
-      setPageChrome(data);
-      renderTermNav();
-      const group = (data.videoTerms || []).find((item) => item.term === focusTerm);
-      const lessons = group
-        ? (group.lessons || [])
-        : (data.lectures || []).filter((lesson) => lesson.term === focusTerm);
-      renderLessons(lessons);
-      renderContinue(data.continueLearning);
+      paint(await fetchTerm(focusTerm));
     } catch (err) {
       $('#videoList').innerHTML = emptyState({
         icon: 'alert-triangle',
@@ -164,6 +207,13 @@
       history.replaceState(null, '', termHref(focusTerm));
     }
     setPageChrome(null);
+    bindTermNav();
+    // Back/forward between terms must move the list, not leave a stale one.
+    window.addEventListener('popstate', () => {
+      const term = new URLSearchParams(location.search).get('term');
+      focusTerm = TERMS.includes(term) ? term : 'Term 1';
+      loadTerm();
+    });
     loadTerm();
   }
 

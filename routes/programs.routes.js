@@ -119,6 +119,104 @@ function publishedCourseResources(user, courseId) {
   return db.prepare(sql).all({ courseId, ...params });
 }
 
+const VIDEO_TERMS = ['Term 1', 'Term 2', 'Term 3'];
+
+// Same query as above, narrowed to video lessons (optionally one term) in
+// SQL rather than in JavaScript. The Video Lessons page renders exactly this
+// set, so filtering here avoids loading every note/past paper in the course
+// only to discard them. The visibility clause is unchanged — this is a
+// narrower read of the same authorized rows, never a wider one.
+function publishedCourseVideos(user, courseId, term) {
+  const { clause, params } = resourceVisibilityClause(user, 'r', 'pcProgram');
+  const sql = `
+    SELECT r.* FROM resources r
+    WHERE r.publish_status = 'published'
+      AND r.course_id = @courseId
+      AND r.category = 'video'
+      ${term ? 'AND r.semester = @term' : ''}
+      ${clause ? `AND ${clause}` : ''}
+    ORDER BY r.created_at ASC
+  `;
+  return db.prepare(sql).all({ courseId, ...(term ? { term } : {}), ...params });
+}
+
+// Build the compact Video Lessons payload: the term's lessons (with lock
+// state and resume position) plus the single "continue watching" card the
+// page shows. Progress lookups are scoped to just these lessons instead of
+// reading the student's entire history.
+function videoTermPayload({ user, access, term, rows, extra }) {
+  const ids = rows.map((r) => r.id);
+  const completedById = new Map();
+  const videoPositions = new Map();
+
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    for (const r of db.prepare(
+      `SELECT resource_id, completed_at FROM lesson_progress WHERE user_id = ? AND resource_id IN (${placeholders})`
+    ).all(user.id, ...ids)) {
+      completedById.set(r.resource_id, r.completed_at);
+    }
+    for (const r of db.prepare(
+      `SELECT resource_id, position, duration, updated_at FROM video_progress WHERE user_id = ? AND resource_id IN (${placeholders})`
+    ).all(user.id, ...ids)) {
+      videoPositions.set(r.resource_id, r);
+    }
+  }
+
+  const serialize = (row) => {
+    const item = {
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      topic: row.topic || null,
+      term: row.semester || null,
+      yearLevel: row.year_level || null,
+      fileName: row.file_name,
+      isPremium: Boolean(row.is_premium),
+      createdAt: row.created_at,
+      completed: completedById.has(row.id),
+      completedAt: completedById.get(row.id) || null,
+      streamPlayback: streamPlaybackFor(row)
+    };
+    const reason = canAccess(row, access) ? null : lockReason(row, access);
+    if (reason) item.locked = reason;
+    const vp = videoPositions.get(row.id);
+    if (vp) {
+      item.videoPosition = vp.position;
+      item.videoDuration = vp.duration;
+    }
+    return item;
+  };
+
+  const lessons = rows.map(serialize);
+
+  // "Continue where you left off", limited to this term's videos: the most
+  // recently watched one, else the first unfinished lesson.
+  let continueLearning = null;
+  const watched = lessons
+    .filter((l) => videoPositions.has(l.id))
+    .sort((a, b) => String(videoPositions.get(b.id).updated_at || '')
+      .localeCompare(String(videoPositions.get(a.id).updated_at || '')));
+  if (watched.length) continueLearning = { ...watched[0], via: 'recent' };
+  else {
+    const next = lessons.find((l) => !l.completed);
+    if (next) continueLearning = { ...next, via: 'next' };
+  }
+
+  return {
+    ...(extra || {}),
+    term,
+    videoTerms: VIDEO_TERMS.map((t) => ({
+      term: t,
+      lessons: term === null || t === term ? lessons.filter((l) => l.term === t) : []
+    })),
+    lectures: lessons,
+    continueLearning,
+    access: { premium: access.premium, trial: access.trial }
+  };
+}
+
 // ---- Public: program directory ------------------------------------------
 // Shown on the signup page and (for anonymous visitors) on the courses page.
 router.get('/', attachUser, (req, res) => {
@@ -263,6 +361,29 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
     : null;
 
   const access = accessFor(user);
+
+  // ---- Lightweight mode: one term's video lessons only --------------------
+  // /pages/videos.html shows exactly one course + one term. Serving it the
+  // full course home meant building (and shipping) every topic, note,
+  // tutorial, past paper, announcement, the recommendation set and the study
+  // streak — the vast majority of which that page throws away. On a phone on
+  // Zambian mobile data that is the difference between a small JSON payload
+  // and a large one, plus a pile of needless SQL. `?view=videos&term=…`
+  // returns only what the page renders. Access rules are IDENTICAL: the same
+  // visibility SQL, the same canAccess/lockReason gate.
+  const view = String(req.query.view || '').trim().toLowerCase();
+  if (view === 'videos') {
+    const requestedTerm = String(req.query.term || '').trim();
+    const term = VIDEO_TERMS.includes(requestedTerm) ? requestedTerm : null;
+    return res.json(videoTermPayload({
+      user,
+      access,
+      term,
+      rows: publishedCourseVideos(user, course.id, term),
+      extra: { course: serializeCourse(course, { subject: course.subject }) }
+    }));
+  }
+
   const rows = publishedCourseResources(user, course.id);
 
   const completedById = new Map(
