@@ -430,3 +430,31 @@ test('quiz taking and authoring have real phone styles', () => {
   assert.match(mobile, /\.quiz-text-input\s*\{[^}]*font-size: 16px/, '16px inputs stop iOS zooming the page');
   assert.match(mobile, /\.qa-editor-card/, 'the quiz builder needs phone styles too');
 });
+
+test('the navbar does not clip its own popovers', () => {
+  const css = read('public/css/style.css');
+  // The notification panel, the account menu and the course flyouts are all
+  // absolutely positioned children of `.navbar`. If the island ever clips its
+  // overflow again they get cut to zero height, and pressing the announcement
+  // bell looks like it does nothing at all.
+  const blocks = [...css.matchAll(/(^|\})\s*([^{}]*\.navbar[^{}]*)\{([^}]*)\}/gm)];
+  assert.ok(blocks.length > 0, 'expected to find .navbar rules');
+
+  for (const [, , selector, body] of blocks) {
+    if (/::?(before|after)/.test(selector)) continue; // the sheen clips itself, on purpose
+    const declarations = body.replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.doesNotMatch(
+      declarations,
+      /overflow(-x|-y)?\s*:\s*(hidden|clip)/,
+      `${selector.trim()} must not clip overflow — it would hide the notification panel`
+    );
+  }
+});
+
+test('the notification panel can actually become visible', () => {
+  const css = read('public/css/style.css');
+  const openRule = css.slice(css.indexOf('.notif-panel.open'));
+  assert.match(openRule, /visibility:\s*visible/);
+  assert.match(openRule, /pointer-events:\s*auto/);
+  assert.match(openRule, /opacity:\s*1/);
+});
