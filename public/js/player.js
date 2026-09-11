@@ -64,7 +64,7 @@
              would take the student out of StudyCore. x5-playsinline covers
              the Chinese Android browser engines that ignore the standard
              attribute. -->
-        <video id="scPlayerVideo" preload="metadata" playsinline webkit-playsinline
+        <video id="scPlayerVideo" preload="auto" playsinline webkit-playsinline
                x5-playsinline="true" x-webkit-airplay="deny"
                controlslist="nodownload noremoteplayback noplaybackrate"
                disablepictureinpicture disableremoteplayback></video>
@@ -141,6 +141,28 @@
     let completed = false;
     let speedIdx = SPEEDS.indexOf(1);
     let bufferTimer = null;
+    let spinnerTimer = null;
+    let destroyed = false;
+
+    // The "Preparing video…" overlay is deliberately LAZY. Showing it the
+    // instant anything is pending made it the default state of the player:
+    // every start, every seek and every 200 ms network hiccup flashed it.
+    // It is now only painted if the wait actually outlasts SPINNER_DELAY,
+    // so a normal start (which resolves in a few hundred ms) never shows it.
+    const SPINNER_DELAY = 450;
+    function showLoading(delay) {
+      clearTimeout(spinnerTimer);
+      spinnerTimer = setTimeout(() => {
+        // readyState >= 3 (HAVE_FUTURE_DATA) means the browser got there first
+        // while we were waiting — there is nothing left to "prepare".
+        if (!destroyed && video.isConnected && video.readyState < 3) loading.hidden = false;
+      }, delay === undefined ? SPINNER_DELAY : delay);
+    }
+    function hideLoading() {
+      clearTimeout(spinnerTimer);
+      spinnerTimer = null;
+      loading.hidden = true;
+    }
 
     // Resolved to a short-lived, account-bound ticket URL just before the
     // video is attached (see StudyCoreAPI.protectedUrl). Held in a variable
@@ -180,105 +202,140 @@
       }
     }
 
+    // Diagnose a failure AFTER the fact. The player used to run this probe
+    // BEFORE attaching the video, which meant every single start paid for a
+    // ticket mint + a HEAD round trip (which itself makes the server hit
+    // object storage) before the browser was even allowed to ask for the
+    // first byte. That serialized handshake — not the video — is what kept
+    // the "Preparing video…" card on screen. Now the <video> element starts
+    // fetching immediately and this only runs if playback actually fails, so
+    // students still get the precise reason (logged out, subscription
+    // lapsed, file missing, storage unconfigured) instead of a generic error.
+    async function diagnoseFailure(fallbackMessage) {
+      let probe;
+      try {
+        probe = await probeStream();
+      } catch (err) {
+        console.error('[StudyCore player] probe failed', err);
+        showStreamError(err.name === 'AbortError'
+          ? 'The video server did not respond in time.'
+          : fallbackMessage);
+        return;
+      }
+      if (probe.status === 401) {
+        showStreamError('Please log in again to watch this video.');
+        return;
+      }
+      if (probe.status === 403) {
+        // Access lapsed mid-session (subscription expired). Swap in the
+        // lock wall and stop the player's own timers/listeners first,
+        // otherwise they keep running against the removed <video>.
+        destroyed = true;
+        clearInterval(reportTimer);
+        clearMetaTimer();
+        clearTimeout(bufferTimer);
+        clearTimeout(spinnerTimer);
+        renderLock(container, o);
+        return;
+      }
+      if (!probe.ok && probe.status !== 206) {
+        let message = fallbackMessage;
+        if (probe.status === 404) message = 'This video is missing from storage.';
+        if (probe.status === 503) message = 'File storage is not configured yet, so this video cannot be played.';
+        try {
+          const data = await probe.json();
+          if (data && data.message) message = data.message;
+        } catch { /* not JSON */ }
+        console.error('[StudyCore player] stream probe failed', probe.status, message);
+        showStreamError(message);
+        return;
+      }
+      const ctype = (probe.headers.get('content-type') || o.mimeType || '').toLowerCase();
+      const name = String(o.fileName || '');
+      if (/matroska|x-msvideo|\.mkv$|\.avi$/i.test(ctype + ' ' + name)) {
+        showStreamError('This video format is not supported by your browser. Ask your admin to upload MP4 or WebM.');
+        return;
+      }
+      if (ctype && !ctype.startsWith('video/') && !ctype.startsWith('application/octet-stream') && !ctype.startsWith('application/mp4')) {
+        console.error('[StudyCore player] unexpected content-type', ctype);
+        showStreamError('The server did not return a playable video file.');
+        return;
+      }
+      showStreamError(fallbackMessage);
+    }
+
     async function attachStream() {
-      loading.hidden = false;
       errorBox.hidden = true;
-      // Mint (or reuse) the short-lived viewing ticket before probing, so the
-      // probe and the <video> src are the same authorized URL.
+      showLoading();
+      // Container formats no browser can play are known from the metadata
+      // alone — refuse them up front rather than after a failed download.
+      const declared = String(o.mimeType || '').toLowerCase() + ' ' + String(o.fileName || '');
+      if (/matroska|x-msvideo|\.mkv$|\.avi$/i.test(declared)) {
+        showStreamError('This video format is not supported by your browser. Ask your admin to upload MP4 or WebM.');
+        return;
+      }
+      // Mint (or reuse) the short-lived viewing ticket. protectedUrl caches
+      // per resource for the life of the page, so a retry or a second player
+      // on the same lesson costs nothing.
       try {
         if (typeof StudyCoreAPI.protectedUrl === 'function') {
           streamUrl = await StudyCoreAPI.protectedUrl(resourceId);
         }
       } catch { /* fall back to the plain session-gated URL */ }
-      try {
-        const probe = await probeStream();
-        if (probe.status === 401) {
-          showStreamError('Please log in again to watch this video.');
-          return;
-        }
-        if (probe.status === 403) {
-          // Access lapsed mid-session (subscription expired). Swap in the
-          // lock wall and stop the player's own timers/listeners first,
-          // otherwise they keep running against the removed <video>.
-          destroyed = true;
-          clearInterval(reportTimer);
-          clearMetaTimer();
-          clearTimeout(bufferTimer);
-          renderLock(container, o);
-          return;
-        }
-        if (!probe.ok && probe.status !== 206) {
-          let message = 'This video could not be loaded. Check your connection and try again.';
-          if (probe.status === 404) message = 'This video is missing from storage.';
-          if (probe.status === 503) message = 'File storage is not configured yet, so this video cannot be played.';
-          try {
-            const data = await probe.json();
-            if (data && data.message) message = data.message;
-          } catch { /* not JSON */ }
-          console.error('[StudyCore player] stream probe failed', probe.status, message);
-          showStreamError(message);
-          return;
-        }
-        const ctype = (probe.headers.get('content-type') || o.mimeType || '').toLowerCase();
-        const name = String(o.fileName || '');
-        if (/matroska|x-msvideo|\.mkv$|\.avi$/i.test(ctype + ' ' + name)) {
-          showStreamError('This video format is not supported by your browser. Ask your admin to upload MP4 or WebM.');
-          return;
-        }
-        if (ctype && !ctype.startsWith('video/') && !ctype.startsWith('application/octet-stream') && !ctype.startsWith('application/mp4')) {
-          console.error('[StudyCore player] unexpected content-type', ctype);
-          showStreamError('The server did not return a playable video file.');
-          return;
-        }
-      } catch (err) {
-        console.error('[StudyCore player] probe failed', err);
-        showStreamError(err.name === 'AbortError'
-          ? 'The video server did not respond in time.'
-          : 'Could not connect to the video stream. Please try again.');
-        return;
-      }
+      if (destroyed || !video.isConnected) return;
 
       if (attachedSrc !== streamUrl) {
-        // Wait for the resume position so loadedmetadata can seek to it.
-        try { await resumeReady; } catch { /* fall through with resumePos=0 */ }
-        if (!video.isConnected) return; // player was torn down while waiting
         attachedSrc = streamUrl;
         video.src = streamUrl;
         video.load();
       }
       clearMetaTimer();
       metaTimer = setTimeout(() => {
+        if (destroyed || !video.isConnected) return;
         if (video.readyState < 1) {
           console.error('[StudyCore player] metadata timeout', { src: video.currentSrc, readyState: video.readyState });
-          showStreamError('The video is taking too long to start. Check your connection and try again.');
+          diagnoseFailure('The video is taking too long to start. Check your connection and try again.');
         }
       }, 15000);
     }
 
     function showStreamError(message) {
-      loading.hidden = true;
+      clearMetaTimer();
+      hideLoading();
       errorBox.hidden = false;
       const msg = container.querySelector('#scPlayerErrorMsg');
       if (msg) msg.textContent = message;
     }
 
     /* ── Load resume position (server-stored) ── */
-    // This must resolve BEFORE metadata fires, otherwise the resume seek in
-    // the loadedmetadata handler sees resumeLoaded=false and is skipped. On
-    // fast networks the metadata round trip beats an un-awaited progress GET
-    // almost every time, which is why "continue watching" so often restarted
-    // the video. attachStream() awaits this promise (with the timeout acting
-    // as a safety net if the progress endpoint is slow).
-    let resumeResolve;
-    const resumeReady = new Promise((resolve) => { resumeResolve = resolve; });
-    const resumeTimer = setTimeout(() => { resumeLoaded = true; resumeResolve(); }, 4000);
+    // Fetched in PARALLEL with the video itself — blocking the <video> src on
+    // this round trip is what used to hold the "Preparing video…" card on
+    // screen. The seek is applied by applyResume(), which runs on whichever
+    // finishes last (metadata or this fetch), so "continue watching" still
+    // works even when the progress endpoint is the slow one.
+    // Safety net: if the progress endpoint hangs, stop waiting on it after 4s
+    // and treat the lesson as starting from the beginning.
+    const resumeTimer = setTimeout(() => { resumeLoaded = true; applyResume(); }, 4000);
     StudyCoreAPI.getVideoProgress(resourceId).then((p) => {
       resumePos = Number(p.position) || 0;
+    }).catch(() => { /* start from 0 */ }).finally(() => {
       resumeLoaded = true;
-    }).catch(() => { resumeLoaded = true; }).finally(() => {
       clearTimeout(resumeTimer);
-      resumeResolve();
+      applyResume();
     });
+
+    // Seek to the stored position once BOTH the metadata and the progress
+    // fetch are in. Runs at most once, and never once the student has already
+    // moved or watched past the stored point.
+    let resumeApplied = false;
+    function applyResume() {
+      if (resumeApplied || destroyed || !resumeLoaded) return;
+      if (!video.isConnected || video.readyState < 1) return;
+      resumeApplied = true;
+      if (resumePos > 30 && video.duration - resumePos > 30 && video.currentTime < 5) {
+        try { video.currentTime = resumePos; } catch { /* seek refused */ }
+      }
+    }
 
     function setPlayIcon(playing) {
       const ic = playing ? SC.icon('pause', { size: 30 }) : SC.icon('play', { size: 30 });
@@ -356,20 +413,22 @@
     /* ── Video events ─────────────────────── */
     video.addEventListener('loadedmetadata', () => {
       clearMetaTimer();
-      loading.hidden = true;
-      // Resume where the student left off (30s+ into the video only,
-      // so a fresh lesson isn't dropped near its end).
-      if (resumeLoaded && resumePos > 30 && video.duration - resumePos > 30) {
-        video.currentTime = resumePos;
-      }
+      hideLoading();
+      // Resume where the student left off (30s+ into the video only, so a
+      // fresh lesson isn't dropped near its end). If the progress fetch is
+      // still in flight, its .finally() calls applyResume() instead.
+      applyResume();
       video.playbackRate = SPEEDS[speedIdx];
       tick();
     });
+    // Enough data buffered to play through — nothing left to "prepare".
+    video.addEventListener('loadeddata', hideLoading);
+    video.addEventListener('canplay', hideLoading);
     video.addEventListener('play', () => {
       shell.classList.add('playing');
       shell.classList.remove('paused');
       setPlayIcon(true);
-      loading.hidden = true;
+      hideLoading();
       showUiTransient();
     });
     video.addEventListener('pause', () => {
@@ -384,14 +443,23 @@
     });
     video.addEventListener('waiting', () => {
       if (!playing()) return;
-      // Debounce: only show the spinner if buffering lasts >400 ms, so
-      // brief stalls during seeking or network jitter don't flash it.
+      // Debounced: 1.2s, not the old 400ms. Short rebuffers resolve on their
+      // own and the overlay appearing for each of them is a big part of why
+      // the player looked like it was permanently preparing something.
       clearTimeout(bufferTimer);
-      bufferTimer = setTimeout(() => { if (playing()) loading.hidden = false; }, 400);
+      bufferTimer = setTimeout(() => {
+        if (playing() && video.readyState < 3) loading.hidden = false;
+      }, 1200);
     });
     video.addEventListener('playing', () => {
       clearTimeout(bufferTimer);
-      loading.hidden = true;
+      hideLoading();
+    });
+    // A seek that lands in already-buffered data resolves instantly; make
+    // sure any spinner armed by the preceding 'waiting' is stood down.
+    video.addEventListener('seeked', () => {
+      clearTimeout(bufferTimer);
+      if (video.readyState >= 3) hideLoading();
     });
     video.addEventListener('timeupdate', tick);
     video.addEventListener('progress', tick);
@@ -428,7 +496,11 @@
         message: err && err.message,
         src: video.currentSrc
       });
+      // Show the media-level reason immediately, then refine it with the
+      // server's answer (expired session, lapsed subscription, missing file)
+      // now that we are only paying for that round trip on the failure path.
       showStreamError(message);
+      diagnoseFailure(message);
     });
 
     // Block the context menu on the video itself (right-click "save video").
@@ -458,7 +530,6 @@
     container.querySelector('#scSkipFwd').addEventListener('click', () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); });
     container.querySelector('#scPlayerRetry').addEventListener('click', () => {
       errorBox.hidden = true;
-      loading.hidden = false;
       attachedSrc = '';
       video.removeAttribute('src');
       attachStream();
@@ -468,7 +539,6 @@
     // destroy() can remove them — otherwise every player init leaks a pair
     // of window listeners that keep touching a detached video.
     let seeking = false;
-    let destroyed = false;
     function seekFromEvent(e) {
       const rect = seek.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -579,17 +649,23 @@
     const onBeforeUnload = () => { if (!destroyed) reportPosition(); };
     window.addEventListener('beforeunload', onBeforeUnload);
 
-    // Start — probe first (HEAD only) so a 401/403 JSON body never gets
-    // handed to the <video> element, then attach the same stream URL once.
+    // Start — attach the stream straight away and let the browser begin
+    // fetching. No blocking HEAD probe, no blocking progress fetch: those ran
+    // before the <video> was allowed to load a single byte and were the real
+    // reason the "Preparing video…" card lingered. Errors are diagnosed after
+    // the fact by diagnoseFailure().
     //
     // Autoplay is NOT attempted on touch devices. iOS and Android block
     // unmuted programmatic play() outright, and the rejected promise used to
     // leave the player sitting behind a spinner with no visible affordance.
     // On phones we present a ready, tappable player and let the student start
     // it — the one gesture mobile browsers always honour.
-    loading.hidden = false;
+    showLoading();
     setPlayIcon(false);
     attachStream().then(() => {
+      // attachStream bailed out with an error card (or the player was torn
+      // down) — don't call play() on an element with no source.
+      if (destroyed || !attachedSrc || !errorBox.hidden) return;
       if (isTouch) {
         shell.classList.add('paused');
         showUiTransient();
@@ -616,6 +692,8 @@
         clearInterval(reportTimer);
         clearMetaTimer();
         clearTimeout(bufferTimer);
+        clearTimeout(spinnerTimer);
+        clearTimeout(resumeTimer);
         clearTimeout(uiTimer);
         unlockOrientation();
         window.removeEventListener('beforeunload', onBeforeUnload);
@@ -682,7 +760,7 @@
         <iframe id="scStreamFrame"
           src="${escapeAttr(sp.iframe)}"
           title="${escapeAttr(o.title || 'Video lesson')}"
-          loading="lazy"
+          loading="eager"
           allow="accelerated-2d-canvas; autoplay; encrypted-media; fullscreen;"
           allowfullscreen></iframe>
       </div>
