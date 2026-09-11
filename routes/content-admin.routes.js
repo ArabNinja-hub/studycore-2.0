@@ -16,7 +16,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
-const { offloadResourceToStream } = require('../lib/stream-ingest');
+const { queueOffload } = require('../lib/stream-ingest');
 const { ROLES } = require('../lib/roles');
 const { resolveCourse, programIncludesCourse } = require('../lib/program-access');
 const {
@@ -417,9 +417,10 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
 
   // Offload videos to Cloudflare Stream for adaptive HD playback + quality
   // selector. No-op unless Stream is configured; failures keep the video on
-  // the R2 progressive player.
+  // the R2 progressive player. Queued in the background so publishing returns
+  // as soon as the bytes are stored — see lib/stream-ingest.js.
   if (!isDriveFile && parsed.value.type.category === 'video' && req.file && stream.isConfigured()) {
-    await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(id));
+    queueOffload(id);
   }
 
   const saved = ownResourceById(id, req.user.id);
@@ -532,7 +533,7 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
   // newly-uploaded video for adaptive HD playback.
   if (replacingFile && existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   if (replacingFile && parsed.value.type.category === 'video' && stream.isConfigured()) {
-    await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(existing.id));
+    queueOffload(existing.id);
   }
 
   const saved = ownResourceById(existing.id, req.user.id);
