@@ -301,6 +301,31 @@ try {
   // column already exists - fine
 }
 
+// Cloudflare Stream integration. When Stream is configured, uploaded video
+// files are transferred to Cloudflare Stream, which serves adaptive-bitrate
+// HLS/DASH (Auto / 1080p / 720p / …) with a built-in quality selector. The
+// original bytes may still live in R2 as a fallback, so these fields sit
+// ALONGSIDE stored_name rather than replacing it. `stream_uid` is the
+// Cloudflare video UID; `stream_status` tracks post-upload encoding
+// ('pendingupload' | 'downloading' | 'queued' | 'inprogress' | 'ready' |
+// 'error'); `stream_duration` caches the encoded duration in seconds.
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN stream_uid TEXT');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN stream_status TEXT');
+} catch {
+  // column already exists - fine
+}
+try {
+  db.exec('ALTER TABLE resources ADD COLUMN stream_duration REAL');
+} catch {
+  // column already exists - fine
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_resources_stream_uid ON resources(stream_uid)');
+
 // ── Multi-program platform ──────────────────────────────────────────────
 //
 // Every piece of content (notes, videos, past papers, resources AND

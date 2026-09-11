@@ -46,6 +46,16 @@
       return { destroy() {} };
     }
 
+    // Cloudflare Stream-backed lessons use Cloudflare's adaptive-bitrate
+    // player, which ships a native quality selector (Auto / 1080p / 720p / …)
+    // and picks the best rendition for the viewer automatically. StudyCore
+    // still owns resume position, progress reporting and 90%-completion via
+    // the Stream Player SDK. Falls through to the progressive player below
+    // when the lesson has no Stream video.
+    if (o.streamPlayback && o.streamPlayback.iframe) {
+      return initStream(container, o);
+    }
+
     /* ── Build the player shell ───────────── */
     container.innerHTML = `
       <div class="player-shell" id="scPlayerShell">
@@ -609,6 +619,143 @@
         container.innerHTML = '';
       }
     };
+  }
+
+  /* ── Cloudflare Stream player (adaptive HD + quality selector) ────────── */
+
+  // Load the Cloudflare Stream Player SDK once, so we can drive play/seek and
+  // read time updates for resume + progress reporting. Resolves with the
+  // global `Stream` factory. If the script cannot load (offline / blocked),
+  // it rejects and the caller falls back to a plain iframe embed.
+  let streamSdkPromise = null;
+  function loadStreamSdk() {
+    if (global.Stream) return Promise.resolve(global.Stream);
+    if (streamSdkPromise) return streamSdkPromise;
+    streamSdkPromise = new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-sc-stream-sdk]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(global.Stream));
+        existing.addEventListener('error', reject);
+        if (global.Stream) resolve(global.Stream);
+        return;
+      }
+      const s = document.createElement('script');
+      s.src = 'https://embed.cloudflarestream.com/embed/sdk.latest.js';
+      s.async = true;
+      s.setAttribute('data-sc-stream-sdk', 'true');
+      s.onload = () => resolve(global.Stream);
+      s.onerror = () => reject(new Error('Cloudflare Stream SDK failed to load'));
+      document.head.appendChild(s);
+    });
+    return streamSdkPromise;
+  }
+
+  function initStream(container, o) {
+    const resourceId = o.resourceId;
+    const sp = o.streamPlayback;
+    let destroyed = false;
+    let reportTimer = null;
+    let completed = false;
+    let player = null;
+
+    container.innerHTML = `
+      <div class="player-shell stream-shell" id="scStreamShell">
+        <div class="player-title">${SC.icon('video', { size: 17 })}<span>${escapeHtml(o.title || 'Video lesson')}</span></div>
+        <iframe id="scStreamFrame"
+          src="${escapeAttr(sp.iframe)}"
+          title="${escapeAttr(o.title || 'Video lesson')}"
+          loading="lazy"
+          allow="accelerated-2d-canvas; autoplay; encrypted-media; picture-in-picture;"
+          allowfullscreen></iframe>
+      </div>
+    `;
+
+    const frame = container.querySelector('#scStreamFrame');
+
+    // Fetch the server-stored resume position (Premium sessions only) so the
+    // Stream player can pick up where the student left off.
+    let resumePos = 0;
+    const resumeReady = StudyCoreAPI.getVideoProgress(resourceId)
+      .then((p) => { resumePos = Number(p && p.position) || 0; })
+      .catch(() => { /* start from 0 */ });
+
+    function startReporting() {
+      clearInterval(reportTimer);
+      // Report every 5s while playing, matching the progressive player.
+      reportTimer = setInterval(() => {
+        if (!player || destroyed) return;
+        Promise.resolve(player.currentTime).then((cur) => {
+          const dur = player.duration || sp.duration || 0;
+          const pos = Number(cur) || 0;
+          if (!dur || !Number.isFinite(pos)) return;
+          StudyCoreAPI.saveVideoProgress(resourceId, pos, dur)
+            .then(() => {
+              if (typeof o.onProgress === 'function') o.onProgress(pos, dur);
+              if (!completed && dur && pos / dur >= 0.9) {
+                completed = true;
+                if (typeof o.onComplete === 'function') o.onComplete();
+              }
+            })
+            .catch(() => { /* non-fatal */ });
+        });
+      }, 5000);
+    }
+
+    loadStreamSdk().then((Stream) => {
+      if (destroyed || !Stream) return;
+      player = Stream(frame);
+
+      player.addEventListener('loadedmetadata', () => {
+        resumeReady.then(() => {
+          if (destroyed || !player) return;
+          // Resume only when meaningfully into the video and not at the end.
+          const dur = player.duration || sp.duration || 0;
+          if (resumePos > 3 && (!dur || resumePos < dur - 5)) {
+            try { player.currentTime = resumePos; } catch { /* ignore */ }
+          }
+        });
+      });
+
+      player.addEventListener('play', startReporting);
+      player.addEventListener('pause', () => {
+        clearInterval(reportTimer);
+        // Capture the exact pause position immediately.
+        Promise.resolve(player.currentTime).then((cur) => {
+          const dur = player.duration || sp.duration || 0;
+          const pos = Number(cur) || 0;
+          if (dur && Number.isFinite(pos)) StudyCoreAPI.saveVideoProgress(resourceId, pos, dur).catch(() => {});
+        });
+      });
+      player.addEventListener('ended', () => {
+        clearInterval(reportTimer);
+        if (!completed) {
+          completed = true;
+          const dur = player.duration || sp.duration || 0;
+          if (dur) StudyCoreAPI.saveVideoProgress(resourceId, dur, dur).catch(() => {});
+          if (typeof o.onComplete === 'function') o.onComplete();
+        }
+      });
+    }).catch(() => {
+      // SDK blocked/offline: the iframe still plays with Cloudflare's own
+      // controls and quality selector; we just can't sync resume/progress.
+    });
+
+    return {
+      destroy() {
+        destroyed = true;
+        clearInterval(reportTimer);
+        player = null;
+        container.innerHTML = '';
+      }
+    };
+  }
+
+  function escapeAttr(s) {
+    return String(s == null ? '' : s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
   }
 
   /* ── Premium lock wall ──────────────────── */

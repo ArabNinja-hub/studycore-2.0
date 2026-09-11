@@ -3,8 +3,26 @@ const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const { resourceVisibilityClause, programCanSeeResource } = require('../lib/program-access');
+const stream = require('../lib/stream');
 
 const router = express.Router();
+
+// Cloudflare Stream playback fields for a video row (null unless it has a
+// Stream video and Stream is configured). Carries the adaptive-bitrate iframe
+// URL whose player offers the built-in quality selector (Auto / 1080p / …).
+function streamPlaybackFor(row) {
+  if (!row || !row.stream_uid || !stream.isConfigured()) return null;
+  const iframe = stream.iframeUrl(row.stream_uid);
+  if (!iframe) return null;
+  return {
+    uid: row.stream_uid,
+    status: row.stream_status || 'ready',
+    ready: (row.stream_status || 'ready') === 'ready',
+    iframe,
+    hls: stream.hlsUrl(row.stream_uid),
+    thumbnail: stream.thumbnailUrl(row.stream_uid)
+  };
+}
 const requireStudentLearningAccount = requireRole(ROLES.STUDENT, ROLES.ADMIN);
 
 // Course homes must always reflect the latest published admin uploads rather
@@ -63,10 +81,11 @@ function serializeResource(row, extra = {}) {
     semester: row.semester,
     term: row.semester,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-    hasFile: Boolean(row.stored_name),
+    hasFile: Boolean(row.stored_name || row.stream_uid),
     fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: mime,
+    streamPlayback: streamPlaybackFor(row),
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
     downloadCount: row.download_count,

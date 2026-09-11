@@ -8,8 +8,29 @@ const { requireAuth, attachUser } = require('../middleware/auth');
 const storage = require('../lib/storage');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
 const { isAdmin, isStudent } = require('../lib/roles');
+const stream = require('../lib/stream');
 
 const router = express.Router();
+
+// Playback fields for a Cloudflare Stream-backed video. Returns null unless
+// the row actually has a Stream video AND Stream is configured (so the
+// customer subdomain is known). The player uses `streamPlayback.iframe` to
+// mount Cloudflare's adaptive-bitrate player, which carries the built-in
+// quality selector (Auto / 1080p / 720p / …). When this is null the player
+// falls back to the classic /stream progressive URL exactly as before.
+function streamPlaybackFor(row, opts) {
+  if (!row || !row.stream_uid || !stream.isConfigured()) return null;
+  const iframe = stream.iframeUrl(row.stream_uid, opts || {});
+  if (!iframe) return null;
+  return {
+    uid: row.stream_uid,
+    status: row.stream_status || 'ready',
+    ready: (row.stream_status || 'ready') === 'ready',
+    iframe,
+    hls: stream.hlsUrl(row.stream_uid),
+    thumbnail: stream.thumbnailUrl(row.stream_uid)
+  };
+}
 
 function serializeResource(row, user) {
   return {
@@ -27,11 +48,12 @@ function serializeResource(row, user) {
     fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: (row.stored_name || row.google_drive_file_id) ? inferMime(row) : row.mime_type,
-    hasFile: Boolean(row.stored_name || row.google_drive_file_id),
+    hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
     externalUrl: row.external_url,
     googleDriveFileId: row.google_drive_file_id || null,
     googleDriveUrl: row.google_drive_url || null,
     storageProvider: row.storage_provider || 'local',
+    streamPlayback: streamPlaybackFor(row),
     // Generic list/detail/bookmark responses are not quiz authoring APIs.
     // Students get questions without answers from /api/quiz/:id; answer keys
     // are revealed only by server-side grading, never by this serializer.

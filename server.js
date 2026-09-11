@@ -174,6 +174,17 @@ if (googlePickerIssues.length) {
   console.log('StudyCore: Google Picker env OK (client ' + String(process.env.GOOGLE_CLIENT_ID).trim() + ', project ' + String(process.env.GOOGLE_CLOUD_PROJECT_NUMBER).trim() + ', key ' + String(process.env.GOOGLE_API_KEY).trim().slice(0, 6) + '…)');
 }
 
+// Cloudflare Stream (adaptive-bitrate video with an in-player 1080p/720p/Auto
+// quality selector). Optional: when unset, uploaded videos keep using the
+// single-file R2 player. Announce which path is active so operators aren't
+// left guessing why the quality selector is (or isn't) showing.
+const cfStream = require('./lib/stream');
+if (cfStream.isConfigured()) {
+  console.log('StudyCore: Cloudflare Stream is configured — new video uploads will use adaptive HD playback with a quality selector.');
+} else {
+  console.log('StudyCore: Cloudflare Stream is not configured — videos play at their uploaded resolution (no quality selector). Set CF_STREAM_ACCOUNT_ID and CF_STREAM_API_TOKEN to enable adaptive 1080p.');
+}
+
 // Public site config. Official WhatsApp links live in .env so the owner can
 // rotate them without touching page code; the marketing panels on every page
 // fetch them here on load. No auth required - nothing in this payload is

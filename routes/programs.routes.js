@@ -3,6 +3,24 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, requireRole, attachUser } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
+const stream = require('../lib/stream');
+
+// Cloudflare Stream playback fields for a video row (null unless it has a
+// Stream video and Stream is configured). Carries the adaptive-bitrate iframe
+// whose player offers the built-in quality selector (Auto / 1080p / …).
+function streamPlaybackFor(row) {
+  if (!row || !row.stream_uid || !stream.isConfigured()) return null;
+  const iframe = stream.iframeUrl(row.stream_uid);
+  if (!iframe) return null;
+  return {
+    uid: row.stream_uid,
+    status: row.stream_status || 'ready',
+    ready: (row.stream_status || 'ready') === 'ready',
+    iframe,
+    hls: stream.hlsUrl(row.stream_uid),
+    thumbnail: stream.thumbnailUrl(row.stream_uid)
+  };
+}
 const {
   serializeProgram,
   serializeCourse,
@@ -408,6 +426,8 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
           fileName: l.file_name, yearLevel: l.year_level, createdAt: l.created_at,
           completed: completedById.has(l.id)
         };
+        // Only videos need playback info; harmless (null) for other types.
+        if (l.category === 'video') item.streamPlayback = streamPlaybackFor(l);
         const reason = canAccess(l, access) ? null : lockReason(l, access);
         if (reason) item.locked = reason;
         return item;
