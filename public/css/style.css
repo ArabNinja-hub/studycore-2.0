@@ -280,7 +280,12 @@ body[data-theme='dark'] .icon-btn.active {
     background 0.42s cubic-bezier(0.16, 1, 0.3, 1),
     backdrop-filter 0.42s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: top, box-shadow, backdrop-filter;
-  overflow: hidden;
+  /* NOTE: never set `overflow: hidden` here. The notification panel, the
+     account menu and the nav flyouts are absolutely positioned children of
+     this island — clipping the navbar clips them out of existence, which
+     reads to the student as "the bell does nothing when I press it". The
+     sheen below is kept inside the pill by animating its background
+     position instead of transforming an oversized layer. */
   isolation: isolate;
 }
 /* Liquid sheen — subtle top highlight that slides */
@@ -289,24 +294,32 @@ body[data-theme='dark'] .icon-btn.active {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(100deg,
+  /* Self-clipping sheen: the highlight slides via background-position inside
+     a layer that exactly matches the pill, so the navbar itself does not need
+     `overflow: hidden` (which would clip the notification/account popovers). */
+  overflow: hidden;
+  background-image: linear-gradient(100deg,
     transparent 0%,
     rgba(255,255,255,0.0) 20%,
     rgba(255,255,255,0.55) 50%,
     rgba(255,255,255,0.0) 80%,
     transparent 100%);
+  background-repeat: no-repeat;
+  background-size: 220% 100%;
+  background-position: -60% 0;
   opacity: 0;
-  transform: translateX(-60%);
-  transition: transform 0.9s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
+  transition: background-position 0.9s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
   pointer-events: none;
   z-index: 1;
 }
 .navbar:hover::before {
   opacity: 0.18;
-  transform: translateX(60%);
+  background-position: 160% 0;
 }
 body[data-theme='dark'] .navbar::before {
-  background: linear-gradient(100deg,
+  /* `background-image` (not the shorthand) so the size/position that drive
+     the sheen animation above survive in dark mode. */
+  background-image: linear-gradient(100deg,
     transparent 0%,
     rgba(255,255,255,0.0) 20%,
     rgba(255,255,255,0.22) 50%,
