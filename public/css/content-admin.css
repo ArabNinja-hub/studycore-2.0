@@ -1,8 +1,11 @@
 /* =============================================
    StudyCore Content Admin workspace
-   A small, purpose-built publishing surface. It uses the shared StudyCore
-   tokens from style.css but intentionally does not inherit the student or
-   Main Admin navigation.
+   A purpose-built publishing surface. It uses the shared StudyCore tokens
+   AND the shared site chrome (navbar, footer, mobile tab bar) from
+   style.css / layout.js, so a Content Admin can navigate the rest of the
+   website instead of being locked inside this dashboard. What lives here is
+   only the workspace's own furniture: the sticky section bar, the hero, the
+   stat cards, the upload form and the upload list.
    ============================================= */
 
 body[data-page='content-admin'] {
@@ -11,79 +14,73 @@ body[data-page='content-admin'] {
     var(--bg);
 }
 
-.ca-topbar {
+/* ── Section bar ───────────────────────────
+   In-page navigation for the workspace's own sections. It sits BELOW the
+   shared floating navbar (which is `position: sticky` with its own offset),
+   so it sticks to the top of the scroll area underneath it rather than
+   competing with it. */
+.ca-sectionbar {
   position: sticky;
-  top: 0;
-  z-index: 30;
-  min-height: 72px;
+  /* Parks directly beneath the shared floating navbar island — the same
+     offset the course sub-nav uses, so the two never overlap. */
+  top: calc(var(--nav-h) + var(--nav-float) + 8px);
+  z-index: 20;
+  margin-top: 18px;
   background: color-mix(in srgb, var(--card) 92%, transparent);
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
 }
 
-.ca-topbar-inner {
-  min-height: 72px;
+.ca-sectionbar-inner {
+  min-height: 58px;
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 16px;
 }
 
-.ca-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--ink);
-  font-family: var(--font-display);
-  font-size: 1.16rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-.ca-brand:hover { color: var(--ink); }
-.ca-brand img { width: 36px; height: 36px; border-radius: 10px; object-fit: cover; }
-.ca-brand em { color: var(--teal-500); font-style: normal; }
-
-.ca-nav {
+/* The links scroll horizontally on narrow screens instead of wrapping into a
+   second row that would double the sticky bar's height. */
+.ca-sectionbar-links {
   display: flex;
   align-items: center;
   gap: 3px;
-  margin-left: auto;
+  min-width: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
 }
-.ca-nav a,
-.ca-nav-logout,
-.ca-mobile-nav a {
+.ca-sectionbar-links::-webkit-scrollbar { display: none; }
+
+.ca-sectionbar-links a {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 9px 11px;
-  border: 0;
+  padding: 9px 12px;
   border-radius: 9px;
   background: transparent;
   color: var(--muted);
-  cursor: pointer;
-  font: inherit;
+  white-space: nowrap;
+  scroll-snap-align: start;
   font-size: 0.86rem;
   font-weight: 650;
 }
-.ca-nav a:hover,
-.ca-nav a.active,
-.ca-mobile-nav a:hover,
-.ca-mobile-nav a.active {
+.ca-sectionbar-links a:hover,
+.ca-sectionbar-links a.active {
   background: var(--teal-50);
   color: var(--teal-700);
 }
-.ca-nav-logout { color: var(--red-600); }
-.ca-nav-logout:hover { background: var(--red-100); }
-.ca-nav a svg,
-.ca-nav-logout svg,
-.ca-mobile-nav a svg { flex-shrink: 0; }
 
 .ca-user {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: 8px;
   padding-left: 15px;
   border-left: 1px solid var(--border);
+  flex: 0 0 auto;
   min-width: 0;
 }
 .ca-user-avatar {
@@ -101,18 +98,6 @@ body[data-page='content-admin'] {
 .ca-user-copy { min-width: 0; }
 .ca-user-copy strong { display: block; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 0.82rem; }
 .ca-user-copy span { display: block; color: var(--muted); font-size: 0.69rem; line-height: 1.3; }
-.ca-mobile-nav .ca-logout { color: var(--red-600) !important; }
-.ca-mobile-nav .ca-logout:hover { background: var(--red-100) !important; }
-
-.ca-menu-toggle { display: none; margin-left: auto; }
-.ca-mobile-nav {
-  display: none;
-  gap: 4px;
-  padding: 0 0 14px;
-  border-top: 1px solid var(--border);
-}
-.ca-mobile-nav.open { display: grid; grid-template-columns: 1fr 1fr; }
-.ca-mobile-nav .ca-logout { grid-column: span 2; }
 
 .ca-main { padding: 34px 0 64px; }
 .ca-hero {
@@ -144,7 +129,10 @@ body[data-page='content-admin'] {
 .ca-hero p { margin-top: 6px; color: rgba(255, 255, 255, 0.73); max-width: 660px; }
 .ca-hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
-.ca-section { scroll-margin-top: 92px; margin-top: 28px; }
+/* Anchor targets must clear BOTH sticky bars (the floating navbar and the
+   section bar under it), or a jump lands with the heading hidden behind them. */
+.ca-section, .ca-hero { scroll-margin-top: calc(var(--nav-h) + var(--nav-float) + 76px); }
+.ca-section { margin-top: 28px; }
 .ca-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .ca-section-head h2 { font-size: clamp(1.35rem, 3vw, 1.75rem); }
 .ca-section-head p { margin-top: 4px; font-size: 0.91rem; }
@@ -253,17 +241,21 @@ body[data-page='content-admin'] {
 .ca-empty strong { display: block; color: var(--ink); font-family: var(--font-display); }
 .ca-empty p { margin-top: 3px; font-size: .86rem; }
 
-.ca-toast-container { position: fixed; z-index: 100; right: 18px; bottom: 18px; display: grid; gap: 8px; width: min(360px, calc(100vw - 32px)); }
+.ca-toast-container { position: fixed; z-index: 990; right: 18px; bottom: 18px; display: grid; gap: 8px; width: min(360px, calc(100vw - 32px)); }
+/* The page now carries the shared bottom tab dock on phones/tablets — lift
+   the toasts above it so an upload confirmation is never hidden behind it. */
+body.has-mobtabs .ca-toast-container { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); }
 .ca-toast { display: flex; align-items: flex-start; gap: 9px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); color: var(--ink); box-shadow: var(--shadow-lg); font-size: .85rem; animation: ca-toast-in .2s ease both; }
 .ca-toast.success svg { color: var(--green-600); }
 .ca-toast.error svg { color: var(--red-600); }
 @keyframes ca-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 900px) {
-  .ca-nav, .ca-user-copy { display: none; }
-  .ca-topbar-inner { gap: 12px; }
-  .ca-user { margin-left: auto; padding-left: 0; border-left: 0; }
-  .ca-menu-toggle { display: inline-flex; }
+  /* The signed-in identity is already in the shared chrome (the avatar in the
+     mobile Account tab), so the section bar hands its whole width to the
+     scrolling section links. */
+  .ca-user { display: none; }
+  .ca-sectionbar-inner { gap: 12px; }
   .ca-grid, .ca-profile-grid { grid-template-columns: 1fr; }
   .ca-upload-item { grid-template-columns: 42px minmax(0, 1fr) auto; }
   .ca-upload-item-place { grid-column: 2 / 3; }
@@ -271,7 +263,8 @@ body[data-page='content-admin'] {
 }
 
 @media (max-width: 640px) {
-  .ca-topbar, .ca-topbar-inner { min-height: 62px; }
+  .ca-sectionbar { margin-top: 12px; }
+  .ca-sectionbar-inner { min-height: 52px; }
   .ca-main { padding: 20px 0 42px; }
   .ca-hero { padding: 23px 19px; margin-bottom: 18px; }
   .ca-hero::after { opacity: .5; right: -155px; top: -175px; }

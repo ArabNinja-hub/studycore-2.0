@@ -185,10 +185,9 @@ for (const f of htmlFiles) {
   if (!vp) { add('high', f, 'no <meta name="viewport"> — page renders at desktop width on phones'); continue; }
   if (!/width=device-width/.test(vp[0])) add('high', f, 'viewport meta missing width=device-width');
   if (/user-scalable\s*=\s*no|maximum-scale\s*=\s*1/.test(vp[0])) add('med', f, 'viewport blocks pinch-zoom (accessibility failure)');
-  // content-admin ships its own .ca-topbar + .ca-mobile-nav instead of the
-  // shared shell, so it is deliberately exempt from the tab bar.
-  const ownShell = /ca-mobile-nav|ca-topbar/.test(html);
-  if (!/js\/layout\.js/.test(html) && !/404/.test(f) && !ownShell) {
+  // Every page now uses the shared shell — content-admin included, so a
+  // Content Admin gets the same bottom tab bar and can navigate the site.
+  if (!/js\/layout\.js/.test(html) && !/404/.test(f)) {
     add('med', f, 'does not load layout.js — no bottom tab bar on this page');
   }
 

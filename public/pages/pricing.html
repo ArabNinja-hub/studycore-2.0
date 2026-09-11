@@ -106,7 +106,15 @@
         const trialCta = document.getElementById('trialCta');
         const payHowCta = document.getElementById('payHowCta');
 
-        if (user) {
+        if (user && StudyCoreAuth.isContentAdmin(user)) {
+          // Premium is a student subscription. A Content Admin has nothing to
+          // buy here and /dashboard.html would only bounce them back to their
+          // workspace — so this page becomes read-only context for them.
+          premiumCta.innerHTML = `<p style="font-size:0.86rem;color:rgba(255,255,255,0.72);">Premium is a student subscription. Your Content Admin account already has full publishing access.</p>`;
+          trialCta.innerHTML = `<a class="btn btn-outline btn-lg btn-block" href="/content-admin.html">Open My Workspace</a>`;
+          document.getElementById('payHowText').textContent = 'Students pay by mobile money and submit their reference from their dashboard. Content Admin accounts are not billed.';
+          payHowCta.innerHTML = `<a class="btn btn-primary btn-sm" href="/content-admin.html#upload">Upload a resource</a>`;
+        } else if (user) {
           // Already logged in -> straight to the dashboard Premium payment section
           premiumCta.innerHTML = `<a class="btn btn-amber btn-lg btn-block" href="/dashboard.html#premium">${SC.icon('crown', { size: 18 })} Go to Premium Payment</a>`;
           trialCta.innerHTML = `<a class="btn btn-outline btn-lg btn-block" href="/dashboard.html">Open My Dashboard</a>`;

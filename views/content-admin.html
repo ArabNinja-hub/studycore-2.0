@@ -16,37 +16,31 @@
     <link rel="stylesheet" href="/css/quiz.css" />
   </head>
   <body data-page="content-admin">
-    <header class="ca-topbar">
-      <div class="container ca-topbar-inner">
-        <a class="ca-brand" href="#dashboard" aria-label="StudyCore Content Admin dashboard">
-          <img src="/assets/logo-icon.jpg" alt="" width="36" height="36" />
-          <span><em>Study</em>Core</span>
-        </a>
+    <!-- The workspace uses the SAME site chrome as every other page (navbar,
+         footer, mobile tab bar and account sheet come from layout.js), so a
+         Content Admin can move around StudyCore instead of being pinned to
+         this one screen. layout.js shapes those menus for the publisher role;
+         the server still decides what they may actually open. -->
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
 
-        <nav class="ca-nav" aria-label="Content Admin navigation">
+    <!-- Sticky in-page section bar: the workspace's own sections, which used
+         to be the only navigation this page had. -->
+    <nav class="ca-sectionbar" aria-label="Workspace sections">
+      <div class="container ca-sectionbar-inner">
+        <div class="ca-sectionbar-links">
           <a href="#dashboard" data-ca-nav="dashboard">Dashboard</a>
-          <a href="#profile" data-ca-nav="profile">Profile</a>
           <a href="#upload" data-ca-nav="upload">Upload Resource</a>
           <a href="#uploads" data-ca-nav="uploads">My Uploads</a>
           <a href="#quizzes" data-ca-nav="quizzes">Quizzes</a>
-          <button class="ca-nav-logout" id="caLogoutBtn" type="button" aria-label="Log out">Logout</button>
-        </nav>
-
+          <a href="#profile" data-ca-nav="profile">Profile</a>
+        </div>
         <div class="ca-user" aria-label="Signed-in Content Admin">
           <span class="ca-user-avatar" id="caNavAvatar" aria-hidden="true">…</span>
           <span class="ca-user-copy"><strong id="caNavName">Loading…</strong><span>Content Admin</span></span>
         </div>
-        <button class="icon-btn ca-menu-toggle" id="caMenuToggle" type="button" aria-label="Open Content Admin navigation" aria-expanded="false"></button>
       </div>
-      <nav class="container ca-mobile-nav" id="caMobileNav" aria-label="Content Admin navigation" aria-hidden="true">
-        <a href="#dashboard" data-ca-nav="dashboard">Dashboard</a>
-        <a href="#profile" data-ca-nav="profile">Profile</a>
-        <a href="#upload" data-ca-nav="upload">Upload Resource</a>
-        <a href="#uploads" data-ca-nav="uploads">My Uploads</a>
-        <a href="#quizzes" data-ca-nav="quizzes">Quizzes</a>
-        <button class="btn btn-outline btn-sm ca-logout" id="caMobileLogoutBtn" type="button">Logout</button>
-      </nav>
-    </header>
+    </nav>
 
     <main class="ca-main">
       <div class="container">
@@ -59,6 +53,7 @@
           <div class="ca-hero-actions">
             <a class="btn btn-teal btn-sm" href="#upload" id="caHeroUploadBtn">Upload Resource</a>
             <a class="btn btn-on-dark btn-sm" href="#uploads">My Uploads</a>
+            <a class="btn btn-on-dark btn-sm" href="/">Visit StudyCore</a>
           </div>
         </section>
 
@@ -228,6 +223,8 @@
       </div>
     </main>
 
+    <div id="siteFooter"></div>
+
     <div class="ca-toast-container" id="caToastContainer" aria-live="polite" aria-atomic="true"></div>
 
     <script>
@@ -247,6 +244,9 @@
     <script src="/js/icons.js"></script>
     <script src="/js/api.js"></script>
     <script src="/js/auth.js"></script>
+    <!-- Shared site chrome: navbar, footer, mobile tab bar and account sheet.
+         layout.js renders the Content Admin variant of each. -->
+    <script src="/js/layout.js"></script>
     <script src="/js/main.js"></script>
     <script src="/js/scroll-reveal.js"></script>
     <script src="/js/quiz-admin.js"></script>

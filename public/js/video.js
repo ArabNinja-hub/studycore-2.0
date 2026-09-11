@@ -42,10 +42,6 @@
     return courseSubject();
   }
 
-  function courseHomeHref() {
-    return isProgram ? `/course/${encodeURIComponent(courseSlug)}` : `/pages/subjects/${encodeURIComponent(courseSlug)}.html`;
-  }
-
   function termHref(term) {
     const flag = isProgram ? '&program=1' : '';
     return `/pages/videos.html?course=${encodeURIComponent(courseSlug)}&term=${encodeURIComponent(term)}${flag}`;

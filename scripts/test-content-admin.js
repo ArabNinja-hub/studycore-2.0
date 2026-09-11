@@ -132,9 +132,31 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.doesNotMatch(dashboardHtml, /Studycore2026#/i, 'the registration secret must not appear in the protected page source either');
     assert.doesNotMatch(dashboardScript, /Studycore2026#/i, 'the registration secret must not appear in Content Admin JavaScript');
     assert.match(publicSignup, /Create Admin Account/);
-    for (const label of ['Dashboard', 'Profile', 'Upload Resource', 'My Uploads', 'Logout']) {
-      assert.match(dashboardHtml, new RegExp(`>${label}<`), `the dedicated navigation includes ${label}`);
+    // The workspace's own sections stay reachable from the in-page section bar.
+    for (const label of ['Dashboard', 'Profile', 'Upload Resource', 'My Uploads', 'Quizzes']) {
+      assert.match(dashboardHtml, new RegExp(`>${label}<`), `the workspace section bar includes ${label}`);
     }
+    // ...and the workspace is no longer a dead end: it loads the SHARED site
+    // chrome (navbar + footer + mobile tab bar) so a Content Admin can
+    // navigate the rest of StudyCore instead of being stuck on one screen.
+    assert.match(dashboardHtml, /<div id="siteNav">/, 'the workspace renders the shared site navbar');
+    assert.match(dashboardHtml, /<div id="siteFooter">/, 'the workspace renders the shared site footer');
+    assert.match(dashboardHtml, /js\/layout\.js/, 'the workspace loads the shared layout script');
+    assert.doesNotMatch(dashboardHtml, /ca-topbar/, 'the isolated Content Admin top bar has been replaced by the shared navbar');
+    // Logout now lives in the shared account menu/sheet, not a bespoke button.
+    assert.doesNotMatch(dashboardScript, /#caLogoutBtn|#caMenuToggle|#caMobileNav/, 'the workspace no longer binds its removed private nav controls');
+
+    // layout.js must give a Content Admin real routes off the dashboard.
+    const layoutScript = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'layout.js'), 'utf8');
+    assert.match(layoutScript, /CONTENT_ADMIN_NAV_LINKS/, 'the shared navbar has a Content Admin link set');
+    assert.match(layoutScript, /CONTENT_ADMIN_SITE_LINKS/, 'the Content Admin menus link out to the public site');
+    for (const href of ['/pages/pricing.html', '/pages/about.html']) {
+      assert.ok(
+        layoutScript.includes(href),
+        `Content Admin navigation offers ${href}, a page the server lets them read`
+      );
+    }
+
     assert.match(dashboardHtml, /Account Type/);
     assert.match(dashboardScript, /Welcome, \$\{profile\.name\}/);
     const publicConfig = await call(baseUrl, 'GET', '/api/config');
@@ -164,9 +186,19 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.equal(alice.role, ROLES.CONTENT_ADMIN);
     assert.doesNotMatch(aliceSignup.raw, /content-admin-test-access-code/i, 'the registration response must not expose the access code');
     assert.equal(db.prepare('SELECT role FROM users WHERE id = ?').get(alice.id).role, ROLES.CONTENT_ADMIN);
-    const contentAdminStudentPage = await call(baseUrl, 'GET', '/pages/announcements.html', { cookie: alice.cookie, manualRedirect: true });
-    assert.equal(contentAdminStudentPage.response.status, 302, 'Content Admin student-page URLs are redirected server-side');
-    assert.equal(contentAdminStudentPage.response.headers.get('location'), '/content-admin.html');
+    // The STUDENT LIBRARY stays closed to a publisher...
+    for (const studentPath of ['/pages/announcements.html', '/pages/courses.html', '/pages/resources.html', '/pages/search.html']) {
+      const blocked = await call(baseUrl, 'GET', studentPath, { cookie: alice.cookie, manualRedirect: true });
+      assert.equal(blocked.response.status, 302, `Content Admin student-page URL ${studentPath} is redirected server-side`);
+      assert.equal(blocked.response.headers.get('location'), '/content-admin.html');
+    }
+    // ...but the PUBLIC site is theirs to browse. These are the pages the
+    // shared navbar now links to, so a Content Admin is no longer confined to
+    // their dashboard. A redirect here would make that navigation a dead end.
+    for (const publicPath of ['/', '/pages/about.html', '/pages/pricing.html', '/pages/terms.html', '/pages/privacy.html']) {
+      const open = await call(baseUrl, 'GET', publicPath, { cookie: alice.cookie, manualRedirect: true });
+      assert.equal(open.response.status, 200, `a Content Admin can open the public page ${publicPath}`);
+    }
     // Registration code is never part of normal authentication: subsequent
     // Content Admin login uses the same email/password form as every account.
     const normalLogin = await call(baseUrl, 'POST', '/api/auth/login', {

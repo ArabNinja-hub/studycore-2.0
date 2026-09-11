@@ -163,7 +163,14 @@
 
   /* ── Achievements ───────────────────────── */
   function renderAchievements(achievements) {
-    if (!achievements || !achievements.length) { $('#achievementsGrid').innerHTML = ''; return; }
+    if (!achievements || !achievements.length) {
+      $('#achievementsGrid').innerHTML = emptyState({
+        icon: 'award',
+        title: 'No achievements yet',
+        body: 'Complete lessons and take quizzes to start earning badges.'
+      });
+      return;
+    }
     $('#achievementsGrid').innerHTML = achievements.map((a) => `
       <div class="achievement ${a.earned ? 'earned' : ''}" title="${escapeHtml(a.detail)}">
         <span class="ach-icon">${SC.icon(a.icon, { size: 21 })}</span>
@@ -615,6 +622,10 @@
     renderHero();
     renderStatusBanner();
     renderPremiumPanel();
+    // Badges come from /api/programs/mine alongside the program courses, so
+    // they are already loaded — render them before the slower per-course
+    // fetches below rather than leaving the card blank until those finish.
+    renderAchievements(myProgramData && myProgramData.achievements);
     bindAvatar();
     bindForms();
     loadAnnouncements();

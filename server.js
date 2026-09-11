@@ -256,11 +256,18 @@ app.get('/viewer/:documentId', requirePageAuth(ROLES.STUDENT, ROLES.ADMIN), (req
   res.sendFile(path.join(__dirname, 'views', 'viewer.html'));
 });
 
-// These pages are publicly viewable marketing/student-library shells, so they
-// must remain available to visitors and students. An authenticated Content
-// Admin is nevertheless sent to their dedicated workspace before the static
-// file is served. This complements (rather than replaces) the API-level role
-// checks that deny the underlying student library, community, and course data.
+// ---- Content Admin browsing policy ----------------------------------------
+// A Content Admin is a publisher, not a learner. They may browse the PUBLIC
+// site freely — /, /pages/about.html, /pages/pricing.html, /pages/terms.html
+// and /pages/privacy.html are deliberately absent from the list below, so the
+// static middleware serves them normally and the shared navbar links there.
+//
+// The STUDENT LIBRARY below stays closed to them. These pages are publicly
+// viewable shells, so they must remain available to visitors and students; an
+// authenticated Content Admin is sent to their dedicated workspace before the
+// static file is served. This complements (rather than replaces) the
+// API-level role checks that deny the underlying student library, community,
+// and course data — the pages would render empty for them in any case.
 const contentAdminStudentPagePaths = [
   '/pages/announcements.html',
   '/pages/courses.html',
