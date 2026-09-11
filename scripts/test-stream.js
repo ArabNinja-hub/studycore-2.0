@@ -45,7 +45,7 @@ test('configured Stream builds adaptive playback URLs from the customer subdomai
   const uid = 'vid-9f8e7d';
   assert.equal(
     s.iframeUrl(uid),
-    'https://customer-test123.cloudflarestream.com/vid-9f8e7d/iframe'
+    'https://customer-test123.cloudflarestream.com/vid-9f8e7d/iframe?preload=metadata'
   );
   assert.equal(
     s.hlsUrl(uid),
@@ -64,9 +64,25 @@ test('iframe URL includes a startTime when a resume position is provided', () =>
     CF_STREAM_CUSTOMER_SUBDOMAIN: 'customer-test123'
   });
   const url = s.iframeUrl('vid1', { startTime: 42.7 });
-  assert.match(url, /\?startTime=42s$/);
-  // Zero / negative start times add no query string.
-  assert.equal(s.iframeUrl('vid1', { startTime: 0 }), 'https://customer-test123.cloudflarestream.com/vid1/iframe');
+  assert.match(url, /startTime=42s/);
+  // Zero / negative start times add no startTime, but the view-only player
+  // options are always present.
+  assert.equal(
+    s.iframeUrl('vid1', { startTime: 0 }),
+    'https://customer-test123.cloudflarestream.com/vid1/iframe?preload=metadata'
+  );
+});
+
+test('the browser is never handed a permanent, directly-downloadable video URL', () => {
+  const fs = require('node:fs');
+  // hlsUrl() still exists for server-side use, but no serializer may put it
+  // in a JSON response: an HLS manifest address is exactly what a downloader
+  // needs, and nothing in the front-end plays it (the Cloudflare iframe
+  // fetches its own manifest inside the frame).
+  for (const route of ['courses', 'programs', 'resources']) {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', `${route}.routes.js`), 'utf8');
+    assert.doesNotMatch(src, /hls:\s*stream\.hlsUrl/, `${route}.routes.js must not publish the HLS manifest URL`);
+  }
 });
 
 test('the basic-upload size limit is exposed and matches Cloudflare (200MB)', () => {

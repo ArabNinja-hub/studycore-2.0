@@ -147,7 +147,7 @@
   // <iframe> and relied on the browser's native PDF plugin — desktop
   // browsers have one, mobile browsers do not, which is exactly why notes
   // opened on a laptop and showed a blank box on a phone.
-  function initDocumentViewer(lesson) {
+  async function initDocumentViewer(lesson) {
     const host = $('#lessonPlayerHost');
     if (readerHandle) { readerHandle.destroy(); readerHandle = null; }
 
@@ -164,8 +164,15 @@
       return;
     }
 
+    // Short-lived, account-bound viewing URL rather than the permanent
+    // /stream path — see StudyCoreAPI.protectedUrl. Falls back internally to
+    // the session-gated URL if the ticket cannot be minted.
+    const url = typeof StudyCoreAPI.protectedUrl === 'function'
+      ? await StudyCoreAPI.protectedUrl(lesson.id)
+      : StudyCoreAPI.streamUrl(lesson.id);
+
     readerHandle = StudyCoreReader.init(host, {
-      url: StudyCoreAPI.streamUrl(lesson.id),
+      url,
       title: lesson.title,
       fileSize: lesson.fileSize,
       fileName: lesson.fileName,

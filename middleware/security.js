@@ -96,9 +96,21 @@ function securityHeaders(req, res, next) {
   // the tab. It does NOT stop an OS screenshot tool - nothing on the web
   // can - but it does close the one screen-recording route that lives
   // inside the page, including via an injected or compromised script.
+  //
+  // `picture-in-picture=()` closes a real hole in the capture protection:
+  // PiP floats the video in an OS-level window that lives OUTSIDE the
+  // document, where the privacy curtain cannot cover it and the student can
+  // keep the lesson on screen while switching to a recorder. Blocking it in
+  // the header (rather than only on the <video> element) also covers the
+  // cross-origin Cloudflare Stream iframe, whose own player would otherwise
+  // offer its PiP button.
+  //
+  // `fullscreen=(self)` is unchanged and deliberately kept - fullscreen
+  // watching and fullscreen document reading are core features, and the
+  // watermark is painted inside the element that gets fullscreened.
   res.setHeader(
     'Permissions-Policy',
-    'geolocation=(), microphone=(), camera=(), display-capture=(), fullscreen=(self)'
+    'geolocation=(), microphone=(), camera=(), display-capture=(), picture-in-picture=(), fullscreen=(self)'
   );
 
   // HSTS: only in production AND only when the request actually arrived

@@ -17,7 +17,12 @@ function streamPlaybackFor(row) {
     status: row.stream_status || 'ready',
     ready: (row.stream_status || 'ready') === 'ready',
     iframe,
-    hls: stream.hlsUrl(row.stream_uid),
+    // The raw HLS manifest URL is deliberately NOT sent to the browser.
+    // Nothing in the front-end plays it (the Cloudflare iframe player fetches
+    // its own manifest inside the frame), so shipping it only published a
+    // permanent, directly-downloadable video address — exactly what yt-dlp
+    // needs — in every course/lesson JSON payload. Server-side callers that
+    // genuinely need it can still use stream.hlsUrl().
     thumbnail: stream.thumbnailUrl(row.stream_uid)
   };
 }
