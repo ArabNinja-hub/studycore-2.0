@@ -22,6 +22,13 @@
   const CATEGORY_LABELS = { document: 'Notes', video: 'Video', tutorial: 'Tutorial', past_paper: 'Past paper', quiz: 'Quiz', assignment: 'Assignment', announcement: 'Announcement' };
   const CATEGORY_ICONS = { document: 'file-text', video: 'video', tutorial: 'file-text', past_paper: 'file', quiz: 'circle-help', assignment: 'edit', announcement: 'bell' };
 
+  function setResourceFormStatus(message, kind) {
+    const status = document.getElementById('resourceFormStatus');
+    if (!status) return;
+    status.textContent = message || '';
+    status.style.color = kind === 'error' ? 'var(--red-600)' : kind === 'success' ? 'var(--green-600)' : 'var(--muted)';
+  }
+
   function categoryFieldVisibility() {
     const category = document.getElementById('resCategory').value;
     document.getElementById('resDueDateGroup').style.display = category === 'assignment' ? 'block' : 'none';
@@ -35,8 +42,19 @@
     document.getElementById('resSemesterRequired').textContent = isVideo ? '*' : '';
     document.getElementById('resSemesterHelp').style.display = isVideo ? 'block' : 'none';
 
+    const courseLabel = document.querySelector('label[for="resCourseSelect"]');
+    if (courseLabel) courseLabel.innerHTML = isVideo
+      ? 'Course (required for videos)'
+      : 'Course (attach to a program course)';
+    const courseSelect = document.getElementById('resCourseSelect');
+    // Do not make this a native required control: doing so would prevent the
+    // submit handler from running and the admin would not get the reason a
+    // video is missing from the course library. validateResourceForm() below
+    // gives an actionable message instead.
+    courseSelect.setAttribute('aria-required', isVideo ? 'true' : 'false');
+
     const fileInput = document.getElementById('fileInput');
-    if (category === 'video') fileInput.setAttribute('accept', '.mp4,.mov,.webm,.mkv,.avi,video/*');
+    if (category === 'video') fileInput.setAttribute('accept', '.mp4,.m4v,.mov,.webm,.mkv,.avi,video/*');
     else fileInput.setAttribute('accept', '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp');
   }
 
@@ -44,12 +62,18 @@
     editingResourceId = null;
     selectedFile = null;
     document.getElementById('resourceForm').reset();
+    // The file input lives in the drop zone rather than inside the metadata
+    // form, so form.reset() does not clear it. Clearing it also lets an admin
+    // select the same video again after a failed or completed upload.
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) fileInput.value = '';
     document.getElementById('resourceId').value = '';
     document.getElementById('fileChosenLabel').textContent = '';
     document.getElementById('uploadProgressWrap').style.display = 'none';
     document.getElementById('uploadFormTitle').textContent = 'Upload a new resource';
     document.getElementById('resourceSubmitBtn').textContent = 'Publish Resource';
     document.getElementById('resourceCancelEditBtn').style.display = 'none';
+    setResourceFormStatus('');
     // Reset program/course selects and targeting to "All Programs".
     if (resourceFormControls) {
       resourceFormControls.setProgram('');
@@ -61,6 +85,24 @@
       SCAdminPrograms.wireTargetingBehavior(targetingSlot);
     }
     categoryFieldVisibility();
+  }
+
+  function validateResourceForm(category) {
+    const title = document.getElementById('resTitle').value.trim();
+    if (!title) return 'Add a title before publishing this resource.';
+
+    // A video without a course can be written to the database, but it has no
+    // route into the program course/video pages. The old subject field is
+    // retained for legacy uploads; new Main Admin video uploads must use the
+    // current Program → Course path so a successful upload is actually
+    // visible to students.
+    if (category === 'video' && !editingResourceId) {
+      const courseId = resourceFormControls ? resourceFormControls.getCourseId() : '';
+      if (!courseId) return 'Select a program course for this video. Videos without a course are not shown in Video Lessons.';
+      if (!selectedFile) return 'Choose the video file before publishing.';
+      if (!document.getElementById('resSemester').value) return 'Choose Term 1, Term 2, or Term 3 for this video.';
+    }
+    return null;
   }
 
   function notifyAnnouncementChange() {
@@ -157,7 +199,13 @@
     // the whole padded box is a drop target, not just the inner column.
     const shell = document.getElementById('dropZoneShell') || dropZone;
 
-    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('click', (event) => {
+      // The hidden input is inside the clickable drop zone. Stop its
+      // programmatic click from bubbling back to this handler, which can
+      // otherwise reopen the picker recursively in some browsers.
+      if (event.target !== fileInput) fileInput.click();
+    });
+    fileInput.addEventListener('click', (event) => event.stopPropagation());
     fileInput.addEventListener('change', (e) => chooseFile(e.target.files[0]));
 
     ['dragenter', 'dragover'].forEach((evt) => shell.addEventListener(evt, (e) => {
@@ -226,9 +274,20 @@
   async function submitResourceForm(e) {
     e.preventDefault();
     const category = document.getElementById('resCategory').value;
+    const validationError = validateResourceForm(category);
+    if (validationError) {
+      setResourceFormStatus(validationError, 'error');
+      showToast(validationError, 'error');
+      return;
+    }
     const quizRaw = document.getElementById('resQuizData').value.trim();
     if (category === 'quiz') {
-      try { JSON.parse(quizRaw); } catch { showToast('Quiz questions must be valid JSON.', 'error'); return; }
+      try { JSON.parse(quizRaw); } catch {
+        const message = 'Quiz questions must be valid JSON.';
+        setResourceFormStatus(message, 'error');
+        showToast(message, 'error');
+        return;
+      }
     }
 
     const fd = buildFormData();
@@ -242,6 +301,9 @@
       progressWrap.style.display = 'block';
       progressBar.style.width = '0%';
       progressText.textContent = 'Uploading… 0%';
+      setResourceFormStatus('Uploading file…');
+    } else {
+      setResourceFormStatus(editingResourceId ? 'Saving changes…' : 'Publishing resource…');
     }
 
     try {
@@ -251,15 +313,29 @@
         progressBar.style.width = `${pct}%`;
         progressText.textContent = `Uploading… ${pct}%${formatUploadDetail(info)}`;
       });
-      showToast(editingResourceId ? 'Resource updated.' : 'Resource published.', 'success');
+      const successMessage = editingResourceId ? 'Resource updated.' : 'Resource published.';
+      showToast(successMessage, 'success');
       if (result && result.warning) showToast(result.warning, 'info');
       resetResourceForm();
-      loadResourceTable();
+      setResourceFormStatus(`${successMessage} It is now listed in Manage resources.`, 'success');
+      // A category/program/search filter can otherwise make a successful new
+      // upload appear to vanish. Clear the table filters and wait for the
+      // fresh response so the just-published resource is visible immediately.
+      currentFilters = { search: '', category: '', sort: 'newest', program: '' };
+      const search = document.getElementById('adminSearch');
+      const categoryFilter = document.getElementById('adminCategoryFilter');
+      const sort = document.getElementById('adminSort');
+      if (search) search.value = '';
+      if (categoryFilter) categoryFilter.value = '';
+      if (sort) sort.value = 'newest';
+      renderProgramFilterChips();
+      await loadResourceTable();
       loadAnalytics();
       loadTopicSuggest();
       if (window.SCAdminPrograms) SCAdminPrograms.loadPrograms();
       notifyAnnouncementChange();
     } catch (err) {
+      setResourceFormStatus(err.message, 'error');
       showToast(err.message, 'error');
     } finally {
       submitBtn.disabled = false;
@@ -455,6 +531,7 @@
               <div style="min-width:0;">
                 <strong style="color:var(--ink);display:block;overflow:hidden;text-overflow:ellipsis;max-width:min(260px, 100%);">${escapeHtml(r.title)}</strong>
                 <span style="font-size:0.72rem;color:var(--muted);">${r.hasFile ? `${escapeHtml(r.fileName || '')} · ${formatFileSize(r.fileSize)}` : 'no file'}</span>
+                ${r.visibilityWarning ? `<span style="display:block;font-size:0.72rem;color:var(--amber-600);margin-top:3px;">${SC.icon('alert-triangle', { size: 12 })} ${escapeHtml(r.visibilityWarning)}</span>` : ''}
               </div>
             </div>
           </td>

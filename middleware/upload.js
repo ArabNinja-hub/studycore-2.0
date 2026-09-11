@@ -16,7 +16,7 @@ const ALLOWED_EXTENSIONS = new Set([
   '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt', '.csv',
   '.zip', '.rar',
   '.jpg', '.jpeg', '.png', '.gif', '.webp',
-  '.mp4', '.mov', '.webm', '.mkv', '.avi',
+  '.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi',
   '.mp3', '.wav'
 ]);
 
@@ -33,6 +33,7 @@ const MIME_TO_EXT = {
   'image/gif': '.gif',
   'image/webp': '.webp',
   'video/mp4': '.mp4',
+  'video/x-m4v': '.m4v',
   'video/webm': '.webm',
   'video/quicktime': '.mov',
   'video/x-msvideo': '.avi',
@@ -107,6 +108,7 @@ const EXT_TO_SIGNATURE = {
   '.avi': 'avi',
   '.wav': 'wav',
   '.mp4': 'mp4',
+  '.m4v': 'mp4',
   '.mov': 'mov',
   '.webm': 'webm',
   '.mkv': 'mkv',

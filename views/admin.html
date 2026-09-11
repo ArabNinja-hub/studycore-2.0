@@ -101,7 +101,7 @@
           <!-- Upload -->
           <div class="card card-pad" style="margin-bottom:28px;">
             <h3 id="uploadFormTitle">Upload a new resource</h3>
-            <p style="margin:6px 0 18px;">Choose a file, set the topic, and publish. Every upload is streamed straight to secure cloud storage and tracked in the database.</p>
+            <p style="margin:6px 0 18px;">Choose a file, set the topic, and publish. Every upload is streamed straight to secure cloud storage and tracked in the database. For a video to appear in the student Video Lessons area, select its program course and term before publishing.</p>
 
             <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
               <button class="btn btn-outline btn-sm" data-quick-category="document">New Document</button>
@@ -243,6 +243,7 @@
                 <button class="btn btn-primary" type="submit" id="resourceSubmitBtn">Publish Resource</button>
                 <button class="btn btn-outline" type="button" id="resourceCancelEditBtn" style="display:none;">Cancel edit</button>
               </div>
+              <p id="resourceFormStatus" role="status" aria-live="polite" style="margin:10px 0 0;color:var(--muted);font-size:0.86rem;"></p>
             </form>
           </div>
 
