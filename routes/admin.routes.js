@@ -21,7 +21,7 @@ router.use(requireAuth, requireRole(ROLES.ADMIN));
 // picking the wrong category for a file (e.g. a .pdf tagged as "video"),
 // which would silently land in the wrong place with a broken player or a
 // document that never streams.
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi']);
 const DOCUMENT_LIKE_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'assignment']);
 const COURSE_CONTENT_CATEGORIES = new Set(['video', 'document', 'tutorial', 'past_paper']);
 const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
@@ -85,7 +85,7 @@ function validateFileMatchesCategory(category, file) {
   if (!file) return null;
   const ext = path.extname(file.originalname).toLowerCase();
   if (category === 'video' && !VIDEO_EXTENSIONS.has(ext)) {
-    return `"${ext}" is not a video file. Videos must be uploaded under the Video Lesson category as an actual video file (.mp4, .mov, .webm, .mkv, or .avi).`;
+    return `"${ext}" is not a video file. Videos must be uploaded under the Video Lesson category as an actual video file (.mp4, .m4v, .mov, .webm, .mkv, or .avi).`;
   }
   if (DOCUMENT_LIKE_CATEGORIES.has(category) && VIDEO_EXTENSIONS.has(ext)) {
     return `This looks like a video file. Please use the Video Lesson category for videos, so it plays properly for students instead of landing in the wrong library.`;
@@ -113,6 +113,13 @@ function serializeResource(row) {
     fileSize: row.file_size,
     mimeType: row.mime_type,
     hasFile: Boolean(row.stored_name || row.google_drive_file_id),
+    // Legacy subject-only videos can remain in the database after the
+    // program-course migration, but the current student Video Lessons route
+    // cannot place them in a course. Tell Main Admin exactly why one appears
+    // to be missing instead of making it look like storage lost the upload.
+    visibilityWarning: row.category === 'video' && !row.course_id
+      ? 'Assign this video to a program course to show it in Video Lessons.'
+      : null,
     externalUrl: row.external_url,
     googleDriveFileId: row.google_drive_file_id || null,
     googleDriveUrl: row.google_drive_url || null,

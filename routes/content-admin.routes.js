@@ -25,7 +25,7 @@ const {
 const router = express.Router();
 router.use(requireAuth, requireRole(ROLES.CONTENT_ADMIN));
 
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.webm', '.mkv', '.avi']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi']);
 const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
 const PUBLISH_STATUSES = new Set(['published', 'draft']);
 
@@ -135,7 +135,7 @@ function validateFileForType(type, file) {
   const storedExt = path.extname(String(file.stored_name || file.key || '')).toLowerCase();
   const ext = originalExt || storedExt;
   if (type.category === 'video' && !VIDEO_EXTENSIONS.has(ext)) {
-    return 'Video resources must use a supported video file (.mp4, .mov, .webm, .mkv, or .avi).';
+    return 'Video resources must use a supported video file (.mp4, .m4v, .mov, .webm, .mkv, or .avi).';
   }
   if (type.category !== 'video' && VIDEO_EXTENSIONS.has(ext)) {
     return 'Video files must be uploaded with the Video resource type.';

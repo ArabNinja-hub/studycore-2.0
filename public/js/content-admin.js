@@ -277,10 +277,10 @@
     termField.hidden = !isVideo;
     term.required = isVideo;
     file.accept = isVideo
-      ? '.mp4,.mov,.webm,.mkv,.avi,video/*'
+      ? '.mp4,.m4v,.mov,.webm,.mkv,.avi,video/*'
       : '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav';
     $('#caFileDropHint').textContent = isVideo
-      ? 'Choose a supported video file: .mp4, .mov, .webm, .mkv, or .avi'
+      ? 'Choose a supported video file: .mp4, .m4v, .mov, .webm, .mkv, or .avi'
       : 'PDF, office document, image, archive or audio file';
     $('#caFileHelp').textContent = isVideo
       ? 'Video resources must be assigned to Term 1, Term 2, or Term 3.'
