@@ -655,26 +655,36 @@ body[data-theme='dark'] .nav-badge-pill { background: var(--teal-500); }
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(14px) scale(0.96);
+  transform: scale(0.35) translateY(-8px);
+  filter: blur(12px);
   transition:
-    opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 0s linear 0.28s;
+    opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.26s cubic-bezier(0.32, 0, 0.67, 0),
+    filter 0.22s ease,
+    visibility 0s linear 0.24s;
   z-index: 1200;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   transform-origin: top right;
 }
+/* iOS-style "liquid" fly-in: the panel pops out of the bell, overshoots
+   slightly like a droplet of glass, then settles — the same motion family
+   used by the mobile Account sheet so every popover flies in the same way. */
 .notif-panel.open {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translateY(0) scale(1);
-  transition:
-    opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.32s cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 0s;
+  filter: blur(0);
+  transform: scale(1) translateY(0);
+  animation: sc-liquid-pop-in 0.62s cubic-bezier(0.22, 1.42, 0.36, 1) both;
+  transition: visibility 0s;
+}
+@keyframes sc-liquid-pop-in {
+  0%   { opacity: 0; transform: scale(0.32) translateY(-12px); filter: blur(16px); }
+  45%  { opacity: 1; transform: scale(1.06) translateY(3px); filter: blur(1px); }
+  72%  { transform: scale(0.97) translateY(-1px); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
 }
 body[data-theme='dark'] .notif-panel {
   background: rgba(16, 32, 47, 0.90);
@@ -1039,7 +1049,7 @@ body[data-theme='dark'] .account-panel {
   background: rgba(16, 32, 47, 0.90);
   border-color: rgba(255,255,255,0.14);
 }
-.account-panel.open { display: block; animation: panel-in 0.26s cubic-bezier(0.16,1,0.3,1); }
+.account-panel.open { display: block; animation: sc-liquid-pop-in 0.5s cubic-bezier(0.22, 1.32, 0.36, 1) both; transform-origin: top right; }
 @keyframes panel-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .account-panel-head { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.18); margin-bottom: 8px; }
 body[data-theme='dark'] .account-panel-head { border-bottom-color: rgba(255,255,255,0.08); }
@@ -1084,17 +1094,28 @@ body[data-theme='dark'] .account-panel .danger:hover { background: rgba(248,113,
   border-radius: 28px 28px 0 0;
   box-shadow: 0 -20px 60px rgba(8, 23, 38, 0.22), var(--glass-highlight);
   padding: 8px 12px calc(14px + env(safe-area-inset-bottom, 0px));
-  transform: translateY(105%); visibility: hidden;
-  transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.42s;
+  transform: translateY(105%) scale(0.94); visibility: hidden;
+  transform-origin: var(--sheet-origin-x, 50%) bottom;
+  transition: transform 0.38s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.38s;
 }
 body[data-theme='dark'] .account-sheet {
   background: rgba(16, 32, 47, 0.92);
   border-color: rgba(255,255,255,0.14);
 }
+/* iOS-style "liquid" fly-in from the tapped tab, same droplet-of-glass
+   overshoot the notification bell panel uses, so every popover in the app
+   flies in with the same motion language. */
 .account-sheet.open {
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
   visibility: visible;
-  transition: transform 0.42s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s;
+  animation: sc-liquid-sheet-in 0.5s cubic-bezier(0.22, 1.28, 0.36, 1) both;
+  transition: visibility 0s;
+}
+@keyframes sc-liquid-sheet-in {
+  0%   { opacity: 0.4; transform: translateY(100%) scale(0.92); }
+  55%  { opacity: 1; transform: translateY(-10px) scale(1.015); }
+  80%  { transform: translateY(4px) scale(0.995); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 .account-sheet .sheet-grab {
   width: 42px; height: 4px; border-radius: 999px;
@@ -2880,6 +2901,36 @@ body.sc-page-enter {
   animation: sc-page-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Bottom tab bar taps: the page collapses toward / flies out of the tapped
+   icon instead of a plain fade — the iOS 26 "liquid glass" springboard-open
+   motion. --sc-fly-x/--sc-fly-y are set from JS to the tapped icon's
+   position (in vw/vh) right before each class is applied. */
+body.sc-page-leave-fly {
+  pointer-events: none;
+  /* transform-origin is measured from the <body> box's own top-left (the
+     top of the whole document), so a scrolled page needs the current
+     scroll offset added back in to land on the icon actually on screen. */
+  transform-origin:
+    calc(var(--sc-fly-x, 50vw) + var(--sc-fly-scroll-x, 0px))
+    calc(var(--sc-fly-y, 100vh) + var(--sc-fly-scroll-y, 0px));
+  animation: sc-liquid-fly-out 230ms cubic-bezier(0.4, 0, 0.7, 0.2) both;
+}
+body.sc-page-enter-fly {
+  /* The destination page always loads scrolled to the top, so the origin
+     is just the tapped icon's on-screen position with no scroll offset. */
+  transform-origin: var(--sc-fly-x, 50vw) var(--sc-fly-y, 100vh);
+  animation: sc-liquid-fly-in 560ms cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+@keyframes sc-liquid-fly-out {
+  from { opacity: 1; transform: scale(1); filter: blur(0); }
+  to   { opacity: 0; transform: scale(0.18); filter: blur(6px); }
+}
+@keyframes sc-liquid-fly-in {
+  0%   { opacity: 0; transform: scale(0.22); filter: blur(10px); }
+  55%  { opacity: 1; transform: scale(1.035); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
 /* ── Scroll reveal (progressive enhancement) ────
    The shared scroll-reveal.js opts the page into this hidden state only
    after it has successfully prepared the targets. Without JavaScript,
@@ -2949,7 +3000,9 @@ body.scroll-reveal-enabled [data-scroll-reveal].sc-reveal-done {
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }
   body.sc-page-leave,
-  body.sc-page-enter {
+  body.sc-page-enter,
+  body.sc-page-leave-fly,
+  body.sc-page-enter-fly {
     animation: none !important;
   }
   .course-hero::before { animation: none !important; }

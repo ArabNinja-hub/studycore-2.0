@@ -657,6 +657,16 @@
 
       function setOpen(open, { restoreFocus = true } = {}) {
         if (open) lastFocused = document.activeElement;
+        if (open) {
+          // Liquid fly-in origin: the sheet pops up out of the Account tab
+          // itself, not just the bottom edge of the screen.
+          const accountTabBtn = document.getElementById('mobTabAccount');
+          if (accountTabBtn) {
+            const rect = accountTabBtn.getBoundingClientRect();
+            const xPct = ((rect.left + rect.width / 2) / window.innerWidth) * 100;
+            sheet.style.setProperty('--sheet-origin-x', `${xPct.toFixed(2)}%`);
+          }
+        }
         sheet.classList.toggle('open', open);
         sheet.setAttribute('aria-hidden', String(!open));
         if ('inert' in sheet) sheet.inert = !open;
@@ -1352,8 +1362,16 @@
   /* ── Cross-page transitions ───────────────
      Same-origin <a> clicks fade the current page out, then the next page
      fades in. Chromium also gets the native View Transition cross-fade.
-     Hash-only jumps, new tabs, downloads and modifier-clicks stay instant. */
+     Hash-only jumps, new tabs, downloads and modifier-clicks stay instant.
+
+     Tapping a bottom tab bar icon (Home/Courses/Resources) is special-cased:
+     instead of the plain fade, the outgoing page collapses into the tapped
+     icon and the incoming page flies back out of that same spot with a
+     liquid-glass overshoot — the same "pop in from where you tapped" motion
+     iOS 26 uses for opening an app from its dock/springboard icon, and the
+     same family of motion the notification bell + account sheet use. */
   const PAGE_LEAVE_MS = 240;
+  const FLY_LEAVE_MS = 230;
 
   function sameOriginInternal(url) {
     if (!url) return false;
@@ -1362,18 +1380,59 @@
     return true;
   }
 
-  function goTo(href) {
-    try { sessionStorage.setItem('sc_page_transition', '1'); } catch { /* private mode */ }
+  // The stored origin is viewport-relative (vw/vh): the bottom tab bar is
+  // position:fixed and sits at essentially the same spot on every page, and
+  // the destination page always loads scrolled to the top, so vw/vh lines
+  // the "enter" animation up with the tapped icon correctly.
+  function flyOriginFromTab(anchor) {
+    // Bottom tab bar icons (Home/Courses/Resources) and rows inside the
+    // Account sheet (Dashboard, Profile, Premium, …) all count — anything
+    // reached from the bottom mobile nav flies in from where it was tapped.
+    const source = anchor.closest && anchor.closest('.mob-tab, .sheet-row');
+    if (!source) return null;
+    const rect = source.getBoundingClientRect();
+    if (!rect.width && !rect.height) return null;
+    const x = (((rect.left + rect.width / 2) / window.innerWidth) * 100).toFixed(2);
+    const y = (((rect.top + rect.height / 2) / window.innerHeight) * 100).toFixed(2);
+    return `${x}vw,${y}vh`;
+  }
+
+  function setFlyOriginVars(origin) {
+    const [x, y] = origin.split(',');
+    document.body.style.setProperty('--sc-fly-x', x);
+    document.body.style.setProperty('--sc-fly-y', y);
+    // `transform-origin` offsets are measured from the <body> border box's
+    // own top-left (the top of the whole document), not the visible
+    // viewport — so on a scrolled page the vw/vh figures above need the
+    // current scroll added back in for the *outgoing* animation, or the
+    // collapse point drifts toward the top of the document. The incoming
+    // page always starts scrolled to the top, so it doesn't need this.
+    document.body.style.setProperty('--sc-fly-scroll-x', `${window.scrollX || 0}px`);
+    document.body.style.setProperty('--sc-fly-scroll-y', `${window.scrollY || 0}px`);
+  }
+
+  function goTo(href, origin) {
+    try {
+      sessionStorage.setItem('sc_page_transition', '1');
+      if (origin) sessionStorage.setItem('sc_page_transition_origin', origin);
+      else sessionStorage.removeItem('sc_page_transition_origin');
+    } catch { /* private mode */ }
     window.location.href = href;
   }
 
-  function leaveThenGo(href) {
-    if (document.body.classList.contains('sc-page-leave')) {
-      goTo(href);
+  function leaveThenGo(href, origin) {
+    if (document.body.classList.contains('sc-page-leave') || document.body.classList.contains('sc-page-leave-fly')) {
+      goTo(href, origin);
       return;
     }
-    document.body.classList.add('sc-page-leave');
-    window.setTimeout(() => goTo(href), PAGE_LEAVE_MS);
+    if (origin) {
+      setFlyOriginVars(origin);
+      document.body.classList.add('sc-page-leave-fly');
+      window.setTimeout(() => goTo(href, origin), FLY_LEAVE_MS);
+    } else {
+      document.body.classList.add('sc-page-leave');
+      window.setTimeout(() => goTo(href, origin), PAGE_LEAVE_MS);
+    }
   }
 
   function bindPageTransitions() {
@@ -1392,18 +1451,26 @@
       try { url = new URL(anchor.href, window.location.href); } catch { return; }
       if (!sameOriginInternal(url)) return;
       event.preventDefault();
-      leaveThenGo(url.href);
+      leaveThenGo(url.href, flyOriginFromTab(anchor));
     }, true);
 
     window.addEventListener('pageshow', (event) => {
-      if (event.persisted) document.body.classList.remove('sc-page-leave');
+      if (event.persisted) document.body.classList.remove('sc-page-leave', 'sc-page-leave-fly');
     });
 
     try {
+      const origin = sessionStorage.getItem('sc_page_transition_origin');
       if (sessionStorage.getItem('sc_page_transition') === '1') {
         sessionStorage.removeItem('sc_page_transition');
-        document.body.classList.add('sc-page-enter');
-        window.setTimeout(() => document.body.classList.remove('sc-page-enter'), 700);
+        sessionStorage.removeItem('sc_page_transition_origin');
+        if (origin) {
+          setFlyOriginVars(origin);
+          document.body.classList.add('sc-page-enter-fly');
+          window.setTimeout(() => document.body.classList.remove('sc-page-enter-fly'), 700);
+        } else {
+          document.body.classList.add('sc-page-enter');
+          window.setTimeout(() => document.body.classList.remove('sc-page-enter'), 700);
+        }
       }
     } catch { /* ignore */ }
   }
