@@ -60,6 +60,34 @@ authorized Premium sessions. 90% watched auto-completes the lesson server-side.
 Subscription states computed in `routes/auth.routes.js → subscriptionStatus()`:
 `trial_active`, `trial_expired`, `premium_active`, `premium_expired`, `payment_pending`.
 
+## Content privacy (screenshots, recording, copying)
+
+Learning pages — lessons, the document viewer, course homes and video pages —
+run a **content privacy guard** (`public/js/privacy-guard.js` +
+`public/css/privacy-guard.css`). Marketing, auth and the Admin / Content Admin
+dashboards are deliberately untouched, so publishers keep normal copy/paste.
+
+- no right-click, copy, cut, selection, drag-out or `Ctrl+S`/`Ctrl+U`; copy
+  attempts overwrite the clipboard with a notice
+- printing and "Save as PDF" are blanked
+- an **opaque black curtain** covers the content whenever the window loses
+  focus, the tab is hidden, a screenshot key is pressed or devtools opens —
+  so snipping tools, alt-tabbing to a recorder and screen-share pickers
+  capture a black panel instead of the lesson
+- `Permissions-Policy: display-capture=()` means **no script in the page can
+  record the tab** with `getDisplayMedia()` (browser-enforced, not a deterrent)
+- every protected video/document surface carries a tiled **per-student
+  watermark** (`Name · email · timestamp`) that survives fullscreen and is
+  restored if removed
+
+> **Important:** no website can truly prevent an OS screenshot — Snipping
+> Tool, `PrtSc`, `Cmd+Shift+4`, OBS and a phone camera all live outside the
+> browser sandbox. The above raises the effort sharply and makes any leak
+> traceable to one account; genuine capture-blocking needs hardware DRM.
+> Read **[`docs/content-protection.md`](docs/content-protection.md)** for the
+> full threat model, the known limits, and how to move the video path onto
+> Cloudflare Stream DRM.
+
 ## Payments
 
 Manual mobile-money flow (no merchant API required):
@@ -145,6 +173,8 @@ views/admin.html        admin dashboard (uploads, topics, announcements, payment
 public/js/icons.js      single SVG icon system (Lucide-style) - no emoji in the UI
 public/js/layout.js     shared navbar / mobile nav / account menu / footer / global search overlay
 public/js/player.js     StudyCore video player (custom controls, resume, progress, premium wall)
+public/js/privacy-guard.js  content privacy on learning pages: copy/print/capture blocks,
+                            focus-loss curtain, per-student watermark (see docs/content-protection.md)
 public/js/hero.js       per-course canvas hero animations (math/physics/chem/bio/code/comm)
 public/js/video.js      Video Lessons page (/pages/videos.html) — per-course, per-term
 public/pages/community.html  the community room UI (chat column + members rail + composer)

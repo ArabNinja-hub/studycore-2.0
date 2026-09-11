@@ -1,0 +1,189 @@
+/* =============================================
+   STUDYCORE — Content Privacy Guard (css/privacy-guard.css)
+   -----------------------------------------------
+   Visual half of js/privacy-guard.js. Loaded in <head> on protected
+   learning pages ONLY, so the marketing site and the admin dashboards keep
+   normal selection, copy and print behaviour.
+
+   Kept as a real stylesheet rather than injected from JS on purpose: the
+   print blackout and the selection lock must be in force before first paint,
+   otherwise there is a window in which the content is copyable.
+   ============================================= */
+
+/* ── Selection lock ────────────────────────
+   Applies to protected pages only (the attribute is set by the guard).
+   Form fields are deliberately exempt — the document reader's search box,
+   the global search field and every other input must stay usable. */
+body[data-sc-privacy] {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none; /* iOS: no long-press "Save Image" sheet */
+}
+
+body[data-sc-privacy] input,
+body[data-sc-privacy] textarea,
+body[data-sc-privacy] select,
+body[data-sc-privacy] [contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Nothing highlights, so nothing looks copyable. */
+body[data-sc-privacy] ::selection { background: transparent; color: inherit; }
+body[data-sc-privacy] ::-moz-selection { background: transparent; color: inherit; }
+
+/* No drag-out of a rendered page, poster frame or diagram. */
+body[data-sc-privacy] img,
+body[data-sc-privacy] canvas,
+body[data-sc-privacy] video,
+body[data-sc-privacy] svg {
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+}
+
+/* ── Per-student watermark ─────────────────
+   Tiled diagonally across the whole protected surface so it cannot be
+   cropped away, pointer-events:none so it never eats a click on the play
+   button or the page scroller. Low contrast: legible in a screenshot,
+   quiet while reading.
+
+   Layering (z-index inside .player-shell / .doc-reader-stage):
+     0   video / rendered PDF pages
+     1   .player-ui gradient
+     2   THE WATERMARK — over the content, under every control
+     3   .player-title, .player-bar
+     4   .player-state (buffering / error panels)
+     20  .doc-fs-ui (fullscreen document toolbar)
+   Sitting at 2 keeps the stamp on top of the material it protects while
+   leaving the controls and error messages perfectly readable. */
+.sc-protected-surface { position: relative; }
+
+.sc-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;   /* clips the oversized rotated inner layer */
+  pointer-events: none;
+  user-select: none;
+  border-radius: inherit;
+}
+
+/* Oversized and rotated so the diagonal rows cover every corner of the
+   surface no matter its aspect ratio. */
+.sc-watermark-inner {
+  position: absolute;
+  inset: -40%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  gap: 40px;
+  transform: rotate(-24deg);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.17);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+.sc-watermark-row { display: block; line-height: 1; }
+
+/* The document reader paints white pages; a white-on-white watermark would
+   be invisible in a screenshot, which defeats the entire point. */
+.doc-reader-stage .sc-watermark-inner {
+  color: rgba(15, 23, 32, 0.19);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+/* The reader's own loading/error panel must stay above the stamp. */
+body[data-sc-privacy] .doc-reader-status { z-index: 3; }
+
+@media (max-width: 640px) {
+  .sc-watermark-inner { font-size: 0.62rem; gap: 32px; }
+}
+
+/* ── Focus-loss curtain ────────────────────
+   Raised whenever the window stops being the thing the student is looking
+   at (alt-tab to a recorder, the OS snipping overlay, tab switch, print
+   dialog, devtools). Opaque, not blurred: a blur is still recoverable. */
+.sc-privacy-curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647; /* above every modal, drawer and fullscreen chrome */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #05090d;
+  color: #e6edf5;
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease;
+}
+
+.sc-privacy-curtain.is-visible { opacity: 1; visibility: visible; }
+
+/* Inside a fullscreen player/reader the curtain is re-parented into the
+   fullscreen element, where `position: fixed` resolves against it. */
+.sc-privacy-curtain-inner {
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.sc-privacy-curtain-inner svg { color: #5eead4; opacity: 0.9; }
+
+.sc-privacy-curtain h2 {
+  margin: 0;
+  font-size: 1.24rem;
+  font-weight: 700;
+  color: #f2f7fc;
+}
+
+.sc-privacy-curtain p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: #9fb0c2;
+}
+
+.sc-privacy-curtain-id {
+  margin-top: 6px !important;
+  font-size: 0.74rem !important;
+  letter-spacing: 0.05em;
+  color: #55697d !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-privacy-curtain { transition-duration: 1ms; }
+}
+
+/* ── Print / "Save as PDF" blackout ────────
+   Print-to-PDF is a lossless, full-quality screenshot of the entire
+   document, so it is blanked outright. */
+@media print {
+  body[data-sc-privacy] > * { display: none !important; }
+
+  body[data-sc-privacy]::before {
+    content: 'This StudyCore material is protected and cannot be printed. Sign in to StudyCore to study it.';
+    display: block;
+    padding: 40px;
+    font-family: system-ui, sans-serif;
+    font-size: 14pt;
+    line-height: 1.6;
+    text-align: center;
+    color: #000;
+  }
+}
