@@ -9,6 +9,7 @@ const storage = require('../lib/storage');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
 const { isAdmin, isStudent } = require('../lib/roles');
 const stream = require('../lib/stream');
+const { issueTicket, verifyTicket, DEFAULT_TTL_SECONDS } = require('../lib/content-tickets');
 
 const router = express.Router();
 
@@ -27,7 +28,12 @@ function streamPlaybackFor(row, opts) {
     status: row.stream_status || 'ready',
     ready: (row.stream_status || 'ready') === 'ready',
     iframe,
-    hls: stream.hlsUrl(row.stream_uid),
+    // The raw HLS manifest URL is deliberately NOT sent to the browser.
+    // Nothing in the front-end plays it (the Cloudflare iframe player fetches
+    // its own manifest inside the frame), so shipping it only published a
+    // permanent, directly-downloadable video address — exactly what yt-dlp
+    // needs — in every course/lesson JSON payload. Server-side callers that
+    // genuinely need it can still use stream.hlsUrl().
     thumbnail: stream.thumbnailUrl(row.stream_uid)
   };
 }
@@ -541,6 +547,46 @@ router.get('/', requireAuth, gate, (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Short-lived signed access tickets for protected bytes.
+//
+// The stream endpoint has always been session-gated, so it was never openly
+// guessable. A ticket adds the properties a bare session cookie cannot give:
+// the URL stops working after a few hours, and it is bound to one resource
+// and one account, so it is worthless pasted into a group chat.
+//
+// IMPORTANT: this is defence in depth, never the access decision by itself.
+// The ticket is checked AFTER requireAuth + the program and Premium gates, so
+// a still-valid ticket for content the student has since lost access to is
+// refused exactly like any other unauthorized request.
+//
+// Set CONTENT_TICKET_ENFORCE=true to make a ticket mandatory on every stream
+// request. Left off by default so existing session-authenticated clients keep
+// working during a rollout; the front-end always sends one either way.
+// ---------------------------------------------------------------------------
+const TICKETS_ENFORCED = String(process.env.CONTENT_TICKET_ENFORCE || '').toLowerCase() === 'true';
+
+// GET /api/resources/:id/ticket — mint a viewing ticket for the current
+// student. Runs the identical authorization the stream itself runs, so a
+// student who cannot watch a video cannot mint a ticket for it either.
+router.get('/:id/ticket', requireAuth, gate, (req, res) => {
+  const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
+  if (!row) return res.status(404).json({ message: 'Resource not found.' });
+  if (!programCanSeeResource(req.user, row)) {
+    return res.status(403).json({ message: 'This content is not available for your program.' });
+  }
+  if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
+
+  const { ticket, expiresAt, ttl } = issueTicket({ resourceId: row.id, userId: req.user.id });
+  // A ticket is a credential: never let a proxy or the browser cache it.
+  res.setHeader('Cache-Control', 'no-store, private');
+  res.json({
+    url: `/api/resources/${encodeURIComponent(row.id)}/stream?t=${encodeURIComponent(ticket)}`,
+    expiresAt,
+    ttl: ttl || DEFAULT_TTL_SECONDS
+  });
+});
+
 async function handleStream(req, res) {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
@@ -549,6 +595,25 @@ async function handleStream(req, res) {
   // resource id is refused outright.
   if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
+
+  // Ticket check runs LAST, after the real authorization above, so it can only
+  // ever narrow access, never widen it. An absent ticket is tolerated unless
+  // CONTENT_TICKET_ENFORCE is on; a ticket that IS present must be valid —
+  // otherwise a tampered or expired one would silently fall back to the
+  // session and defeat the whole point of the expiry.
+  const presented = req.query && req.query.t;
+  if (presented || TICKETS_ENFORCED) {
+    const check = verifyTicket(presented, { resourceId: row.id, userId: req.user.id });
+    if (!check.ok) {
+      return res.status(403).json({
+        message: check.reason === 'expired'
+          ? 'This viewing link has expired. Reopen the resource in StudyCore to continue.'
+          : 'This viewing link is not valid for your account. Reopen the resource in StudyCore.',
+        expired: check.reason === 'expired'
+      });
+    }
+  }
+
   if (!row.stored_name && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
   if (row.external_url && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
 

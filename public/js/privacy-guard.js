@@ -128,6 +128,17 @@
       notify('Right-click is disabled on protected StudyCore content.');
     });
 
+    // Paste into the content area itself (not into a form field) is blocked
+    // too: it is the other half of a clipboard round-trip and, more
+    // practically, it stops a pasted script/HTML fragment from being dropped
+    // into the reader. The document search box and every other input stay
+    // fully pasteable — a student typing a search term must be able to paste
+    // it.
+    document.addEventListener('paste', (e) => {
+      if (isEditable(e.target)) return;
+      e.preventDefault();
+    });
+
     // Copy / cut: replace whatever was grabbed with a notice, so even a
     // clipboard manager gets nothing useful.
     ['copy', 'cut'].forEach((type) => {
@@ -199,6 +210,103 @@
       // Legacy/prefixed entry point used by older recorders.
       navigator.getDisplayMedia = blocked;
     } catch { /* non-writable: nothing more to do */ }
+
+    if (!strict) return;
+
+    /* ── In-page capture of the PROTECTED SURFACES themselves ───────────
+       getDisplayMedia records the screen. These next three record the
+       CONTENT, without any permission prompt at all, and they matter here
+       specifically because the document reader renders every PDF page into
+       a <canvas>: `canvas.toDataURL()` in the console is a pixel-perfect,
+       full-resolution copy of the page the student is reading, and
+       `captureStream()` turns the same canvas (or the <video>) into a
+       MediaStream a MediaRecorder can write to a file.
+
+       Each is scoped to protected surfaces only. A canvas elsewhere on the
+       site — a chart, an avatar cropper, anything added later — keeps
+       working exactly as it always has, so this cannot break unrelated
+       features. */
+    function insideProtectedContent(el) {
+      try {
+        return Boolean(el && el.closest && el.closest('.sc-protected-surface, .player-shell, .doc-reader-stage'));
+      } catch { return false; }
+    }
+
+    const refuse = (what) => {
+      notify(`${what} is disabled on protected StudyCore content.`);
+      const Err = global.DOMException || Error;
+      return new Err(`${what} is disabled on StudyCore.`, 'SecurityError');
+    };
+
+    // Canvas → image data (the PDF page grab).
+    ['toDataURL', 'toBlob'].forEach((method) => {
+      try {
+        const Canvas = global.HTMLCanvasElement;
+        if (!Canvas || typeof Canvas.prototype[method] !== 'function') return;
+        const original = Canvas.prototype[method];
+        Canvas.prototype[method] = function guarded(...args) {
+          if (!insideProtectedContent(this)) return original.apply(this, args);
+          const err = refuse('Copying page images');
+          // toBlob reports failure through its callback; toDataURL throws.
+          if (method === 'toBlob' && typeof args[0] === 'function') return args[0](null);
+          throw err;
+        };
+      } catch { /* frozen prototype: the surrounding deterrents still apply */ }
+    });
+
+    // Canvas / media → MediaStream (the silent in-page recorder).
+    [global.HTMLCanvasElement, global.HTMLMediaElement].forEach((Ctor) => {
+      try {
+        if (!Ctor || typeof Ctor.prototype.captureStream !== 'function') return;
+        const original = Ctor.prototype.captureStream;
+        Ctor.prototype.captureStream = function guarded(...args) {
+          if (!insideProtectedContent(this)) return original.apply(this, args);
+          throw refuse('Recording this content');
+        };
+      } catch { /* not writable in this browser */ }
+    });
+  }
+
+  /* ══════════════════════════════════════════
+     3b. Picture-in-picture
+     ══════════════════════════════════════════
+     PiP floats the video in an OS-level window that lives OUTSIDE the page.
+     Once it is up, the curtain cannot cover it, the watermark is still
+     painted (it is composited into the video? — no, it is NOT: PiP shows the
+     raw video frames only), and the student can keep the lesson visible
+     while they switch to a recorder. That is a straight hole through the
+     protection, so it is closed on protected pages.
+
+     The progressive <video> already carries `disablepictureinpicture`, which
+     removes the browser's own PiP button. This closes the JS route and the
+     Android/desktop "auto-PiP on tab switch" behaviour too. */
+  function blockPictureInPicture() {
+    try {
+      const proto = global.HTMLVideoElement && global.HTMLVideoElement.prototype;
+      if (proto && typeof proto.requestPictureInPicture === 'function') {
+        const original = proto.requestPictureInPicture;
+        proto.requestPictureInPicture = function guarded(...args) {
+          try {
+            if (this.closest && this.closest('.sc-protected-surface, .player-shell')) {
+              notify('Picture-in-picture is disabled on protected StudyCore content.');
+              const Err = global.DOMException || Error;
+              return Promise.reject(new Err('Picture-in-picture is disabled on StudyCore.', 'NotAllowedError'));
+            }
+          } catch { /* fall through to the original */ }
+          return original.apply(this, args);
+        };
+      }
+    } catch { /* non-writable prototype */ }
+
+    // Belt and braces: if a browser opens PiP anyway (some do it
+    // automatically when the tab is hidden), leave it again immediately.
+    document.addEventListener('enterpictureinpicture', (e) => {
+      const target = e && e.target;
+      try {
+        if (!target || !target.closest || !target.closest('.sc-protected-surface, .player-shell')) return;
+        if (document.exitPictureInPicture) document.exitPictureInPicture().catch(() => {});
+      } catch { /* nothing more to do */ }
+    }, true);
   }
 
   /* ══════════════════════════════════════════
@@ -293,12 +401,49 @@
           <rect x="3" y="11" width="18" height="10" rx="2"></rect>
           <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
         </svg>
-        <h2>Content hidden</h2>
-        <p>StudyCore protects this material. Click back into this window to keep studying.</p>
+        <h2>Protected StudyCore content</h2>
+        <p data-sc-curtain-note>Content viewing has been temporarily paused.</p>
+        <p class="sc-privacy-curtain-hint" data-sc-curtain-hint>Return to this window to continue studying.</p>
         <p class="sc-privacy-curtain-id" data-sc-curtain-id></p>
       </div>`;
     curtainEl = el;
     return el;
+  }
+
+  // A short, human explanation per trigger. Deliberately calm and identical
+  // in tone: the student has usually done nothing wrong (they alt-tabbed, or
+  // a notification stole focus), so nothing here accuses them of anything.
+  const CURTAIN_HINTS = {
+    hidden: 'Return to this tab to continue studying.',
+    focus: 'Click back into this window to continue studying.',
+    print: 'Printing and "Save as PDF" are disabled for this material.',
+    flash: 'Screen captures of this material are not permitted.',
+    capture: 'Screen sharing and recording are disabled for this material.',
+    devtools: 'Close developer tools to continue viewing this content.'
+  };
+
+  /* Media is paused while the curtain is up.
+     Two reasons. First, a student who alt-tabs away should not lose two
+     minutes of a lecture playing to an empty screen. Second, audio continuing
+     under a black panel is exactly what an external recorder wants.
+     Only videos WE paused are resumed, so a video the student had already
+     paused stays paused. */
+  const autoPaused = new Set();
+
+  function pauseProtectedMedia() {
+    document.querySelectorAll('.sc-protected-surface video, .player-shell video').forEach((v) => {
+      if (v.paused || v.ended) return;
+      try { v.pause(); autoPaused.add(v); } catch { /* detached */ }
+    });
+  }
+
+  function resumeProtectedMedia() {
+    autoPaused.forEach((v) => {
+      // Never resume something that has since left the page, and never fight
+      // an autoplay policy — a rejected play() is not an error worth showing.
+      if (v.isConnected) { try { const p = v.play(); if (p && p.catch) p.catch(() => {}); } catch { /* ignore */ } }
+    });
+    autoPaused.clear();
   }
 
   function showCurtain(reason) {
@@ -310,6 +455,10 @@
     if (el.parentNode !== host) host.appendChild(el);
     const idEl = el.querySelector('[data-sc-curtain-id]');
     if (idEl) idEl.textContent = watermarkText();
+    const hintEl = el.querySelector('[data-sc-curtain-hint]');
+    if (hintEl) hintEl.textContent = CURTAIN_HINTS[reason] || CURTAIN_HINTS.focus;
+    // A momentary flash must not stop a lecture the student is watching.
+    if (reason !== 'flash') pauseProtectedMedia();
     requestAnimationFrame(() => el.classList.add('is-visible'));
   }
 
@@ -317,6 +466,7 @@
     curtainReasons.delete(reason);
     if (curtainReasons.size || !curtainEl) return;
     curtainEl.classList.remove('is-visible');
+    resumeProtectedMedia();
   }
 
   // A brief opaque flash for the capture gestures the OS steals from us —
@@ -350,10 +500,37 @@
 
     global.addEventListener('blur', drop);
     global.addEventListener('focus', restore);
+
+    /* ── Page Visibility API — the mobile workhorse ──────────────────────
+       On Android and iOS there is no "window blur" the way there is on a
+       desktop: the student presses the recent-apps button, pulls down the
+       notification shade, or takes a system screenshot, and what the page
+       actually observes is `visibilitychange` with document.hidden === true.
+
+       Raising the curtain synchronously inside this handler matters: the
+       browser paints the tab thumbnail (the card shown in the Android app
+       switcher, and the frame a screen recorder keeps capturing after the
+       app is backgrounded) from the last painted state. Doing this work in a
+       timeout would let the un-curtained frame be the one that gets stored.
+
+       Restoring is unconditional so the student never comes back to a
+       stuck black screen — which would be a far worse bug than any leak
+       this prevents. */
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) showCurtain('hidden');
       else hideCurtain('hidden');
     });
+
+    // Safari on iOS fires pagehide/pageshow (bfcache) where other browsers
+    // fire visibilitychange; without these the curtain can be missed when a
+    // student swipes to another app or uses the back gesture.
+    global.addEventListener('pagehide', () => showCurtain('hidden'));
+    global.addEventListener('pageshow', () => hideCurtain('hidden'));
+
+    // Android's "freeze"/"resume" lifecycle (Chrome discards backgrounded
+    // tabs). Harmless no-ops where unsupported.
+    document.addEventListener('freeze', () => showCurtain('hidden'));
+    document.addEventListener('resume', () => hideCurtain('hidden'));
     // Keep the curtain in the right DOM host across fullscreen transitions.
     ['fullscreenchange', 'webkitfullscreenchange'].forEach((evt) => {
       document.addEventListener(evt, () => {
@@ -403,12 +580,38 @@
   /* ══════════════════════════════════════════
      7. Per-student watermark
      ══════════════════════════════════════════
-     Deterrence by attribution: a leaked screenshot carries the name, email
-     and timestamp of the account that took it. This is the part that
-     actually changes behaviour — students will happily screenshot anonymous
-     content and will not screenshot content signed with their own email. */
-  let identity = { name: '', email: '' };
+     Deterrence by attribution: a leaked screenshot carries the name, the
+     account reference and the timestamp of the account that took it. This is
+     the part that actually changes behaviour — students will happily
+     screenshot anonymous content and will not screenshot content signed with
+     their own name.
+
+     WHAT MAY GO IN THE WATERMARK — read before adding a field.
+     A watermark ends up in WhatsApp groups, on Facebook and on strangers'
+     phones. It is therefore a PUBLICATION surface, and it must never carry
+     anything that could harm the student it identifies:
+
+        allowed  — display name, the StudyCore account reference below,
+                   StudyCore branding, a timestamp
+        NEVER    — email address, phone number, password, physical address,
+                   payment details, national ID, or the raw session token
+
+     The account reference is a short, opaque tag derived from the account id
+     (which is itself a random `user-<uuid>`). It is enough for support to
+     trace a leak back to one account from the database, and useless to
+     anyone else — it is not a login, not a contact detail and cannot be
+     reversed into one. */
+  let identity = { name: '', ref: '' };
   const surfaces = new WeakSet();
+
+  // A short, non-sensitive account reference: the tail of the random account
+  // id, uppercased. `user-9f8e7d6c-…-a1b2c3d4` → `SC-A1B2C3D4`. Traceable in
+  // the admin tools, meaningless to anyone who finds a leaked screenshot.
+  function accountRef(id) {
+    const clean = String(id || '').replace(/[^a-z0-9]/gi, '');
+    if (!clean) return '';
+    return `SC-${clean.slice(-8).toUpperCase()}`;
+  }
 
   function stamp() {
     const d = new Date();
@@ -417,9 +620,44 @@
   }
 
   function watermarkText() {
-    const bits = [identity.name, identity.email].filter(Boolean);
+    const bits = [identity.name, identity.ref].filter(Boolean);
     if (!bits.length) return `StudyCore · ${stamp()}`;
-    return `${bits.join(' · ')} · ${stamp()}`;
+    return `StudyCore · ${bits.join(' · ')} · ${stamp()}`;
+  }
+
+  /* Watermark motion.
+     A watermark that never moves is a watermark that can be cropped or
+     patched out once and forgotten. Nudging the tile a little every 20
+     seconds means a leaker would have to redo the edit for every frame of a
+     recording, and a single crop that misses it on one screenshot catches it
+     on the next.
+
+     The offsets are deliberately small (a fraction of the tile spacing) and
+     the transition is slow, so it reads as "the page is alive", not as
+     something twitching in front of the material a student is reading. The
+     tile is oversized (inset: -40%), so shifting it never uncovers a corner.
+
+     Honoured by CSS `prefers-reduced-motion`: the transition is dropped for
+     students who have asked for less movement, but the repositioning still
+     happens, so the protection is not lost. */
+  const DRIFT_STEPS = [
+    { x: 0, y: 0, r: -24 },
+    { x: 4, y: -3, r: -22 },
+    { x: -3, y: 4, r: -26 },
+    { x: 3, y: 3, r: -23 },
+    { x: -4, y: -2, r: -25 }
+  ];
+  let driftIndex = 0;
+
+  function applyDrift(inner, step) {
+    if (!inner || !inner.style) return;
+    inner.style.transform = `translate3d(${step.x}%, ${step.y}%, 0) rotate(${step.r}deg)`;
+  }
+
+  function driftWatermarks() {
+    driftIndex = (driftIndex + 1) % DRIFT_STEPS.length;
+    const step = DRIFT_STEPS[driftIndex];
+    document.querySelectorAll('.sc-watermark-inner').forEach((inner) => applyDrift(inner, step));
   }
 
   function buildWatermark() {
@@ -437,6 +675,10 @@
       rows += `<span class="sc-watermark-row">${label} &nbsp;&nbsp;&nbsp; ${label} &nbsp;&nbsp;&nbsp; ${label} &nbsp;&nbsp;&nbsp; ${label}</span>`;
     }
     wm.innerHTML = `<div class="sc-watermark-inner">${rows}</div>`;
+    // Rebuilt watermarks adopt the CURRENT drift position rather than
+    // snapping back to the origin, so the hourly refresh does not visibly
+    // jump the stamp back under the student's eye.
+    applyDrift(wm.firstChild, DRIFT_STEPS[driftIndex]);
     return wm;
   }
 
@@ -493,6 +735,11 @@
       scanSurfaces();
       refreshWatermarks();
     }, 60000);
+
+    // Move the stamp far more often than it is rebuilt: cheap (one transform
+    // on an already-composited layer), and it is what makes the watermark
+    // awkward to patch out of a recording.
+    setInterval(driftWatermarks, 20000);
   }
 
   async function loadIdentity() {
@@ -503,7 +750,8 @@
       // request layout.js already makes rather than firing a second one.
       const user = auth.getCurrentUser() || await auth.fetchSession();
       if (!user) return;
-      identity = { name: user.name || '', email: user.email || '' };
+      // Deliberately NOT user.email — see the note above buildWatermark.
+      identity = { name: user.name || '', ref: accountRef(user.id) };
       refreshWatermarks();
     } catch { /* an anonymous watermark is still a watermark */ }
   }
@@ -543,6 +791,7 @@
     applyNativeSecureFlag();
 
     if (strict) {
+      blockPictureInPicture();
       watchFocus();
       watchDevtools();
       scanSurfaces();
@@ -562,8 +811,10 @@
     policy,
     page,
     watermarkText,
+    accountRef,
     showCurtain,
     hideCurtain,
-    refreshWatermarks
+    refreshWatermarks,
+    driftWatermarks
   };
 })(window);

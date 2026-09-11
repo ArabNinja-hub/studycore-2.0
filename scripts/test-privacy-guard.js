@@ -188,13 +188,184 @@ test('printing and "Save as PDF" are blanked', () => {
   assert.match(read('public/js/privacy-guard.js'), /global\.print = function blockedPrint/);
 });
 
-test('display-capture is blocked by the Permissions-Policy header', () => {
+test('display-capture and picture-in-picture are blocked by the Permissions-Policy header', () => {
   const security = read('middleware/security.js');
   assert.match(security, /display-capture=\(\)/, 'no script in the page may record the tab');
+  // PiP floats the video in an OS window the privacy curtain cannot cover,
+  // and the header (unlike the <video> attribute) also reaches the
+  // cross-origin Cloudflare Stream iframe's own PiP button.
+  assert.match(security, /picture-in-picture=\(\)/, 'PiP is a hole straight through the curtain');
+  // Fullscreen must survive: fullscreen watching and fullscreen document
+  // reading are core features, and the watermark is painted inside the
+  // element that gets fullscreened.
+  assert.ok(security.includes('fullscreen=(self)'), 'fullscreen stays available');
   // The existing hardening must survive the edit.
-  for (const directive of ['geolocation=()', 'microphone=()', 'camera=()', 'fullscreen=(self)']) {
+  for (const directive of ['geolocation=()', 'microphone=()', 'camera=()']) {
     assert.ok(security.includes(directive), `kept ${directive}`);
   }
+});
+
+test('the watermark identifies the account without publishing anything sensitive', () => {
+  const js = read('public/js/privacy-guard.js');
+
+  // A watermark ends up in WhatsApp groups and on strangers' phones. It is a
+  // publication surface, so it must never carry a contact detail or anything
+  // that could be used against the student it names.
+  assert.doesNotMatch(js, /identity\.email/, 'the email address must never be stamped on content');
+  assert.match(js, /identity = \{ name: '', ref: '' \}/, 'identity carries a name and an opaque ref only');
+  assert.match(js, /accountRef\(user\.id\)/, 'the ref is derived from the random account id');
+
+  // The ref must be opaque and short: traceable in the admin tools, and
+  // meaningless (and non-reversible) to whoever finds a leaked screenshot.
+  const { win } = runGuard({ page: 'lesson' });
+  const ref = win.SCPrivacy.accountRef('user-9f8e7d6c-1111-2222-3333-a1b2c3d4e5f6');
+  assert.equal(ref, 'SC-C3D4E5F6', 'the tail of the random account id, uppercased');
+  assert.ok(ref.length <= 12, 'short enough to sit in a tile without hurting readability');
+  assert.doesNotMatch(ref, /@/, 'never an email');
+
+  // Branding is always present, even before the session resolves, so an
+  // anonymous frame is still identifiable as StudyCore material.
+  assert.match(win.SCPrivacy.watermarkText(), /^StudyCore · /);
+});
+
+test('the watermark moves, so it cannot be cropped or patched out once', () => {
+  const js = read('public/js/privacy-guard.js');
+  const css = read('public/css/privacy-guard.css');
+
+  assert.match(js, /DRIFT_STEPS/, 'there is a set of positions to move between');
+  assert.match(js, /setInterval\(driftWatermarks, \d+\)/, 'the stamp is repositioned on a timer');
+
+  // Every step must stay well inside the tile's 40% overhang, or drifting
+  // would uncover a corner of the content — the exact gap a cropper wants.
+  const steps = js.match(/\{ x: (-?\d+), y: (-?\d+), r: (-?\d+) \}/g) || [];
+  assert.ok(steps.length >= 3, 'more than a couple of positions');
+  for (const step of steps) {
+    const [, x, y] = /\{ x: (-?\d+), y: (-?\d+)/.exec(step);
+    assert.ok(Math.abs(Number(x)) <= 10 && Math.abs(Number(y)) <= 10,
+      `${step} stays inside the tile overhang and does not shove text across the page`);
+  }
+
+  // Motion is a protection, so reduced-motion drops the ANIMATION but must
+  // not drop the repositioning itself.
+  assert.match(css, /prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.sc-watermark-inner \{ transition: none; \}/,
+    'reduced motion removes the glide, not the protection');
+});
+
+test('the curtain shows the StudyCore capture message and never strands the student', () => {
+  const js = read('public/js/privacy-guard.js');
+  assert.match(js, /<h2>Protected StudyCore content<\/h2>/);
+  assert.match(js, /Content viewing has been temporarily paused\./);
+  // Every trigger gets an explanation, and none of them accuse the student —
+  // alt-tabbing and a notification stealing focus are the common causes.
+  for (const reason of ['hidden', 'focus', 'print', 'flash', 'capture', 'devtools']) {
+    assert.match(js, new RegExp(`${reason}: '`), `curtain hint for "${reason}"`);
+  }
+  // Restoring must be unconditional: a student stuck behind a black panel is
+  // a worse bug than any leak this prevents.
+  assert.match(js, /else hideCurtain\('hidden'\)/);
+  // And it must never log anyone out or reload the page.
+  assert.doesNotMatch(js, /location\s*=|location\.href|logout\(/, 'the guard never navigates or signs anyone out');
+});
+
+test('backgrounding the page on mobile raises the curtain (Page Visibility + iOS/Android lifecycle)', () => {
+  const js = read('public/js/privacy-guard.js');
+  // Android/iOS have no window "blur" the way a desktop does; visibilitychange
+  // is what actually fires when the student hits recent-apps, pulls down the
+  // notification shade, or takes a system screenshot.
+  assert.match(js, /document\.addEventListener\('visibilitychange'/);
+  // iOS Safari uses pagehide/pageshow (bfcache) instead.
+  assert.match(js, /addEventListener\('pagehide'/);
+  assert.match(js, /addEventListener\('pageshow'/);
+  // Chrome on Android freezes/discards backgrounded tabs.
+  assert.match(js, /addEventListener\('freeze'/);
+  assert.match(js, /addEventListener\('resume'/);
+
+  const { win, fire } = runGuard({ page: 'lesson' });
+  win.document.hidden = true;
+  fire('visibilitychange', {});
+  assert.equal(win.SCPrivacy.policy, 'strict', 'the guard survived the event without throwing');
+});
+
+test('the in-page routes that copy the content itself are closed on protected surfaces only', () => {
+  const js = read('public/js/privacy-guard.js');
+
+  // The reader renders every PDF page to a <canvas>, so toDataURL() in the
+  // console is a full-resolution copy of the page being read, and
+  // captureStream() feeds a MediaRecorder without any permission prompt.
+  assert.match(js, /toDataURL/, 'canvas image extraction is guarded');
+  assert.match(js, /captureStream/, 'canvas/media recording is guarded');
+  assert.match(js, /insideProtectedContent/, 'the guard is scoped, not global');
+
+  // Scoping matters: a chart, an avatar cropper or anything added later must
+  // keep working. The guard checks the element is inside a protected surface
+  // before refusing, and calls through otherwise.
+  assert.match(js, /if \(!insideProtectedContent\(this\)\) return original\.apply\(this, args\)/);
+
+  // Picture-in-picture is closed in JS as well as in the header, including
+  // the browsers that open it automatically when a tab is hidden.
+  assert.match(js, /requestPictureInPicture/);
+  assert.match(js, /enterpictureinpicture/);
+});
+
+test('protected media is paused behind the curtain, and only what we paused resumes', () => {
+  const js = read('public/js/privacy-guard.js');
+  assert.match(js, /function pauseProtectedMedia/);
+  assert.match(js, /function resumeProtectedMedia/);
+  // A video the student had already paused must stay paused when they return.
+  assert.match(js, /if \(v\.paused \|\| v\.ended\) return;/);
+  assert.match(js, /autoPaused\.add\(v\)/);
+  // A momentary capture flash must not interrupt a lecture.
+  assert.match(js, /if \(reason !== 'flash'\) pauseProtectedMedia\(\)/);
+});
+
+test('the browser is never handed a permanent URL for protected bytes', () => {
+  // Documents and videos load through a short-lived, account-bound ticket
+  // rather than the permanent /stream path.
+  const api = read('public/js/api.js');
+  assert.match(api, /protectedUrl/, 'the API layer can mint a ticketed URL');
+  assert.match(api, /\/ticket`/, 'it calls the server-side ticket endpoint');
+
+  for (const [file, label] of [['public/js/viewer.js', 'document viewer'], ['public/js/lesson.js', 'lesson page'], ['public/js/player.js', 'video player']]) {
+    assert.match(read(file), /protectedUrl/, `${label} uses the ticketed URL`);
+  }
+
+  // Every consumer must degrade to the session-gated URL rather than failing:
+  // the server is the authority either way, and a ticket hiccup must never
+  // stop a paying student opening their lesson.
+  assert.match(api, /return fallback;/, 'a failed mint falls back to the session-gated URL');
+
+  // And the server must actually check it — after, never instead of, the real
+  // authorization.
+  const route = read('routes/resources.routes.js');
+  assert.match(route, /verifyTicket\(presented, \{ resourceId: row\.id, userId: req\.user\.id \}\)/);
+  const gateAt = route.indexOf('if (!canAccess(row, req.access)) return lockedResponse');
+  const ticketAt = route.indexOf('const presented = req.query && req.query.t;');
+  assert.ok(gateAt > 0 && ticketAt > gateAt, 'the ticket check runs AFTER the program/Premium gates');
+});
+
+test('there is no download route or download UI for protected resources', () => {
+  const route = read('routes/resources.routes.js');
+  // The old download URL stays present as an explicit refusal, so a saved
+  // link cannot quietly bypass the reader.
+  assert.match(route, /router\.get\('\/:id\/download'/);
+  assert.match(route, /Downloads are disabled/);
+
+  // No download control anywhere in the student-facing reader or player.
+  for (const file of ['public/js/doc-reader.js', 'public/js/viewer.js', 'public/js/player.js', 'views/viewer.html', 'public/pages/lesson.html']) {
+    const src = read(file);
+    const offenders = src.split('\n').filter((line) => /download/i.test(line)
+      && !/nodownload/i.test(line)
+      && !/download_count|downloadCount/i.test(line)
+      && !/^\s*(\/\/|\*|<!--)/.test(line.trim()));
+    assert.deepEqual(offenders, [], `${file} exposes a download control`);
+  }
+
+  // The native <video> download/remote-playback/PiP controls are off too.
+  const player = read('public/js/player.js');
+  assert.match(player, /controlslist="nodownload noremoteplayback noplaybackrate"/);
+  assert.match(player, /disablepictureinpicture disableremoteplayback/);
+  // ...and the Cloudflare Stream iframe must not be granted PiP either.
+  assert.doesNotMatch(player, /allow="[^"]*picture-in-picture/, 'the Stream iframe must not be allowed PiP');
 });
 
 // ── Behavioural checks ─────────────────────

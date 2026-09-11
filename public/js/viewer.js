@@ -411,8 +411,15 @@
 
     $('#viewerTools').hidden = false;
 
+    // Short-lived, account-bound viewing URL rather than the permanent
+    // /stream path — see StudyCoreAPI.protectedUrl. It falls back internally
+    // to the session-gated URL, so the reader always gets something usable.
+    const url = typeof StudyCoreAPI.protectedUrl === 'function'
+      ? await StudyCoreAPI.protectedUrl(resource.id)
+      : StudyCoreAPI.streamUrl(resource.id);
+
     reader = StudyCoreReader.init($('#viewerHost'), {
-      url: StudyCoreAPI.streamUrl(resource.id),
+      url,
       title: resource.title,
       fileSize: resource.fileSize,
       fileName: resource.fileName,

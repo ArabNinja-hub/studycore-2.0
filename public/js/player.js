@@ -142,7 +142,12 @@
     let speedIdx = SPEEDS.indexOf(1);
     let bufferTimer = null;
 
-    const streamUrl = StudyCoreAPI.streamUrl(resourceId);
+    // Resolved to a short-lived, account-bound ticket URL just before the
+    // video is attached (see StudyCoreAPI.protectedUrl). Held in a variable
+    // rather than a const because the ticket is minted asynchronously; it
+    // falls back to the plain session-gated URL if the mint fails, so a
+    // hiccup in the ticket service can never stop playback.
+    let streamUrl = StudyCoreAPI.streamUrl(resourceId);
     let attachedSrc = '';
     let metaTimer = null;
 
@@ -178,6 +183,13 @@
     async function attachStream() {
       loading.hidden = false;
       errorBox.hidden = true;
+      // Mint (or reuse) the short-lived viewing ticket before probing, so the
+      // probe and the <video> src are the same authorized URL.
+      try {
+        if (typeof StudyCoreAPI.protectedUrl === 'function') {
+          streamUrl = await StudyCoreAPI.protectedUrl(resourceId);
+        }
+      } catch { /* fall back to the plain session-gated URL */ }
       try {
         const probe = await probeStream();
         if (probe.status === 401) {
@@ -658,6 +670,12 @@
     let completed = false;
     let player = null;
 
+    // The iframe's `allow` list deliberately omits picture-in-picture. PiP
+    // floats the video in an OS-level window that lives outside this page, so
+    // the privacy curtain cannot cover it and a student could keep the lesson
+    // visible while switching to a recorder. Fullscreen, autoplay and
+    // encrypted-media (needed for HLS/DRM playback) are kept — dropping those
+    // would break normal watching.
     container.innerHTML = `
       <div class="player-shell stream-shell" id="scStreamShell">
         <div class="player-title">${SC.icon('video', { size: 17 })}<span>${escapeHtml(o.title || 'Video lesson')}</span></div>
@@ -665,7 +683,7 @@
           src="${escapeAttr(sp.iframe)}"
           title="${escapeAttr(o.title || 'Video lesson')}"
           loading="lazy"
-          allow="accelerated-2d-canvas; autoplay; encrypted-media; picture-in-picture;"
+          allow="accelerated-2d-canvas; autoplay; encrypted-media; fullscreen;"
           allowfullscreen></iframe>
       </div>
     `;

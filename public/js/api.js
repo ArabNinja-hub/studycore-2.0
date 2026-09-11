@@ -328,6 +328,37 @@
     },
     getResource: (id) => request(`/api/resources/${id}`),
     streamUrl: (id) => `/api/resources/${id}/stream`,
+
+    // Protected byte access.
+    //
+    // `streamUrl` above is the plain session-gated URL and still works. This
+    // asks the server to mint a SHORT-LIVED, account-bound ticket and returns
+    // the URL carrying it, so the address the reader/player actually loads
+    // expires within hours and is useless to anyone else — a link copied out
+    // of devtools and pasted into a chat is refused for every other account.
+    //
+    // Tickets are cached per resource for the life of the page (re-minted
+    // shortly before expiry) so paging a PDF does not mint one per request.
+    // Any failure falls back to the plain session-gated URL: the server is
+    // the authority either way, and a ticket service hiccup must never stop
+    // a paying student from opening their lesson.
+    protectedUrl: (() => {
+      const cache = new Map();
+      const SAFETY_MS = 5 * 60 * 1000; // re-mint before it actually lapses
+      return async (id) => {
+        const fallback = `/api/resources/${id}/stream`;
+        const hit = cache.get(id);
+        if (hit && hit.expiresAt - SAFETY_MS > Date.now()) return hit.url;
+        try {
+          const data = await request(`/api/resources/${id}/ticket`);
+          if (!data || !data.url) return fallback;
+          cache.set(id, { url: data.url, expiresAt: Number(data.expiresAt) || (Date.now() + 60000) });
+          return data.url;
+        } catch {
+          return fallback;
+        }
+      };
+    })(),
     myBookmarks: () => request('/api/resources/bookmarks/mine'),
     bookmark: (id) => request(`/api/resources/${id}/bookmark`, { method: 'POST' }),
     unbookmark: (id) => request(`/api/resources/${id}/bookmark`, { method: 'DELETE' }),

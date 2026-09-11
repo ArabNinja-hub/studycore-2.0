@@ -84,7 +84,13 @@ body[data-sc-privacy] svg {
   flex-direction: column;
   justify-content: space-around;
   gap: 40px;
-  transform: rotate(-24deg);
+  /* Starting position. The guard replaces this transform every 20s with a
+     small translate+rotate step (see DRIFT_STEPS in privacy-guard.js), so the
+     stamp cannot be cropped or patched out once and forgotten. The tile
+     overhangs by 40% on every side, so drifting never uncovers a corner. */
+  transform: translate3d(0, 0, 0) rotate(-24deg);
+  transition: transform 2.4s ease-in-out;
+  will-change: transform;
   font-family: 'DM Sans', system-ui, sans-serif;
   font-size: 0.74rem;
   font-weight: 600;
@@ -159,6 +165,11 @@ body[data-sc-privacy] .doc-reader-status { z-index: 3; }
   color: #9fb0c2;
 }
 
+.sc-privacy-curtain-hint {
+  font-size: 0.86rem !important;
+  color: #7f93a8 !important;
+}
+
 .sc-privacy-curtain-id {
   margin-top: 6px !important;
   font-size: 0.74rem !important;
@@ -168,6 +179,10 @@ body[data-sc-privacy] .doc-reader-status { z-index: 3; }
 
 @media (prefers-reduced-motion: reduce) {
   .sc-privacy-curtain { transition-duration: 1ms; }
+  /* The watermark still MOVES for these students (the protection is not
+     dropped) — it simply jumps to each new position instead of gliding, so
+     nothing drifts across the page while they are reading. */
+  .sc-watermark-inner { transition: none; }
 }
 
 /* ── Print / "Save as PDF" blackout ────────
