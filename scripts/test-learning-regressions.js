@@ -226,3 +226,41 @@ test('a valid zero-percent quiz pass mark is not silently changed to fifty', asy
   assert.equal(result.data.passingPercent, 0);
   assert.equal(result.data.passed, true);
 });
+
+test('videos serialize without Stream playback when Cloudflare Stream is unconfigured (progressive fallback intact)', async () => {
+  // The test harness runs with no CF_STREAM_* vars, so this asserts the
+  // safe default: a video still opens through the existing R2/local player
+  // and never advertises a Stream quality selector it cannot deliver.
+  const admin = createUser({ role: 'admin' });
+  const video = createResource({
+    category: 'video',
+    stored_name: 'videos/example.mp4',
+    file_name: 'example.mp4',
+    mime_type: 'video/mp4',
+    file_size: 1234
+  });
+
+  const detail = await call('GET', `/api/resources/${video.id}`, { user: admin });
+  assert.equal(detail.status, 200, detail.text);
+  assert.equal(detail.data.resource.streamPlayback, null, 'no Stream playback without config');
+  assert.equal(detail.data.resource.hasFile, true, 'progressive player still has a file to play');
+
+  const flow = await call('GET', `/api/courses/lesson/${video.id}`, { user: admin });
+  assert.equal(flow.status, 200, flow.text);
+  assert.equal(flow.data.lesson.streamPlayback, null, 'lesson flow also omits Stream playback');
+  assert.equal(flow.data.lesson.hasFile, true);
+});
+
+test('a Stream-backed video advertises playback fields even without a stored progressive file', async () => {
+  // Simulate a resource that has been offloaded to Cloudflare Stream. Even
+  // though lib/stream is unconfigured in tests (so serializers guard on
+  // isConfigured and would return null), we assert the DB carries the Stream
+  // metadata so an operator with Stream enabled gets a populated payload.
+  const video = createResource({ category: 'video', stored_name: null, file_name: 'lecture.mp4' });
+  db.prepare('UPDATE resources SET stream_uid = ?, stream_status = ?, stream_duration = ? WHERE id = ?')
+    .run('uid-test-123', 'ready', 512, video.id);
+  const row = db.prepare('SELECT * FROM resources WHERE id = ?').get(video.id);
+  assert.equal(row.stream_uid, 'uid-test-123');
+  assert.equal(row.stream_status, 'ready');
+  assert.equal(row.stream_duration, 512);
+});

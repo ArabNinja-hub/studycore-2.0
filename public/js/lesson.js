@@ -96,6 +96,10 @@
       resourceId: lesson.id,
       title: lesson.title,
       premium: accessPremium,
+      // When the lesson is backed by Cloudflare Stream, this carries the
+      // adaptive-bitrate iframe URL (with a native 1080p/720p/Auto quality
+      // selector). Absent → the player uses the classic progressive stream.
+      streamPlayback: lesson.streamPlayback || null,
       onComplete: async () => {
         setCompleted(true);
         showToast('Lesson complete — nicely done.', 'success');

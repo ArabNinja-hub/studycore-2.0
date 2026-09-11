@@ -9,11 +9,14 @@
 
 const path = require('path');
 const express = require('express');
+const asyncHandler = require('../lib/async-handler');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
+const stream = require('../lib/stream');
+const { offloadResourceToStream } = require('../lib/stream-ingest');
 const { ROLES } = require('../lib/roles');
 const { resolveCourse, programIncludesCourse } = require('../lib/program-access');
 const {
@@ -313,7 +316,7 @@ router.get('/resources/:id', (req, res) => {
   res.json({ resource: serializeOwnResource(row) });
 });
 
-router.post('/resources', conditionalUpload, (req, res) => {
+router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   const isDriveFile = Boolean(req.body && req.body.google_drive_file_id);
   if (!req.file && !isDriveFile) return uploadError(req, res, 400, 'Choose a file to upload or select from Google Drive.');
   const parsed = parseResourceInput(req.body);
@@ -412,11 +415,18 @@ router.post('/resources', conditionalUpload, (req, res) => {
     return res.status(500).json({ message: 'Could not publish the resource. Please try again.' });
   }
 
+  // Offload videos to Cloudflare Stream for adaptive HD playback + quality
+  // selector. No-op unless Stream is configured; failures keep the video on
+  // the R2 progressive player.
+  if (!isDriveFile && parsed.value.type.category === 'video' && req.file && stream.isConfigured()) {
+    await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(id));
+  }
+
   const saved = ownResourceById(id, req.user.id);
   return res.status(201).json({ resource: serializeOwnResource(saved) });
-});
+}));
 
-router.put('/resources/:id', conditionalUpload, (req, res) => {
+router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) => {
   const existing = ownResourceById(req.params.id, req.user.id);
   if (!existing) {
     cleanupIncomingFile(req);
@@ -462,10 +472,18 @@ router.put('/resources/:id', conditionalUpload, (req, res) => {
     file_size: replacingFile ? req.file.size : (isDriveFile ? (Number(req.body.file_size) || existing.file_size || 0) : existing.file_size),
     mime_type: replacingFile ? req.file.mimetype : (isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type || 'application/pdf') : existing.mime_type),
     content_hash: replacingFile ? (req.file.contentHash || null) : (isDriveFile ? null : existing.content_hash),
+    // Replacing the file invalidates any Stream video encoded from the old
+    // bytes; clear the fields (and delete the old Stream video below) so a
+    // fresh offload can run. Otherwise carry the existing Stream fields.
+    stream_uid: replacingFile ? null : (existing.stream_uid || null),
+    stream_status: replacingFile ? null : (existing.stream_status || null),
+    stream_duration: replacingFile ? null : (existing.stream_duration || null),
     owner_id: req.user.id,
-    storage_provider: (req.body.google_drive_file_id !== undefined)
-      ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
-      : (existing.storage_provider || 'local'),
+    storage_provider: replacingFile
+      ? (req.file.bucket || storage.backendName())
+      : ((req.body.google_drive_file_id !== undefined)
+        ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
+        : (existing.storage_provider || 'local')),
     google_drive_file_id: (req.body.google_drive_file_id !== undefined)
       ? (req.body.google_drive_file_id || null)
       : (existing.google_drive_file_id || null),
@@ -486,6 +504,7 @@ router.put('/resources/:id', conditionalUpload, (req, res) => {
         stored_name = @stored_name, file_size = @file_size,
         mime_type = @mime_type, content_hash = @content_hash,
         storage_provider = @storage_provider,
+        stream_uid = @stream_uid, stream_status = @stream_status, stream_duration = @stream_duration,
         google_drive_file_id = @google_drive_file_id,
         google_drive_url = @google_drive_url,
         target_all = 0
@@ -509,10 +528,16 @@ router.put('/resources/:id', conditionalUpload, (req, res) => {
   if (replacingFile && existing.stored_name && existing.stored_name !== req.file.key) {
     storage.deleteObject(existing.stored_name).catch(() => {});
   }
+  // Remove the stale Stream video (encoded from the old file) and offload the
+  // newly-uploaded video for adaptive HD playback.
+  if (replacingFile && existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
+  if (replacingFile && parsed.value.type.category === 'video' && stream.isConfigured()) {
+    await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(existing.id));
+  }
 
   const saved = ownResourceById(existing.id, req.user.id);
   return res.json({ resource: serializeOwnResource(saved) });
-});
+}));
 
 router.delete('/resources/:id', (req, res) => {
   const existing = ownResourceById(req.params.id, req.user.id);
@@ -526,6 +551,7 @@ router.delete('/resources/:id', (req, res) => {
     return res.status(500).json({ message: 'Could not delete the resource. Please try again.' });
   }
   if (existing.stored_name) storage.deleteObject(existing.stored_name).catch(() => {});
+  if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   return res.json({ message: 'Resource deleted.' });
 });
 

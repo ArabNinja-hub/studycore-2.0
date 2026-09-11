@@ -6,6 +6,8 @@ const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
+const stream = require('../lib/stream');
+const { offloadResourceToStream } = require('../lib/stream-ingest');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
@@ -124,6 +126,8 @@ function serializeResource(row) {
     googleDriveFileId: row.google_drive_file_id || null,
     googleDriveUrl: row.google_drive_url || null,
     storageProvider: row.storage_provider || 'local',
+    streamUid: row.stream_uid || null,
+    streamStatus: row.stream_status || null,
     quizData: row.quiz_data ? JSON.parse(row.quiz_data) : null,
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
@@ -205,7 +209,7 @@ router.get('/resources', (req, res) => {
   res.json({ resources: rows.map(serializeResource) });
 });
 
-router.post('/resources', upload.single('file'), (req, res) => {
+router.post('/resources', upload.single('file'), asyncHandler(async (req, res) => {
   const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   if (!title || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
@@ -308,15 +312,31 @@ router.post('/resources', upload.single('file'), (req, res) => {
 
   syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
 
+  // Offload videos to Cloudflare Stream for adaptive-bitrate playback with a
+  // real quality selector (Auto / 1080p / 720p / …). No-op unless Stream is
+  // configured; on any failure the video stays on the R2 progressive player.
+  let streamNote = null;
+  if (category === 'video' && req.file && stream.isConfigured()) {
+    const result = await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(id));
+    if (!result.offloaded && result.reason === 'too_large_for_stream') {
+      streamNote = 'This video is larger than the 200MB Cloudflare Stream limit, so it will play at its original quality without the HD quality selector.';
+    } else if (!result.offloaded && (result.reason === 'upload_failed' || result.reason === 'read_failed')) {
+      streamNote = 'The video was saved and will play, but sending it to Cloudflare Stream for HD quality options failed - it will use the standard player.';
+    }
+  }
+
   const saved = resourceWithUploader(id);
   const response = { resource: serializeResource(saved) };
   if (duplicateOf) {
     response.warning = `This file appears to be identical to an existing resource: "${duplicateOf.title}". Both have been kept - delete the one you don't need from the resource table below.`;
   }
+  if (streamNote) {
+    response.warning = response.warning ? `${response.warning} ${streamNote}` : streamNote;
+  }
   res.status(201).json(response);
-});
+}));
 
-router.put('/resources/:id', upload.single('file'), (req, res) => {
+router.put('/resources/:id', upload.single('file'), asyncHandler(async (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
 
@@ -370,17 +390,28 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     stored_name: existing.stored_name,
     file_size: existing.file_size,
     mime_type: existing.mime_type,
-    content_hash: existing.content_hash
+    content_hash: existing.content_hash,
+    // Carry the Stream fields forward unchanged unless the file is replaced.
+    stream_uid: existing.stream_uid || null,
+    stream_status: existing.stream_status || null,
+    stream_duration: existing.stream_duration || null
   };
 
   if (req.file) {
     deleteFileIfExists(existing.stored_name);
+    // The stored object is being replaced, so any Cloudflare Stream video
+    // encoded from the OLD bytes is now stale — remove it and clear the
+    // fields; a fresh offload happens after the row is updated below.
+    if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
     fileFields = {
       file_name: req.file.originalname,
       stored_name: req.file.key,
       file_size: req.file.size,
       mime_type: req.file.mimetype,
-      content_hash: req.file.contentHash
+      content_hash: req.file.contentHash,
+      stream_uid: null,
+      stream_status: null,
+      stream_duration: null
     };
   }
 
@@ -412,9 +443,13 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
     is_premium: isPremium === undefined ? existing.is_premium : (isPremium === 'false' || isPremium === '0' ? 0 : 1),
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
-    storage_provider: (req.body.google_drive_file_id !== undefined)
-      ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
-      : (existing.storage_provider || 'local'),
+    storage_provider: req.file
+      // A replaced file lands on the object store; if it's a video, the
+      // offload below flips this to 'stream' on success.
+      ? (req.file.bucket || storage.backendName())
+      : ((req.body.google_drive_file_id !== undefined)
+        ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
+        : (existing.storage_provider || 'local')),
     google_drive_file_id: (req.body.google_drive_file_id !== undefined)
       ? (req.body.google_drive_file_id || null)
       : (existing.google_drive_file_id || null),
@@ -430,18 +465,28 @@ router.put('/resources/:id', upload.single('file'), (req, res) => {
       quiz_data=@quiz_data, due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status,
       updated_at=@updated_at, file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type,
       content_hash=@content_hash, storage_provider=@storage_provider,
+      stream_uid=@stream_uid, stream_status=@stream_status, stream_duration=@stream_duration,
       google_drive_file_id=@google_drive_file_id, google_drive_url=@google_drive_url
     WHERE id=@id
   `).run(updated);
 
+  // A newly-replaced video file gets re-encoded on Cloudflare Stream. No-op
+  // unless Stream is configured and the (new) file is a video.
+  if (req.file && updated.category === 'video' && stream.isConfigured()) {
+    await offloadResourceToStream(db.prepare('SELECT * FROM resources WHERE id = ?').get(existing.id));
+  }
+
   const saved = resourceWithUploader(existing.id);
   res.json({ resource: serializeResource(saved) });
-});
+}));
 
 router.delete('/resources/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
   deleteFileIfExists(existing.stored_name);
+  // Remove the matching Cloudflare Stream video too, so deleting a lesson
+  // never leaves a paid-for Stream video orphaned in the account.
+  if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   db.prepare('DELETE FROM resources WHERE id = ?').run(existing.id);
   res.json({ message: 'Resource deleted.' });
 });
