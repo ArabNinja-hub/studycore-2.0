@@ -2647,7 +2647,14 @@ body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .hero-stat .num { font-size: 1.35rem; }
-  .hero-stat .label { font-size: 0.63rem; letter-spacing: 0.05em; }
+  /* Every label needs two lines at this width. Left to itself the browser
+     breaks them late ("FREE TRIAL ON / SIGNUP"), which leaves a stranded
+     word under a full line. Balancing evens the two lines out and keeps a
+     tidy baseline across all three stats. */
+  .hero-stat .label {
+    font-size: 0.63rem; letter-spacing: 0.05em;
+    line-height: 1.3; text-wrap: balance;
+  }
   .hero-actions { width: 100%; }
   .hero-actions .btn { flex: 1 1 160px; }
   .course-grid,
