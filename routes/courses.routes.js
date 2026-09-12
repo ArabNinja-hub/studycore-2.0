@@ -4,6 +4,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const { resourceVisibilityClause, programCanSeeResource } = require('../lib/program-access');
 const stream = require('../lib/stream');
+const { issueTicket } = require('../lib/content-tickets');
 
 const router = express.Router();
 
@@ -239,8 +240,17 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
 
   function withStateFor(r) {
     const s = serializeResource(r, { completed: completedById.has(r.id) });
-    const reason = canAccess(r, access) ? null : lockReason(r, access);
+    const allowed = canAccess(r, access);
+    const reason = allowed ? null : lockReason(r, access);
     if (reason) s.locked = reason;
+    // The lesson request has already authenticated the student and checked
+    // both program visibility and Premium access. Mint the progressive-video
+    // ticket here so opening the player does not need a second API round trip
+    // before the browser can request its first media byte.
+    if (allowed && r.category === 'video' && !s.streamPlayback && r.stored_name) {
+      const { ticket } = issueTicket({ resourceId: r.id, userId: user.id });
+      s.protectedStreamUrl = `/api/resources/${encodeURIComponent(r.id)}/stream?t=${encodeURIComponent(ticket)}`;
+    }
     return s;
   }
 });

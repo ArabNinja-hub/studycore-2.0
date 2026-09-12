@@ -5,6 +5,7 @@ const test = require('node:test');
 const { randomUUID } = require('node:crypto');
 const { db, call, createUser, createResource, cookieFor } = require('./helpers/test-app');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
+const { verifyTicket } = require('../lib/content-tickets');
 
 const questions = [
   { id: 'mcq', type: 'mcq', prompt: 'Two plus two?', options: ['3', '4'], correct: [1], points: 2, explanation: 'Add two pairs.' },
@@ -249,6 +250,46 @@ test('videos serialize without Stream playback when Cloudflare Stream is unconfi
   assert.equal(flow.status, 200, flow.text);
   assert.equal(flow.data.lesson.streamPlayback, null, 'lesson flow also omits Stream playback');
   assert.equal(flow.data.lesson.hasFile, true);
+  const protectedUrl = new URL(flow.data.lesson.protectedStreamUrl, 'https://studycore.test');
+  assert.equal(protectedUrl.pathname, `/api/resources/${video.id}/stream`);
+  assert.equal(
+    verifyTicket(protectedUrl.searchParams.get('t'), { resourceId: video.id, userId: admin.id }).ok,
+    true,
+    'the lesson response piggybacks a valid ticket so playback needs no extra startup request'
+  );
+});
+
+test('program lesson flow also piggybacks playback tickets but locked lessons do not', async () => {
+  const course = resolveCourse('LS110');
+  const video = createResource({
+    category: 'video',
+    course_id: course.id,
+    subject: course.subject,
+    stored_name: 'videos/program-lesson.mp4',
+    file_name: 'program-lesson.mp4',
+    mime_type: 'video/mp4',
+    file_size: 2048
+  });
+  const premium = createUser({ program_code: 'LAW' });
+  const allowed = await call('GET', `/api/programs/lesson/${video.id}`, { user: premium });
+  assert.equal(allowed.status, 200, allowed.text);
+  const protectedUrl = new URL(allowed.data.lesson.protectedStreamUrl, 'https://studycore.test');
+  assert.equal(
+    verifyTicket(protectedUrl.searchParams.get('t'), { resourceId: video.id, userId: premium.id }).ok,
+    true
+  );
+  assert.equal(allowed.data.lesson.mimeType, 'video/mp4', 'player receives format metadata');
+
+  const expired = createUser({
+    program_code: 'LAW',
+    subscription: 'free',
+    subscription_end: new Date(Date.now() - 86400000).toISOString(),
+    trial_end: new Date(Date.now() - 86400000).toISOString()
+  });
+  const locked = await call('GET', `/api/programs/lesson/${video.id}`, { user: expired });
+  assert.equal(locked.status, 200, locked.text);
+  assert.equal(locked.data.lesson.locked, 'video');
+  assert.equal(locked.data.lesson.protectedStreamUrl, undefined, 'locked lessons never receive a viewing credential');
 });
 
 test('a Stream-backed video advertises playback fields even without a stored progressive file', async () => {

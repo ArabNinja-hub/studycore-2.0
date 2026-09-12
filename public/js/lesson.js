@@ -96,6 +96,12 @@
       resourceId: lesson.id,
       title: lesson.title,
       premium: accessPremium,
+      fileName: lesson.fileName,
+      mimeType: lesson.mimeType,
+      // The lesson-flow response already carries a short-lived viewing URL for
+      // progressive videos. Reusing it removes a ticket-mint round trip from
+      // the player's critical startup path.
+      streamUrl: lesson.protectedStreamUrl || null,
       // When the lesson is backed by Cloudflare Stream, this carries the
       // adaptive-bitrate iframe URL (with a native 1080p/720p/Auto quality
       // selector). Absent → the player uses the classic progressive stream.
