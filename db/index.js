@@ -397,6 +397,55 @@ try {
   // column already exists - fine
 }
 
+// ── Resumable uploads ───────────────────────────────────────────────────
+//
+// A phone that locks its screen, drops to a dead spot or switches from WiFi
+// to mobile data kills the single long multipart POST that used to carry a
+// whole lecture video. Everything already transferred was thrown away and
+// the uploader had to start from 0% — the single worst reliability problem
+// on a Zambian mobile connection.
+//
+// An upload is now a SESSION: the browser splits the file into fixed-size
+// chunks and sends them one request at a time. Each landed chunk is
+// recorded here, so a resumed upload asks the server "which chunks do you
+// already have?" and sends only what is missing. Sessions survive a server
+// restart because they live in SQLite, not in process memory.
+//
+//   upload_sessions       one row per in-flight file
+//   upload_session_parts  one row per chunk that has been durably stored
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS upload_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      file_size INTEGER NOT NULL,
+      mime_type TEXT,
+      chunk_size INTEGER NOT NULL,
+      total_chunks INTEGER NOT NULL,
+      storage_key TEXT,
+      status TEXT NOT NULL DEFAULT 'open',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    )
+  `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS upload_session_parts (
+      session_id TEXT NOT NULL REFERENCES upload_sessions(id) ON DELETE CASCADE,
+      part_number INTEGER NOT NULL,
+      size INTEGER NOT NULL,
+      received_at TEXT NOT NULL,
+      PRIMARY KEY (session_id, part_number)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_upload_sessions_user ON upload_sessions(user_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_upload_sessions_expires ON upload_sessions(expires_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_upload_session_parts_session ON upload_session_parts(session_id)');
+} catch {
+  // already exists - fine
+}
+
 // SQLite cannot alter a CHECK constraint in place. Older StudyCore databases
 // only allow ADMIN/STUDENT in users.role, or a previous lower()-based
 // compatibility check, which would not strictly enforce the canonical values.
