@@ -23,6 +23,15 @@
 (function (global) {
   'use strict';
 
+  function escapeHtml(s) {
+    if (typeof global.escapeHtml === 'function') return global.escapeHtml(s);
+    return String(s == null ? '' : s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+
   function fmtTime(s) {
     if (!Number.isFinite(s)) return '0:00';
     s = Math.max(0, Math.floor(s));
@@ -387,9 +396,9 @@
 
     /* ── Progress reporting ───────────────── */
     function reportPosition(force) {
-      if (!resourceId || video.ended && !force) return;
-      const pos = video.currentTime;
+      if (!resourceId || (video.ended && !force)) return;
       const dur = video.duration || 0;
+      const pos = Math.min(video.currentTime || 0, dur || Infinity);
       if (!dur || !Number.isFinite(pos)) return;
       StudyCoreAPI.saveVideoProgress(resourceId, pos, dur).then((r) => {
         // Server auto-completes at >=90%; reflect that in the UI callback.
@@ -526,8 +535,11 @@
       if (shell.classList.contains('show-ui')) hideUi();
       else showUiTransient();
     });
-    container.querySelector('#scSkipBack').addEventListener('click', () => { video.currentTime = Math.max(0, video.currentTime - 10); });
-    container.querySelector('#scSkipFwd').addEventListener('click', () => { video.currentTime = Math.min(video.duration || 0, video.currentTime + 10); });
+    container.querySelector('#scSkipBack').addEventListener('click', () => { video.currentTime = Math.max(0, (video.currentTime || 0) - 10); });
+    container.querySelector('#scSkipFwd').addEventListener('click', () => {
+      const dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : Infinity;
+      video.currentTime = Math.min(dur, (video.currentTime || 0) + 10);
+    });
     container.querySelector('#scPlayerRetry').addEventListener('click', () => {
       errorBox.hidden = true;
       attachedSrc = '';
@@ -541,9 +553,12 @@
     let seeking = false;
     function seekFromEvent(e) {
       const rect = seek.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      if (!rect.width || rect.width <= 0) return;
+      const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX;
+      if (!Number.isFinite(clientX)) return;
       const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      if (video.duration) video.currentTime = pct * video.duration;
+      const dur = video.duration;
+      if (Number.isFinite(dur) && dur > 0) video.currentTime = pct * dur;
     }
     const onSeekMouseDown = (e) => { seeking = true; seekFromEvent(e); };
     const onWindowMouseMove = (e) => { if (seeking) seekFromEvent(e); };
@@ -557,6 +572,7 @@
     seek.addEventListener('touchstart', onSeekTouchStart, { passive: true });
     seek.addEventListener('touchmove', onSeekTouchMove, { passive: true });
     seek.addEventListener('touchend', onSeekTouchEnd);
+    seek.addEventListener('touchcancel', onSeekTouchEnd);
 
     muteBtn.addEventListener('click', () => { video.muted = !video.muted; });
     volume.addEventListener('input', () => { video.volume = Number(volume.value); video.muted = video.volume === 0; });
@@ -570,12 +586,12 @@
       // the video fills the width. The Screen Orientation API is supported on
       // Android Chrome 37+ and iOS Safari 16.4+.  Silently ignored where
       // unsupported or denied (e.g. iOS <16.4, system rotation lock on).
-      if (isTouch && screen.orientation && typeof screen.orientation.lock === 'function') {
+      if (isTouch && typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.lock === 'function') {
         screen.orientation.lock('landscape').catch(() => {});
       }
     }
     function unlockOrientation() {
-      if (screen.orientation && typeof screen.orientation.unlock === 'function') {
+      if (typeof screen !== 'undefined' && screen.orientation && typeof screen.orientation.unlock === 'function') {
         screen.orientation.unlock();
       }
     }
@@ -630,8 +646,12 @@
       if (!inView) return;
       switch (e.key) {
         case ' ': case 'k': e.preventDefault(); togglePlay(); break;
-        case 'ArrowLeft': video.currentTime = Math.max(0, video.currentTime - 5); break;
-        case 'ArrowRight': video.currentTime = Math.min(video.duration || 0, video.currentTime + 5); break;
+        case 'ArrowLeft': video.currentTime = Math.max(0, (video.currentTime || 0) - 5); break;
+        case 'ArrowRight': {
+          const dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : Infinity;
+          video.currentTime = Math.min(dur, (video.currentTime || 0) + 5);
+          break;
+        }
         case 'f': toggleFullscreen(); break;
         case 'm': video.muted = !video.muted; break;
         case 'ArrowUp': e.preventDefault(); video.volume = Math.min(1, video.volume + 0.1); video.muted = false; break;
@@ -780,9 +800,10 @@
       // Report every 5s while playing, matching the progressive player.
       reportTimer = setInterval(() => {
         if (!player || destroyed) return;
-        Promise.resolve(player.currentTime).then((cur) => {
-          const dur = player.duration || sp.duration || 0;
-          const pos = Number(cur) || 0;
+        Promise.all([Promise.resolve(player.currentTime), Promise.resolve(player.duration)]).then(([cur, d]) => {
+          if (destroyed) return;
+          const dur = Number(d) || sp.duration || 0;
+          const pos = Math.min(Number(cur) || 0, dur || Infinity);
           if (!dur || !Number.isFinite(pos)) return;
           StudyCoreAPI.saveVideoProgress(resourceId, pos, dur)
             .then(() => {
@@ -804,11 +825,13 @@
       player.addEventListener('loadedmetadata', () => {
         resumeReady.then(() => {
           if (destroyed || !player) return;
-          // Resume only when meaningfully into the video and not at the end.
-          const dur = player.duration || sp.duration || 0;
-          if (resumePos > 3 && (!dur || resumePos < dur - 5)) {
-            try { player.currentTime = resumePos; } catch { /* ignore */ }
-          }
+          Promise.resolve(player.duration).then((d) => {
+            const dur = Number(d) || sp.duration || 0;
+            // Resume only when meaningfully into the video and not at the end.
+            if (resumePos > 3 && (!dur || resumePos < dur - 5)) {
+              try { player.currentTime = resumePos; } catch { /* ignore */ }
+            }
+          });
         });
       });
 
@@ -816,9 +839,9 @@
       player.addEventListener('pause', () => {
         clearInterval(reportTimer);
         // Capture the exact pause position immediately.
-        Promise.resolve(player.currentTime).then((cur) => {
-          const dur = player.duration || sp.duration || 0;
-          const pos = Number(cur) || 0;
+        Promise.all([Promise.resolve(player.currentTime), Promise.resolve(player.duration)]).then(([cur, d]) => {
+          const dur = Number(d) || sp.duration || 0;
+          const pos = Math.min(Number(cur) || 0, dur || Infinity);
           if (dur && Number.isFinite(pos)) StudyCoreAPI.saveVideoProgress(resourceId, pos, dur).catch(() => {});
         });
       });
@@ -826,9 +849,12 @@
         clearInterval(reportTimer);
         if (!completed) {
           completed = true;
-          const dur = player.duration || sp.duration || 0;
-          if (dur) StudyCoreAPI.saveVideoProgress(resourceId, dur, dur).catch(() => {});
-          if (typeof o.onComplete === 'function') o.onComplete();
+          Promise.resolve(player.duration).then((d) => {
+            const dur = Number(d) || sp.duration || 0;
+            if (dur) StudyCoreAPI.saveVideoProgress(resourceId, dur, dur).catch(() => {});
+            if (typeof o.onEnded === 'function') o.onEnded();
+            if (typeof o.onComplete === 'function') o.onComplete();
+          });
         }
       });
     }).catch(() => {

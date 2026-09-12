@@ -138,3 +138,20 @@ test('the player preloads eagerly so the first frame is ready sooner', () => {
   assert.match(progressive, /preload="auto"/,
     'metadata-only preloading left the player fetching after the gesture');
 });
+
+test('skip forward and seek bar guard against NaN duration and zero rect', () => {
+  assert.match(progressive, /const dur = Number\.isFinite\(video\.duration\)/,
+    'skip forward checks duration finiteness before clamping');
+  assert.match(progressive, /if \(!rect\.width \|\| rect\.width <= 0\) return;/,
+    'seekFromEvent guards against zero or invalid width');
+  assert.match(src, /function escapeHtml\(/,
+    'player.js provides its own escapeHtml helper');
+});
+
+test('Cloudflare Stream player resolves duration asynchronously and calls onEnded', () => {
+  const streamCode = src.slice(src.indexOf('function initStream('));
+  assert.match(streamCode, /Promise\.resolve\(player\.duration\)/,
+    'initStream resolves player.duration as a Promise');
+  assert.match(streamCode, /typeof o\.onEnded === 'function'/,
+    'initStream invokes onEnded when video ends');
+});
