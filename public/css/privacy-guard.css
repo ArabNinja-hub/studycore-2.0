@@ -65,3 +65,32 @@ body[data-sc-privacy] svg {
     color: #000;
   }
 }
+
+/* Persistent provenance watermark for protected document pages. */
+.sc-provenance-watermark {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  overflow: hidden;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,.38);
+  font: 700 clamp(12px, 1.6vw, 18px)/1.2 system-ui, sans-serif;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transform: rotate(-24deg);
+  text-shadow: 0 1px 3px rgba(0,0,0,.72);
+  opacity: .72;
+}
+.sc-provenance-watermark::before,
+.sc-provenance-watermark::after {
+  content: attr(data-watermark);
+  position: absolute;
+  white-space: nowrap;
+}
+.sc-provenance-watermark::before { transform: translate(-42%, -170%); }
+.sc-provenance-watermark::after { transform: translate(42%, 170%); }
+.doc-reader-stage { position: relative; }

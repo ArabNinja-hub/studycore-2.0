@@ -285,6 +285,7 @@
       ${isBare ? '' : '<div class="card doc-reader" id="scDocReader">'}
       ${headHtml}
       <div class="doc-reader-stage" id="scDocStage">
+        <div class="sc-provenance-watermark" data-watermark="StudyCore • protected learning content" aria-hidden="true">StudyCore • protected learning content</div>
         <div class="doc-reader-status" id="scDocStatus">
           <div class="player-spinner"></div>
           <p id="scDocStatusText">Opening document…</p>
