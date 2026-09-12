@@ -173,12 +173,10 @@
       loading.hidden = true;
     }
 
-    // Resolved to a short-lived, account-bound ticket URL just before the
-    // video is attached (see StudyCoreAPI.protectedUrl). Held in a variable
-    // rather than a const because the ticket is minted asynchronously; it
-    // falls back to the plain session-gated URL if the mint fails, so a
-    // hiccup in the ticket service can never stop playback.
-    let streamUrl = StudyCoreAPI.streamUrl(resourceId);
+    // Lesson-flow responses piggyback a short-lived, account-bound ticket URL,
+    // allowing the media request to start immediately. The API mint below is
+    // retained as a compatibility fallback for callers that do not provide it.
+    let streamUrl = o.streamUrl || StudyCoreAPI.streamUrl(resourceId);
     let attachedSrc = '';
     let metaTimer = null;
 
@@ -283,15 +281,17 @@
         showStreamError('This video format is not supported by your browser. Ask your admin to upload MP4 or WebM.');
         return;
       }
-      // Mint (or reuse) the short-lived viewing ticket. protectedUrl caches
-      // per resource for the life of the page, so a retry or a second player
-      // on the same lesson costs nothing.
-      try {
-        if (typeof StudyCoreAPI.protectedUrl === 'function') {
-          streamUrl = await StudyCoreAPI.protectedUrl(resourceId);
-        }
-      } catch { /* fall back to the plain session-gated URL */ }
-      if (destroyed || !video.isConnected) return;
+      // Older callers may not have received a ticket with their lesson data.
+      // Mint one for those callers only; the normal lesson page skips this
+      // await entirely and attaches its supplied URL synchronously.
+      if (!o.streamUrl) {
+        try {
+          if (typeof StudyCoreAPI.protectedUrl === 'function') {
+            streamUrl = await StudyCoreAPI.protectedUrl(resourceId);
+          }
+        } catch { /* fall back to the plain session-gated URL */ }
+        if (destroyed || !video.isConnected) return;
+      }
 
       if (attachedSrc !== streamUrl) {
         attachedSrc = streamUrl;

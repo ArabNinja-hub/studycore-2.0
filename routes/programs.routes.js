@@ -4,6 +4,7 @@ const db = require('../db');
 const { requireAuth, requireRole, attachUser } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const stream = require('../lib/stream');
+const { issueTicket } = require('../lib/content-tickets');
 
 // Cloudflare Stream playback fields for a video row (null unless it has a
 // Stream video and Stream is configured). Carries the adaptive-bitrate iframe
@@ -549,7 +550,8 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
         const item = {
           id: l.id, title: l.title, description: l.description, category: l.category,
           topic: name, term: l.semester || null, subject: course.name, courseCode: course.code,
-          fileName: l.file_name, yearLevel: l.year_level, createdAt: l.created_at,
+          fileName: l.file_name, mimeType: l.mime_type, fileSize: l.file_size,
+          yearLevel: l.year_level, createdAt: l.created_at,
           completed: completedById.has(l.id)
         };
         // Only videos need playback info; harmless (null) for other types.
@@ -564,6 +566,13 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
   if (idx === -1) return res.status(403).json({ message: 'This lesson is not available for your program.' });
 
   const current = flat[idx];
+  // Piggyback the short-lived viewing ticket on the already-authorized lesson
+  // response. Otherwise the player has to stop and mint it in a second request
+  // before it can attach the progressive video source.
+  if (!current.locked && current.category === 'video' && !current.streamPlayback && row.stored_name) {
+    const { ticket } = issueTicket({ resourceId: row.id, userId: user.id });
+    current.protectedStreamUrl = `/api/resources/${encodeURIComponent(row.id)}/stream?t=${encodeURIComponent(ticket)}`;
+  }
   res.json({
     course: serializeCourse(course),
     lesson: current,

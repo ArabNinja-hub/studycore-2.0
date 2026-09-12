@@ -48,6 +48,21 @@ test('the video element is attached without waiting on a HEAD probe', () => {
   assert.match(attach, /video\.src\s*=\s*streamUrl/, 'attachStream still assigns the stream URL');
 });
 
+test('the lesson-provided ticket skips the ticket-mint startup request', () => {
+  assert.match(progressive, /let streamUrl = o\.streamUrl \|\| StudyCoreAPI\.streamUrl\(resourceId\)/,
+    'the player prefers the protected URL piggybacked on lesson data');
+  const attach = progressive.slice(
+    progressive.indexOf('async function attachStream()'),
+    progressive.indexOf('function showStreamError(')
+  );
+  assert.match(attach, /if \(!o\.streamUrl\)[\s\S]*await StudyCoreAPI\.protectedUrl\(resourceId\)/,
+    'ticket minting is only a compatibility fallback');
+  assert.ok(
+    attach.indexOf('if (!o.streamUrl)') < attach.indexOf('video.src = streamUrl'),
+    'the supplied URL reaches video.src without crossing an await'
+  );
+});
+
 test('the probe survives, but only as a failure diagnosis', () => {
   assert.match(progressive, /async function diagnoseFailure\(/,
     'failures are still explained precisely rather than generically');
