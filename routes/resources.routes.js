@@ -652,24 +652,26 @@ router.post('/:id/video-progress', requireAuth, gate, (req, res) => {
   const dur = Number(duration);
   // Reject garbage before it ever touches the database - a position is a
   // sane number of seconds, bounded to a 6-hour "video".
-  if (!Number.isFinite(pos) || !Number.isFinite(dur) || pos < 0 || dur <= 0 || dur > 21600 || pos > dur) {
+  // Allow a tiny epsilon for sub-second container precision differences at the end.
+  if (!Number.isFinite(pos) || !Number.isFinite(dur) || pos < 0 || dur <= 0 || dur > 21600 || pos > dur + 1) {
     return res.status(400).json({ message: 'Invalid playback position.' });
   }
 
+  const safePos = Math.min(pos, dur);
   const now = new Date().toISOString();
   try {
     db.prepare(`
       INSERT INTO video_progress (id, user_id, resource_id, position, duration, updated_at)
       VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(user_id, resource_id) DO UPDATE SET position = excluded.position, duration = excluded.duration, updated_at = excluded.updated_at
-    `).run(`vp-${uuidv4()}`, req.user.id, row.id, pos, dur, now);
+    `).run(`vp-${uuidv4()}`, req.user.id, row.id, safePos, dur, now);
   } catch (err) {
     return res.status(500).json({ message: 'Could not save your position.' });
   }
 
   // 90% of the way through counts as having watched the lesson - the
   // completion itself is the real progress record, written server-side.
-  if (pos / dur >= 0.9) {
+  if (safePos / dur >= 0.9) {
     try {
       db.prepare('INSERT INTO lesson_progress (id, user_id, resource_id, completed_at) VALUES (?, ?, ?, ?)')
         .run(`lp-${uuidv4()}`, req.user.id, row.id, now);

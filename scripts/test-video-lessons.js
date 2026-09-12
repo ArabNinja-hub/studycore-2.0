@@ -180,6 +180,26 @@ test('resume position and completion state survive the compact view', async () =
   assert.equal(res.data.continueLearning.id, video.id, 'continue-watching still works');
 });
 
+test('playback progress reporting accepts sub-second precision differences at video end', async () => {
+  const student = createUser({ program_code: 'SMMS' });
+  const video = createVideo({ title: 'Ending lecture' });
+
+  // Browser currentTime at video end can be e.g. 600.005 while duration is 600
+  const res = await call('POST', `/api/resources/${video.id}/video-progress`, {
+    user: student,
+    body: { position: 600.005, duration: 600 }
+  });
+  assert.equal(res.status, 200, res.text);
+
+  const prog = db.prepare('SELECT position, duration FROM video_progress WHERE user_id = ? AND resource_id = ?')
+    .get(student.id, video.id);
+  assert.equal(prog.position, 600, 'position is clamped to duration');
+
+  const completed = db.prepare('SELECT * FROM lesson_progress WHERE user_id = ? AND resource_id = ?')
+    .get(student.id, video.id);
+  assert.ok(completed, 'reaching the end auto-completes the lesson');
+});
+
 // ---------------------------------------------------------------------------
 // 3. Upload: video container signature detection
 // ---------------------------------------------------------------------------
