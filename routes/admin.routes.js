@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
+const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
 const { queueOffload } = require('../lib/stream-ingest');
@@ -209,7 +210,19 @@ router.get('/resources', (req, res) => {
   res.json({ resources: rows.map(serializeResource) });
 });
 
-router.post('/resources', upload.single('file'), asyncHandler(async (req, res) => {
+// Multipart first, then the resumable bridge: a form carrying an
+// `uploadSessionId` (instead of a `file` part) has its already-transferred
+// chunks assembled into one stored object and exposed as `req.file`, so every
+// validation, duplicate check and Stream offload below is identical for both
+// upload paths. See middleware/resumable.js.
+function resourceUpload(req, res, next) {
+  return upload.single('file')(req, res, (err) => {
+    if (err) return next(err);
+    return attachResumableUpload(req, res, next);
+  });
+}
+
+router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
   const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
 
   if (!title || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
@@ -311,6 +324,9 @@ router.post('/resources', upload.single('file'), asyncHandler(async (req, res) =
   `).run(row);
 
   syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
+  // The assembled object now belongs to a committed resource row, so the
+  // resumable-session sweeper must never reclaim it.
+  claimResumableUpload(req);
 
   // Offload videos to Cloudflare Stream for adaptive-bitrate playback with a
   // real quality selector (Auto / 1080p / 720p / …). This is deliberately
@@ -342,7 +358,7 @@ router.post('/resources', upload.single('file'), asyncHandler(async (req, res) =
   res.status(201).json(response);
 }));
 
-router.put('/resources/:id', upload.single('file'), asyncHandler(async (req, res) => {
+router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
 
@@ -475,6 +491,8 @@ router.put('/resources/:id', upload.single('file'), asyncHandler(async (req, res
       google_drive_file_id=@google_drive_file_id, google_drive_url=@google_drive_url
     WHERE id=@id
   `).run(updated);
+
+  claimResumableUpload(req);
 
   // A newly-replaced video file gets re-encoded on Cloudflare Stream. No-op
   // unless Stream is configured and the (new) file is a video. Queued rather

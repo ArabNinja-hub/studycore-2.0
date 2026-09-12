@@ -306,13 +306,29 @@
       setResourceFormStatus(editingResourceId ? 'Saving changes…' : 'Publishing resource…');
     }
 
+    const chosenFile = selectedFile;
     try {
       const url = editingResourceId ? `/api/admin/resources/${editingResourceId}` : '/api/admin/resources';
       const method = editingResourceId ? 'PUT' : 'POST';
-      const result = await StudyCoreAPI.uploadWithProgress(url, method, fd, (pct, info) => {
+      const onTick = (pct, info) => {
         progressBar.style.width = `${pct}%`;
-        progressText.textContent = `Uploading… ${pct}%${formatUploadDetail(info)}`;
-      });
+        const label = info && info.resumed ? 'Resuming upload' : 'Uploading';
+        progressText.textContent = `${label}… ${pct}%${formatUploadDetail(info)}`;
+      };
+
+      let result;
+      // Large files use resumable chunks: a dropped connection or a phone
+      // that sleeps then pauses the upload instead of discarding every byte
+      // already sent. See StudyCoreAPI.uploadResumable in js/api.js.
+      if (chosenFile && chosenFile.size >= StudyCoreAPI.RESUMABLE_THRESHOLD_BYTES) {
+        const { sessionId } = await StudyCoreAPI.uploadResumable(chosenFile, onTick);
+        progressBar.style.width = '100%';
+        progressText.textContent = 'Finishing up — saving the resource…';
+        result = await StudyCoreAPI.completeResumableUpload(url, method, fd, sessionId);
+        StudyCoreAPI.forgetResumableSession(chosenFile);
+      } else {
+        result = await StudyCoreAPI.uploadWithProgress(url, method, fd, onTick);
+      }
       const successMessage = editingResourceId ? 'Resource updated.' : 'Resource published.';
       showToast(successMessage, 'success');
       if (result && result.warning) showToast(result.warning, 'info');
@@ -335,8 +351,13 @@
       if (window.SCAdminPrograms) SCAdminPrograms.loadPrograms();
       notifyAnnouncementChange();
     } catch (err) {
-      setResourceFormStatus(err.message, 'error');
-      showToast(err.message, 'error');
+      // A paused chunked upload keeps everything it already sent, so the
+      // message has to invite a retry rather than imply the work is lost.
+      const message = err && err.resumable
+        ? `${err.message} Choose the same file again to continue from where it stopped.`
+        : err.message;
+      setResourceFormStatus(message, 'error');
+      showToast(message, 'error');
     } finally {
       submitBtn.disabled = false;
       progressWrap.style.display = 'none';

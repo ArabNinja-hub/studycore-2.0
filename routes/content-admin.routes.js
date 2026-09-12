@@ -14,6 +14,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
+const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
 const { queueOffload } = require('../lib/stream-ingest');
@@ -36,7 +37,15 @@ function conditionalUpload(req, res, next) {
   // Always use Multer's single-file parser so multipart form fields
   // (including hidden Google Drive inputs) are properly parsed into
   // req.body regardless of whether a file is attached.
-  return upload.single('file')(req, res, next);
+  //
+  // attachResumableUpload then runs second: when the form carries an
+  // `uploadSessionId` instead of a `file` part, the already-transferred
+  // chunks are assembled into one stored object and exposed as `req.file`.
+  // Everything below this point cannot tell the two paths apart.
+  return upload.single('file')(req, res, (err) => {
+    if (err) return next(err);
+    return attachResumableUpload(req, res, next);
+  });
 }
 
 function cleanText(value, maxLength = 0) {
@@ -408,6 +417,9 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     `).run({ ...row, storage_provider: row.storage_provider, google_drive_file_id: row.google_drive_file_id, google_drive_url: row.google_drive_url });
     replaceSingleProgram(id, parsed.value.program.code);
     db.exec('COMMIT');
+    // The assembled object is now referenced by a committed row, so the
+    // resumable sweeper must never reclaim it.
+    claimResumableUpload(req);
   } catch (err) {
     try { db.exec('ROLLBACK'); } catch { /* no open transaction */ }
     cleanupIncomingFile(req);
@@ -518,6 +530,7 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     }
     replaceSingleProgram(existing.id, parsed.value.program.code);
     db.exec('COMMIT');
+    claimResumableUpload(req);
   } catch (err) {
     try { db.exec('ROLLBACK'); } catch { /* no open transaction */ }
     cleanupIncomingFile(req);

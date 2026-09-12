@@ -574,6 +574,287 @@
     });
   };
 
+  /* ── Resumable chunked uploads ──────────────────────────────────────────
+     THE PROBLEM THIS SOLVES
+
+     uploadWithProgress (above) sends a whole file in ONE request. On the
+     connections our uploaders actually have, that request dies constantly:
+     the phone locks its screen and the browser suspends the transfer, the
+     signal drops in a corridor, WiFi hands over to mobile data. Every one of
+     those threw away 100% of the bytes already sent — a 300MB lecture video
+     at 95% went straight back to 0%, over and over.
+
+     Here the file is cut into chunks and each chunk is its own small request.
+     The server records every chunk that lands (in SQLite, so it survives a
+     restart), which means:
+
+       · A failed chunk costs one chunk, not the whole file.
+       · Closing the tab, losing signal or locking the phone pauses the upload
+         instead of destroying it — reopening resumes from the last chunk.
+       · The session id is remembered in localStorage and keyed by the file's
+         name+size+mtime, so picking the same file again silently continues
+         where it stopped rather than starting over.
+
+     The final publish request then carries an `uploadSessionId` instead of the
+     file bytes, so it is small and fast even for a huge video.
+     ──────────────────────────────────────────────────────────────────────── */
+
+  const RESUME_STORE_KEY = 'sc:resumable-uploads';
+  const RESUME_ENTRY_TTL_MS = 24 * 60 * 60 * 1000;
+
+  function readResumeStore() {
+    try {
+      const raw = global.localStorage && global.localStorage.getItem(RESUME_STORE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch { return {}; }
+  }
+
+  function writeResumeStore(store) {
+    try {
+      if (global.localStorage) global.localStorage.setItem(RESUME_STORE_KEY, JSON.stringify(store));
+    } catch { /* private mode / quota: resuming is an optimisation, never required */ }
+  }
+
+  // Identifies a specific file well enough to match it against a stored
+  // session, without reading its contents (which would defeat the point).
+  function fileFingerprint(file) {
+    return [file.name, file.size, file.lastModified || 0].join(':');
+  }
+
+  function rememberSession(file, session) {
+    const store = readResumeStore();
+    const cutoff = Date.now() - RESUME_ENTRY_TTL_MS;
+    for (const key of Object.keys(store)) {
+      if (!store[key] || store[key].savedAt < cutoff) delete store[key];
+    }
+    store[fileFingerprint(file)] = { id: session.id, savedAt: Date.now() };
+    writeResumeStore(store);
+  }
+
+  function recallSession(file) {
+    const entry = readResumeStore()[fileFingerprint(file)];
+    if (!entry) return null;
+    if (Date.now() - entry.savedAt > RESUME_ENTRY_TTL_MS) return null;
+    return entry.id;
+  }
+
+  function forgetSession(file) {
+    const store = readResumeStore();
+    delete store[fileFingerprint(file)];
+    writeResumeStore(store);
+  }
+
+  // One chunk, as a bare PUT of the raw bytes. Returns a promise; rejects with
+  // a network-flavoured error the caller can retry.
+  function sendChunk(sessionId, partNumber, blob, onTick, signal) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', `/api/uploads/session/${encodeURIComponent(sessionId)}/part/${partNumber}`, true);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      let settled = false;
+      const finish = (fn, value) => { if (!settled) { settled = true; fn(value); } };
+
+      if (signal) {
+        if (signal.aborted) return finish(reject, networkError('Upload cancelled.', { cancelled: true }));
+        signal.addEventListener('abort', () => {
+          try { xhr.abort(); } catch { /* already gone */ }
+          finish(reject, networkError('Upload cancelled.', { cancelled: true }));
+        }, { once: true });
+      }
+
+      xhr.upload.onprogress = (event) => {
+        if (onTick && event.lengthComputable) onTick(event.loaded);
+      };
+      xhr.onload = () => {
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch { data = null; }
+        if (xhr.status >= 200 && xhr.status < 300) return finish(resolve, data);
+        const err = new Error((data && data.message) || `Chunk upload failed (${xhr.status})`);
+        err.status = xhr.status;
+        // 4xx other than the retryable set is a real rejection (bad session,
+        // wrong size); 5xx and network faults are worth another attempt.
+        if (xhr.status >= 500 || RETRYABLE_STATUS.has(xhr.status)) err.network = true;
+        finish(reject, err);
+      };
+      xhr.onerror = () => finish(reject, networkError('Connection lost while sending part of the file.', {
+        offline: navigator.onLine === false
+      }));
+      xhr.ontimeout = () => finish(reject, networkError('That part of the upload timed out.', { timeout: true }));
+      xhr.send(blob);
+    });
+  }
+
+  // Upload `file` in resumable chunks, resuming a previous session when one
+  // exists for this exact file. Resolves with the session id, which the caller
+  // attaches to its publish request.
+  //
+  // onProgress(percent, info) matches uploadWithProgress so the existing
+  // dashboards' progress UI needs no changes.
+  StudyCoreAPI.uploadResumable = async function (file, onProgress, options = {}) {
+    const signal = options.signal;
+    const abortCheck = () => {
+      if (signal && signal.aborted) throw networkError('Upload cancelled.', { cancelled: true });
+    };
+
+    // ── Get or resume a session ───────────────────────────────────────────
+    let session = null;
+    const remembered = recallSession(file);
+    if (remembered) {
+      try {
+        const data = await request(`/api/uploads/session/${encodeURIComponent(remembered)}`, {
+          timeoutMs: 12000, retries: 1
+        });
+        if (data && data.session && data.session.fileSize === file.size) {
+          session = data.session;
+        }
+      } catch {
+        // Expired or gone: fall through and start a fresh session.
+        forgetSession(file);
+      }
+    }
+
+    if (!session) {
+      const created = await request('/api/uploads/session', {
+        method: 'POST',
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          chunkSize: options.chunkSize
+        })
+      });
+      session = created.session;
+      rememberSession(file, session);
+    }
+
+    const { id, chunkSize, totalChunks } = session;
+    const have = new Set(session.receivedParts || []);
+
+    // Bytes already on the server do not need to be sent, and must still be
+    // counted in the progress bar — otherwise a resumed upload looks like it
+    // restarted, which is exactly the anxiety this feature removes.
+    let baseBytes = 0;
+    have.forEach((part) => {
+      baseBytes += part === totalChunks - 1 ? file.size - (chunkSize * part) : chunkSize;
+    });
+
+    const startedAt = Date.now();
+    let speedBps = 0;
+    let lastTick = startedAt;
+    let lastBytes = baseBytes;
+
+    const report = (sentBytes) => {
+      if (!onProgress) return;
+      const loaded = Math.min(file.size, sentBytes);
+      const now = Date.now();
+      const dt = (now - lastTick) / 1000;
+      if (dt >= 0.25) {
+        const instant = (loaded - lastBytes) / dt;
+        speedBps = speedBps ? (speedBps * 0.7) + (instant * 0.3) : instant;
+        lastBytes = loaded;
+        lastTick = now;
+      }
+      const remaining = file.size - loaded;
+      onProgress(Math.round((loaded / file.size) * 100), {
+        loaded,
+        total: file.size,
+        bytesPerSecond: Math.max(0, Math.round(speedBps)),
+        etaSeconds: speedBps > 0 ? Math.round(remaining / speedBps) : null,
+        elapsedSeconds: Math.round((now - startedAt) / 1000),
+        resumed: baseBytes > 0,
+        chunk: null
+      });
+    };
+
+    report(baseBytes);
+
+    // ── Send the missing chunks, one at a time ────────────────────────────
+    // Sequential on purpose: parallel chunks compete for a thin uplink, make
+    // the ETA meaningless and multiply the damage of a dropout.
+    let sentBytes = baseBytes;
+    for (let part = 0; part < totalChunks; part += 1) {
+      if (have.has(part)) continue;
+      abortCheck();
+
+      const start = part * chunkSize;
+      const end = Math.min(file.size, start + chunkSize);
+      const blob = file.slice(start, end);
+      const chunkBytes = end - start;
+
+      // Per-chunk retry with backoff. Because a chunk is small, retrying it is
+      // cheap — this is what turns a flaky connection into a slow one rather
+      // than a failed one.
+      let attempt = 0;
+      const maxChunkAttempts = 5;
+      for (;;) {
+        try {
+          await sendChunk(id, part, blob, (loadedInChunk) => {
+            report(sentBytes + Math.min(loadedInChunk, chunkBytes));
+          }, signal);
+          break;
+        } catch (err) {
+          if (err.cancelled) throw err;
+          attempt += 1;
+          const fatal = !err.network && err.status && err.status < 500;
+          if (fatal || attempt >= maxChunkAttempts) {
+            // The session and its landed chunks stay on the server, so trying
+            // again later resumes instead of restarting. Say so.
+            err.resumable = true;
+            err.sessionId = id;
+            if (!err.status) {
+              err.message = navigator.onLine === false
+                ? 'Upload paused — you are offline. It will continue from where it stopped when you reconnect.'
+                : 'Upload paused. Your progress is saved — try again and it will continue from where it stopped.';
+            }
+            throw err;
+          }
+          setDegraded(true);
+          if (navigator.onLine === false) await waitForConnection(NET.OFFLINE_GRACE_MS * 2);
+          else await sleep(NET.BACKOFF_MS * Math.pow(2, attempt - 1) + Math.random() * 400);
+        }
+      }
+
+      setDegraded(false);
+      sentBytes += chunkBytes;
+      report(sentBytes);
+    }
+
+    report(file.size);
+    return { sessionId: id, fileName: file.name, fileSize: file.size, resumed: baseBytes > 0 };
+  };
+
+  // Publish (or update) a resource whose bytes are already on the server as a
+  // finished resumable session. The form data carries the session id instead
+  // of the file, so this request is tiny no matter how big the video was.
+  StudyCoreAPI.completeResumableUpload = function (url, method, formData, sessionId) {
+    formData.delete('file');
+    formData.append('uploadSessionId', sessionId);
+    // Assembling chunks into the final object (and, on R2, re-uploading it)
+    // happens inside this request, so it gets the generous finalize window
+    // rather than the ordinary JSON timeout.
+    return StudyCoreAPI.uploadWithProgress(url, method, formData, null, {
+      stallMs: NET.UPLOAD_FINALIZE_MS
+    });
+  };
+
+  StudyCoreAPI.forgetResumableSession = function (file) {
+    if (file) forgetSession(file);
+  };
+
+  StudyCoreAPI.cancelResumableSession = function (sessionId, file) {
+    if (file) forgetSession(file);
+    if (!sessionId) return Promise.resolve();
+    return request(`/api/uploads/session/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+      .catch(() => { /* the sweeper reclaims it anyway */ });
+  };
+
+  // Files at or above this size take the chunked path. Below it, a single
+  // request is simpler and usually finishes inside one screen-on window.
+  StudyCoreAPI.RESUMABLE_THRESHOLD_BYTES = 8 * 1024 * 1024;
+
   global.StudyCoreAPI = StudyCoreAPI;
 
   /* ── Shared connection status strip ─────────

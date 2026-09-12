@@ -399,15 +399,33 @@
     progressBar.style.width = '0%';
     setStatus(status, editingId ? 'Saving resource…' : 'Uploading resource…');
 
+    const chosenFile = state.selectedFile;
     try {
       const formData = buildFormData();
       const endpoint = editingId ? `/api/content-admin/resources/${encodeURIComponent(editingId)}` : '/api/content-admin/resources';
-      const result = await StudyCoreAPI.uploadWithProgress(endpoint, editingId ? 'PUT' : 'POST', formData, (percent, info) => {
+      const method = editingId ? 'PUT' : 'POST';
+
+      const onTick = (percent, info) => {
         progressBar.style.width = `${percent}%`;
         // Percent alone looks frozen on a slow uplink; the live rate and ETA
         // (announced via the existing status line) show it is still moving.
-        setStatus(status, `Uploading… ${percent}%${formatUploadDetail(info)}`);
-      });
+        const resumedNote = info && info.resumed ? 'Resuming upload' : 'Uploading';
+        setStatus(status, `${resumedNote}… ${percent}%${formatUploadDetail(info)}`);
+      };
+
+      let result;
+      // Big files go up in resumable chunks so a locked screen or a dropped
+      // signal pauses the upload instead of destroying it. Small ones keep the
+      // simpler single-request path.
+      if (chosenFile && chosenFile.size >= StudyCoreAPI.RESUMABLE_THRESHOLD_BYTES) {
+        const { sessionId } = await StudyCoreAPI.uploadResumable(chosenFile, onTick);
+        progressBar.style.width = '100%';
+        setStatus(status, 'Finishing up — saving your resource…');
+        result = await StudyCoreAPI.completeResumableUpload(endpoint, method, formData, sessionId);
+        StudyCoreAPI.forgetResumableSession(chosenFile);
+      } else {
+        result = await StudyCoreAPI.uploadWithProgress(endpoint, method, formData, onTick);
+      }
       progressBar.style.width = '100%';
       showToast(editingId ? 'Resource updated.' : 'Resource published.', 'success');
       clearUploadForm();
@@ -416,8 +434,15 @@
       // the form resets, without relying only on the transient toast.
       setStatus($('#caUploadStatus'), result && result.resource ? 'Saved successfully.' : 'Saved successfully.', 'success');
     } catch (err) {
-      setStatus(status, err.message || 'Could not save the resource.', 'error');
-      showToast(err.message || 'Could not save the resource.', 'error');
+      // A paused resumable upload is NOT a lost upload: the chunks that made
+      // it are still on the server. Tell the uploader that plainly, so they
+      // re-submit the same file (which resumes) instead of assuming the work
+      // is gone.
+      const message = err && err.resumable
+        ? `${err.message} Choose the same file again to continue from where it stopped.`
+        : (err.message || 'Could not save the resource.');
+      setStatus(status, message, 'error');
+      showToast(message, 'error');
     } finally {
       submit.disabled = false;
       progress.style.display = 'none';

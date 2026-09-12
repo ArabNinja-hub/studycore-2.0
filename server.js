@@ -16,6 +16,7 @@ const coursesRoutes = require('./routes/courses.routes');
 const programsRoutes = require('./routes/programs.routes');
 const adminRoutes = require('./routes/admin.routes');
 const contentAdminRoutes = require('./routes/content-admin.routes');
+const uploadRoutes = require('./routes/uploads.routes');
 const notificationRoutes = require('./routes/notifications.routes');
 const quizRoutes = require('./routes/quiz.routes');
 
@@ -99,6 +100,14 @@ app.use('/api/auth/profile', profileLimit);
 // batch of notes and hostile to an automated upload flood.
 const uploadLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, methods: ['POST', 'PUT', 'PATCH', 'DELETE'] });
 app.use(['/api/admin/resources', '/api/content-admin/resources', '/api/quiz/image'], uploadLimit);
+// Resumable chunk traffic needs its OWN, much wider limit. A 300MB video is
+// ~60 chunk requests on its own, and a resumed upload adds more; the 30-per-15-
+// minutes resource limit above would throttle a single legitimate upload into
+// failure. These requests are individually small and strictly bounded by the
+// session's declared file size, so a high ceiling is safe. Creating sessions
+// is separately bounded per user in lib/resumable-uploads.js.
+const uploadChunkLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 3000, methods: ['POST', 'PUT', 'DELETE'] });
+app.use('/api/uploads', uploadChunkLimit);
 // Avatar changes: 10 per hour per IP; displaying a picture is not a change.
 const avatarLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, methods: ['POST', 'DELETE'] });
 app.use('/api/auth/avatar', avatarLimit);
@@ -216,6 +225,10 @@ app.use('/api/courses', coursesRoutes);
 app.use('/api/programs', programsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/content-admin', contentAdminRoutes);
+// Resumable chunked uploads (see lib/resumable-uploads.js). Registered before
+// the resource routes' own bodies matter: these endpoints carry raw chunk
+// bytes, not JSON or multipart.
+app.use('/api/uploads', uploadRoutes);
 app.use('/api/notifications', notificationRoutes);
 // Quizzes: program-targeted practice for students, authored by Content Admins
 // and the Main Admin. The quiz itself is a resource (category='quiz') so it
@@ -424,6 +437,11 @@ if (require.main === module) {
   server.headersTimeout = 120000;   // headers must still arrive promptly
   server.keepAliveTimeout = 76000;  // > typical 60s upstream keep-alive
   server.timeout = 0;               // rely on requestTimeout/stall handling
+
+  // Reclaim the chunks of uploads that were started and never finished, so an
+  // abandoned transfer cannot keep paying for bucket storage. Only runs in the
+  // real server process — tests own their own temporary data directory.
+  require('./lib/resumable-uploads').startSweeper();
 }
 
 module.exports = app;
