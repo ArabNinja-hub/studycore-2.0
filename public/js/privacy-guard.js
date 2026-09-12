@@ -106,9 +106,6 @@
     if (typeof global.showToast === 'function') global.showToast(message, 'info');
   }
 
-  /* ══════════════════════════════════════════
-     1. Copy / save / drag / selection routes
-     ══════════════════════════════════════════ */
   function blockCopyRoutes() {
     // Right-click "Save image as…", "Save video as…", "Copy text".
     document.addEventListener('contextmenu', (e) => {
@@ -154,44 +151,9 @@
     });
   }
 
-  /* ══════════════════════════════════════════
-     2. Printing (and "Print to PDF", which is
-        really a full-quality screenshot)
-     ══════════════════════════════════════════ */
-  function blockPrinting() {
-    // CSS in privacy-guard.css blanks the page for print. This also stops
-    // the dialog opening at all when it was triggered from our own code.
-    try {
-      global.print = function blockedPrint() {
-        notify('Printing is disabled on protected StudyCore content.');
-      };
-    } catch { /* some browsers make window.print non-writable */ }
-  }
 
-  /* ══════════════════════════════════════════
-     3. Screen-capture APIs the PAGE could use
-     ══════════════════════════════════════════
-     Backs up the `display-capture=()` Permissions-Policy header set in
-     middleware/security.js. Stops any injected script (or a rogue embed)
-     from quietly recording the tab with getDisplayMedia. */
+  /* In-page extraction guards for protected PDF/video surfaces. */
   function blockCaptureApis() {
-    const blocked = function blockedGetDisplayMedia() {
-      notify('Screen capture is disabled on protected StudyCore content.');
-      const Err = global.DOMException || Error;
-      return Promise.reject(new Err('Screen capture is disabled on StudyCore.', 'NotAllowedError'));
-    };
-
-    // Installed UNCONDITIONALLY rather than only when the API already
-    // exists: a browser that adds getDisplayMedia later (or a script that
-    // polyfills it to smuggle a recorder in) must hit the same refusal.
-    try {
-      if (navigator.mediaDevices) navigator.mediaDevices.getDisplayMedia = blocked;
-    } catch { /* read-only in some hardened environments; the header still applies */ }
-    try {
-      // Legacy/prefixed entry point used by older recorders.
-      navigator.getDisplayMedia = blocked;
-    } catch { /* non-writable: nothing more to do */ }
-
     if (!strict) return;
 
     /* ── In-page capture of the PROTECTED SURFACES themselves ───────────
@@ -289,64 +251,16 @@
     }, true);
   }
 
-  /* ══════════════════════════════════════════
-     4. Screenshot keys + clipboard scrubbing
-     ══════════════════════════════════════════
-     PrintScreen never reaches JS as a preventable action on Windows — the OS
-     takes the shot first. What we CAN do is overwrite the clipboard the
-     instant the key comes back up, so Ctrl+V pastes the notice instead of
-     the lesson. This genuinely defeats the plain PrtSc → paste-into-WhatsApp
-     route that most casual sharing uses.
-
-     macOS Cmd+Shift+3/4/5 and Windows Win+Shift+S are grabbed by the OS
-     before the browser sees them, so those keydowns are prevented
-     best-effort for the cases where the browser does see them. */
-  function blockScreenshotKeys() {
-    const scrub = () => {
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText && document.hasFocus()) {
-          navigator.clipboard.writeText(CLIPBOARD_NOTICE).catch(() => {});
-        }
-      } catch { /* permission denied — nothing more we can do */ }
-    };
-
-    document.addEventListener('keyup', (e) => {
-      if (e.key === 'PrintScreen' || e.code === 'PrintScreen' || e.keyCode === 44) {
-        scrub();
-        notify('Screenshots of protected StudyCore content are not permitted.');
-      }
-    }, true);
-
+  /* Keep print, save-page and select-all shortcuts from exposing the viewer. */
+  function blockPageShortcuts() {
     document.addEventListener('keydown', (e) => {
       const key = String(e.key || '').toLowerCase();
       const mod = e.ctrlKey || e.metaKey;
-
-      // Print / Save page / View source / Select all.
       if (mod && ['p', 's', 'u'].includes(key)) {
         e.preventDefault();
         notify('This action is disabled on protected StudyCore content.');
-        return;
-      }
-      if (mod && key === 'a' && !isEditable(e.target)) {
+      } else if (mod && key === 'a' && !isEditable(e.target)) {
         e.preventDefault();
-        return;
-      }
-
-      // macOS screenshot cluster (Cmd+Shift+3/4/5/6) and the Windows
-      // Win+Shift+S snip. Best-effort: the OS usually wins the race.
-      if ((e.metaKey && e.shiftKey && ['3', '4', '5', '6'].includes(key))
-        || (e.metaKey && e.shiftKey && key === 's')) {
-        e.preventDefault();
-        notify('Screenshots of protected StudyCore content are not permitted.');
-        return;
-      }
-
-      // Devtools shortcuts — the obvious way to strip this whole guard.
-      const devtoolsCombo = key === 'f12'
-        || (mod && e.shiftKey && ['i', 'j', 'c'].includes(key));
-      if (devtoolsCombo) {
-        e.preventDefault();
-        notify('Developer tools are disabled on protected StudyCore content.');
       }
     }, true);
   }
@@ -389,30 +303,6 @@
     });
     observer.observe(document.body, { childList: true, subtree: true });
 
-    // Heal markers that were stripped from a live surface.
-    setInterval(scanSurfaces, 60000);
-  }
-
-  /* ══════════════════════════════════════════
-     6. Native wrapper bridge
-     ══════════════════════════════════════════
-     If StudyCore is running inside an Android WebView / TWA / PWA wrapper,
-     ask the host to set FLAG_SECURE. Unlike everything else in this file
-     that is a REAL, OS-enforced screenshot and screen-recording block —
-     Android refuses the capture outright and recordings come out black.
-     No-ops in a normal desktop browser. */
-  function applyNativeSecureFlag() {
-    try {
-      if (global.WTN && typeof global.WTN.disableScreenshot === 'function') {
-        global.WTN.disableScreenshot({ ssKey: true });
-      }
-      if (global.AndroidSecure && typeof global.AndroidSecure.setSecure === 'function') {
-        global.AndroidSecure.setSecure(true);
-      }
-      if (global.ReactNativeWebView && typeof global.ReactNativeWebView.postMessage === 'function') {
-        global.ReactNativeWebView.postMessage(JSON.stringify({ type: 'sc:secure-screen', value: true }));
-      }
-    } catch { /* not in a wrapper */ }
   }
 
   /* ══════════════════════════════════════════
@@ -424,8 +314,7 @@
     blockCopyRoutes();
     blockPrinting();
     blockCaptureApis();
-    blockScreenshotKeys();
-    applyNativeSecureFlag();
+    blockPageShortcuts();
 
     if (strict) {
       blockPictureInPicture();
