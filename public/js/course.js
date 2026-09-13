@@ -52,6 +52,12 @@
     return `/pages/videos.html?course=${encodeURIComponent(slug)}&term=${encodeURIComponent(term)}`;
   }
 
+  // Notes and tutorial sheets open their own per-term page, where each type
+  // gets a separate slot instead of being stacked together on the course home.
+  function termStudyHref(term) {
+    return `/pages/study.html?course=${encodeURIComponent(slug)}&term=${encodeURIComponent(term)}`;
+  }
+
   function termCardHtml(term, copy) {
     return `
       <a class="video-term-card" href="${termVideosHref(term)}" id="video-${String(term).toLowerCase().replace(' ', '-')}">
@@ -89,7 +95,8 @@
       body: `Create a free account to open ${escapeHtml(subject)} lessons, notes and past papers — your 30-day trial starts immediately.`,
       cta: '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;"><a class="btn btn-primary" href="/signup.html">Start Free Trial</a><a class="btn btn-outline" href="/login.html">Log In</a></div>'
     });
-    $('#resourceGrid').innerHTML = emptyState({ icon: 'file-text', title: 'Study notes', body: 'Log in to read this course\u2019s notes and tutorial sheets.' });
+    $('#resourceGrid').innerHTML = studyTermCardsHtml(null, null, termStudyHref,
+      'Log in to open this term\u2019s notes and tutorial sheets.');
     $('#paperGrid').innerHTML = emptyState({ icon: 'file', title: 'Past papers', body: 'Log in to open this course\u2019s past papers.' });
     $('#progressPanel').innerHTML = `
       <div class="card card-pad" style="max-width:560px;margin:0 auto;text-align:center;">
@@ -165,21 +172,16 @@
           </div>`).join('')
       : emptyState({ icon: 'play', title: 'No lessons yet', body: 'Lessons for this course will appear here as soon as they are published.' });
 
-    // Resources (notes + tutorial sheets), shelved term by term.
-    const resItems = [...data.notes, ...data.tutorials];
+    // Resources — one card per term. Clicking a term opens the term page,
+    // where notes and tutorial sheets sit in their own separate slots.
     const bookmarked = await loadBookmarkedIds();
     const cardsFor = (items) =>
       `<div class="resource-grid">${items.map((r) => resourceCard(r, bookmarked)).join('')}</div>`;
-    const studyTerms = mergeTermShelves(data.terms && data.terms.notes, data.terms && data.terms.tutorials);
-    $('#resourceGrid').innerHTML = resItems.length
-      ? termShelvesHtml(studyTerms, cardsFor, {
-        noun: 'resource',
-        nounPlural: 'resources',
-        anchorPrefix: 'notes-term',
-        emptyBody: 'No notes or tutorial sheets for this term yet.'
-      })
-      : emptyState({ icon: 'file-text', title: 'No resources yet', body: `New ${escapeHtml(subject)} notes and tutorials will appear here soon.` });
-    bindCardInteractions($('#resourceGrid'));
+    $('#resourceGrid').innerHTML = studyTermCardsHtml(
+      data.terms && data.terms.notes,
+      data.terms && data.terms.tutorials,
+      termStudyHref
+    );
 
     // Past papers — grouped by year only. Papers are filed by the sitting they
     // come from, not by the current teaching term.

@@ -215,24 +215,43 @@ function lockOverlayHtml(reason) {
       </div>`;
 }
 
-// Renders the API's `terms` shelves (Term 1/2/3 plus an "Other" bucket for
-// legacy content that predates the term field). Empty terms are kept so a
-// student can see that a term exists but has nothing published yet.
-function termShelvesHtml(groups, renderItems, options) {
-  const opts = options || {};
-  const shelves = (groups || []).filter((g) => g && (g.lessons || g.items || []).length > 0 || !opts.hideEmpty);
-  if (!shelves.length) return '';
-  return shelves.map((group) => {
-    const items = group.lessons || group.items || [];
-    const count = items.length;
+// ── Study material term cards (course home → term page) ──
+// The Resources section of a course home shows one card per term rather than
+// stacking every note and tutorial sheet inline. Clicking a card opens
+// /pages/study.html for that course + term, where notes and tutorial sheets
+// each get their own slot. The card carries both counts so a student can see
+// what is in a term before opening it.
+//
+// `noteShelves` / `tutorialShelves` are the API's `terms.notes` and
+// `terms.tutorials` arrays; `hrefFor(term)` builds the term page URL.
+// `fallbackCopy` replaces the counts when they are unknown — the anonymous
+// course page has no counts, and must not claim a term is empty.
+function studyTermCardsHtml(noteShelves, tutorialShelves, hrefFor, fallbackCopy) {
+  const countIn = (shelves, term) => {
+    const group = (shelves || []).find((g) => g.term === term);
+    return group ? (group.lessons || group.items || []).length : 0;
+  };
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  return TERMS.map((term) => {
+    const notes = countIn(noteShelves, term);
+    const tutorials = countIn(tutorialShelves, term);
+    // Only mention what is actually there, so a term with notes but no
+    // tutorial sheets does not read as "3 sets of notes · 0 tutorial sheets".
+    const parts = [];
+    if (notes) parts.push(plural(notes, 'set of notes', 'sets of notes'));
+    if (tutorials) parts.push(plural(tutorials, 'tutorial sheet', 'tutorial sheets'));
+    const copy = fallbackCopy || (parts.length ? parts.join(' · ') : 'Nothing published for this term yet.');
     return `
-      <div class="term-group" id="${opts.anchorPrefix ? `${opts.anchorPrefix}-${slugifyTerm(group.term)}` : ''}">
-        <h3 class="term-group-heading">
-          ${escapeHtml(group.term)}
-          <span class="resource-meta">${count === 0 ? 'Nothing published yet' : `${count} ${count === 1 ? opts.noun || 'item' : opts.nounPlural || `${opts.noun || 'item'}s`}`}</span>
-        </h3>
-        ${count ? renderItems(items, group) : `<p class="resource-meta" style="margin:0 0 6px;">${escapeHtml(opts.emptyBody || `Nothing has been published for ${group.term} yet.`)}</p>`}
-      </div>`;
+      <a class="video-term-card" href="${hrefFor(term)}" id="resources-${slugifyTerm(term)}">
+        <div class="video-term-card-heading">
+          <span class="card-icon">${SC.icon('file-text', { size: 20 })}</span>
+          <div>
+            <h3>${escapeHtml(term)}</h3>
+            <p>${escapeHtml(copy)}</p>
+          </div>
+        </div>
+        <span class="video-term-cta">Open ${escapeHtml(term)} materials ${SC.icon('arrow-right', { size: 16 })}</span>
+      </a>`;
   }).join('');
 }
 
@@ -260,19 +279,6 @@ function papersByYearHtml(papers, renderItems) {
 
 function slugifyTerm(term) {
   return String(term || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
-// Notes and tutorial sheets share one "Resources" section, so their two term
-// shelves are zipped into a single list that keeps Term 1/2/3/Other order.
-function mergeTermShelves(...shelfLists) {
-  const byTerm = new Map();
-  for (const shelves of shelfLists) {
-    for (const group of shelves || []) {
-      if (!byTerm.has(group.term)) byTerm.set(group.term, { term: group.term, lessons: [] });
-      byTerm.get(group.term).lessons.push(...(group.lessons || []));
-    }
-  }
-  return [...byTerm.values()];
 }
 
 function resourceCard(resource, bookmarkedIds) {
@@ -303,6 +309,18 @@ function resourceCard(resource, bookmarkedIds) {
       ${resource.locked ? '' : `<a class="course-card-cta" href="${lessonHref}">Open ${resource.category === 'video' ? 'lesson' : 'in StudyCore'} ${SC.icon('arrow-right', { size: 15 })}</a>`}
     </div>
   `;
+}
+
+// The ids of everything the student has bookmarked, so resourceCard() can
+// draw the filled/outline bookmark icon. Failure is non-fatal — a card with
+// an un-filled bookmark is far better than a page that refuses to render.
+// (The course pages each keep their own copy inside their IIFE; this is the
+// shared one used by pages that do not.)
+async function loadBookmarkedIds() {
+  try {
+    const { resources } = await StudyCoreAPI.myBookmarks();
+    return new Set(resources.map((r) => r.id));
+  } catch { return new Set(); }
 }
 
 function bindCardInteractions(grid) {

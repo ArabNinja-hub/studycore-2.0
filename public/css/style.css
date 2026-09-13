@@ -2624,6 +2624,17 @@ body[data-theme='dark'] .course-subnav .subnav-links a.active {
   border-color: rgba(255,255,255,0.14);
   color: var(--teal-300);
 }
+/* Count badge on a term switcher link — shows how much is waiting in each
+   term so a student does not have to open an empty one to find out. */
+.course-subnav .subnav-links .subnav-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 20px; height: 20px; padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--bg-alt); color: var(--muted);
+  font-size: 0.7rem; font-weight: 700; line-height: 1;
+}
+.course-subnav .subnav-links a.active .subnav-count { background: var(--teal-100); color: var(--teal-700); }
+body[data-theme='dark'] .course-subnav .subnav-links .subnav-count { background: rgba(255,255,255,0.10); color: inherit; }
 .course-jump { display: none; }
 body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-h) + var(--nav-float) + 78px); }
 

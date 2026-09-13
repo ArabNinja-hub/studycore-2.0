@@ -299,6 +299,11 @@
     courseVideos: (subject, term) => request(
       `/api/courses/${encodeURIComponent(subject)}?view=videos${term ? `&term=${encodeURIComponent(term)}` : ''}`
     ),
+    // Study Materials page: one subject, one term. Returns notes and tutorial
+    // sheets as two separate lists so the page can slot them independently.
+    courseStudyMaterials: (subject, term) => request(
+      `/api/courses/${encodeURIComponent(subject)}?view=study${term ? `&term=${encodeURIComponent(term)}` : ''}`
+    ),
 
     // Programs (multi-program platform)
     listPrograms: (counts) => request(`/api/programs${counts ? '?counts=1' : ''}`),
@@ -307,6 +312,10 @@
     // Compact program-course equivalent of courseVideos (see above).
     programCourseVideos: (key, term) => request(
       `/api/programs/course/${encodeURIComponent(key)}?view=videos${term ? `&term=${encodeURIComponent(term)}` : ''}`
+    ),
+    // Compact program-course equivalent of courseStudyMaterials (see above).
+    programCourseStudyMaterials: (key, term) => request(
+      `/api/programs/course/${encodeURIComponent(key)}?view=study${term ? `&term=${encodeURIComponent(term)}` : ''}`
     ),
     programLessonFlow: (id) => request(`/api/programs/lesson/${encodeURIComponent(id)}`),
     setMyProgram: (program) => request('/api/auth/program', { method: 'PUT', body: JSON.stringify({ program }) }),

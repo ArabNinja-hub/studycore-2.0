@@ -11,7 +11,7 @@ test('Smoke Test: 1. All public static HTML pages serve 200 with HTML MIME', asy
     '/', '/login.html', '/signup.html', '/content-admin-signup.html', '/404.html',
     '/pages/about.html', '/pages/announcements.html', '/pages/courses.html',
     '/pages/lesson.html', '/pages/pricing.html', '/pages/privacy.html',
-    '/pages/resources.html', '/pages/search.html', '/pages/terms.html',
+    '/pages/resources.html', '/pages/search.html', '/pages/study.html', '/pages/terms.html',
     '/pages/videos.html', '/pages/subjects/biology.html', '/pages/subjects/chemistry.html',
     '/pages/subjects/communication.html', '/pages/subjects/mathematics.html',
     '/pages/subjects/physics.html', '/pages/subjects/programming.html'

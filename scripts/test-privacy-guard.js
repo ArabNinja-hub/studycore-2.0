@@ -26,6 +26,7 @@ function read(relativePath) {
 const PROTECTED_PAGES = [
   'public/pages/lesson.html',
   'public/pages/videos.html',
+  'public/pages/study.html',
   'public/pages/courses.html',
   'public/pages/resources.html',
   'public/pages/search.html',

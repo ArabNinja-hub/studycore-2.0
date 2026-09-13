@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Study Materials | StudyCore</title>
+    <meta name="robots" content="noindex, follow" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Google Fonts are pulled in by style.css @import; warming the
+         connections here removes a full DNS+TLS round trip on mobile. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/course.css" />
+    <link rel="stylesheet" href="/css/privacy-guard.css" />
+  </head>
+  <body data-page="study">
+    <div id="siteNav"></div>
+    <div id="mobileNavHost"></div>
+
+    <main>
+      <section class="page-hero" style="padding:40px 0 28px;">
+        <div class="container">
+          <nav class="breadcrumb" aria-label="Breadcrumb">
+            <a href="/">StudyCore</a>
+            <span class="sep" aria-hidden="true"></span>
+            <a href="/pages/courses.html">Courses</a>
+            <span class="sep" aria-hidden="true"></span>
+            <a id="courseCrumb" href="/pages/courses.html">Course</a>
+            <span class="sep" aria-hidden="true"></span>
+            <span class="current" id="termCrumb">Study materials</span>
+          </nav>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <span class="card-icon" style="width:52px;height:52px;">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+            </span>
+            <div style="min-width:0;">
+              <h1 id="studyTitle" style="font-size:clamp(1.5rem,3.4vw,2.2rem);">Study Materials</h1>
+              <p id="studySub" style="margin-top:4px;">Notes and tutorial sheets for this course and term.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="course-subnav" id="termSubnav">
+        <div class="container nav-inner">
+          <a class="course-subnav-back" id="courseHomeLink" href="/pages/courses.html">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+            <span>Back to course</span>
+          </a>
+          <ul class="subnav-links" id="termSubnavLinks"></ul>
+        </div>
+      </div>
+
+      <!-- Slot 1: Notes -->
+      <section class="section" id="notes" style="scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 80px);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Notes</span>
+            <h2 id="notesHeading">Notes</h2>
+            <p id="notesSub">Lecture notes and written material for this term.</p>
+          </div>
+          <div class="resource-grid" id="notesGrid">
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Slot 2: Tutorial sheets -->
+      <section class="section" id="tutorial-sheets" style="background:var(--bg-alt);scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 80px);">
+        <div class="container">
+          <div class="section-heading">
+            <span class="eyebrow">Tutorial sheets</span>
+            <h2 id="tutorialsHeading">Tutorial sheets</h2>
+            <p id="tutorialsSub">Practice questions and worked tutorial sheets for this term.</p>
+          </div>
+          <div class="resource-grid" id="tutorialGrid">
+            <div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div id="siteFooter"></div>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script src="/js/privacy-guard.js"></script>
+    <script src="/js/layout.js"></script>
+    <script src="/js/main.js"></script>
+    <script src="/js/programs.js"></script>
+    <script src="/js/scroll-reveal.js"></script>
+    <script src="/js/study.js"></script>
+  </body>
+</html>
