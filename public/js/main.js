@@ -47,9 +47,10 @@ const SUBJECT_OPTIONS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Comm
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 const UNSCHEDULED_TERM = 'Other';
 
-// Study material that students revise term by term. Lab reports are keyed to
-// a lab session rather than a term, so they are deliberately absent.
-const TERMED_CATEGORIES = ['video', 'document', 'tutorial', 'past_paper'];
+// Study material that students revise term by term. Past papers are filed by
+// year/sitting and lab reports are keyed to a lab session rather than a term,
+// so both are deliberately absent.
+const TERMED_CATEGORIES = ['video', 'document', 'tutorial'];
 
 // Always free, even once a trial or subscription has ended.
 const ALWAYS_FREE_CATEGORIES = ['past_paper', 'document', 'tutorial', 'announcement'];
@@ -233,6 +234,28 @@ function termShelvesHtml(groups, renderItems, options) {
         ${count ? renderItems(items, group) : `<p class="resource-meta" style="margin:0 0 6px;">${escapeHtml(opts.emptyBody || `Nothing has been published for ${group.term} yet.`)}</p>`}
       </div>`;
   }).join('');
+}
+
+// Past papers are not shelved by term — they are filed by the year/sitting
+// they come from, with the most recent year first. Papers with no year land
+// in an "All years" group at the end.
+function papersByYearHtml(papers, renderItems) {
+  const items = papers || [];
+  if (!items.length) return '';
+  const byYear = new Map();
+  for (const p of [...items].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')))) {
+    const year = p.yearLevel ? String(p.yearLevel) : 'All years';
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year).push(p);
+  }
+  return [...byYear.entries()].map(([year, group]) => `
+      <div class="term-group" id="papers-year-${slugifyTerm(year)}">
+        <h3 class="term-group-heading">
+          ${escapeHtml(year)}
+          <span class="resource-meta">${group.length} ${group.length === 1 ? 'paper' : 'papers'}</span>
+        </h3>
+        ${renderItems(group)}
+      </div>`).join('');
 }
 
 function slugifyTerm(term) {

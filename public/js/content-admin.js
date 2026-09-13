@@ -291,9 +291,9 @@
     const resourceType = $('#caResourceType').value;
     const isVideo = resourceType === 'video';
     const category = categoryForType(resourceType);
-    // Notes, tutorial sheets, past papers and videos are all filed under
-    // Term 1/2/3 on the course page. Lab reports belong to a lab session
-    // rather than a term, so they never ask for one.
+    // Notes, tutorial sheets and videos are filed under Term 1/2/3 on the
+    // course page. Past papers belong to a year/sitting and lab reports to a
+    // lab session rather than a term, so neither ever asks for one.
     const needsTerm = termAppliesTo(category);
     const termField = $('#caTermField');
     const term = $('#caTerm');
@@ -409,7 +409,8 @@
       return 'Complete every required resource and placement field.';
     }
     // Content Admin always uploads into a course, so every termed type needs
-    // its term. Lab reports are exempt — they are filed by lab session.
+    // its term. Past papers (filed by year) and lab reports (filed by lab
+    // session) are exempt.
     const category = categoryForType($('#caResourceType').value);
     if (termAppliesTo(category) && !$('#caTerm').value) {
       const label = ($('#caResourceType').selectedOptions[0] || {}).text || 'this resource';

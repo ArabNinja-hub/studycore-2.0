@@ -181,27 +181,11 @@
       : emptyState({ icon: 'file-text', title: 'No resources yet', body: `New ${escapeHtml(subject)} notes and tutorials will appear here soon.` });
     bindCardInteractions($('#resourceGrid'));
 
-    // Past papers — term first, then by year within the term.
+    // Past papers — grouped by year only. Papers are filed by the sitting they
+    // come from, not by the current teaching term.
     const papers = data.pastPapers || [];
     $('#paperGrid').innerHTML = papers.length
-      ? termShelvesHtml(data.terms && data.terms.pastPapers, (items) => {
-        const byYear = new Map();
-        for (const p of [...items].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')))) {
-          const year = p.yearLevel ? String(p.yearLevel) : 'All years';
-          if (!byYear.has(year)) byYear.set(year, []);
-          byYear.get(year).push(p);
-        }
-        return [...byYear.entries()].map(([year, group]) => `
-          <div style="margin-bottom:14px;">
-            <h4 style="margin:0 0 10px;font-size:0.95rem;color:var(--muted);">${escapeHtml(year)}${group.length > 1 ? ` <span class="resource-meta">(${group.length} papers)</span>` : ''}</h4>
-            ${cardsFor(group)}
-          </div>`).join('');
-      }, {
-        noun: 'paper',
-        nounPlural: 'papers',
-        anchorPrefix: 'papers-term',
-        emptyBody: 'No past papers for this term yet.'
-      })
+      ? papersByYearHtml(papers, cardsFor)
       : emptyState({ icon: 'file', title: 'No past papers yet', body: `Past papers for ${escapeHtml(subject)} will appear here soon.` });
     bindCardInteractions($('#paperGrid'));
 

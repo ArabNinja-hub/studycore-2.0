@@ -169,12 +169,12 @@ test('term labels normalize to one canonical form', () => {
   }
 });
 
-test('terms apply to notes, tutorials, past papers and videos but never to lab reports', () => {
-  for (const category of ['document', 'tutorial', 'past_paper', 'video']) {
+test('terms apply to notes, tutorials and videos but never to past papers or lab reports', () => {
+  for (const category of ['document', 'tutorial', 'video']) {
     assert.equal(terms.termAppliesTo(category), true, `${category} is termed`);
     assert.equal(terms.termRequiredFor(category, { courseId: 'course-x' }), true);
   }
-  for (const category of ['lab_report', 'announcement', 'quiz']) {
+  for (const category of ['past_paper', 'lab_report', 'announcement', 'quiz']) {
     assert.equal(terms.termAppliesTo(category), false, `${category} is term-exempt`);
     assert.equal(terms.termRequiredFor(category, { courseId: 'course-x' }), false);
   }
@@ -205,7 +205,7 @@ test('the course home returns term shelves for every revisable resource type', a
   assert.equal(home.status, 200, home.text);
 
   // Every term exists as a shelf even before anything is published into it.
-  for (const key of ['notes', 'tutorials', 'pastPapers', 'lessons']) {
+  for (const key of ['notes', 'tutorials', 'lessons']) {
     const shelf = home.data.terms[key];
     assert.ok(Array.isArray(shelf), `${key} has term shelves`);
     assert.deepEqual(shelf.slice(0, 3).map((g) => g.term), terms.TERMS, `${key} keeps term order`);
@@ -217,8 +217,9 @@ test('the course home returns term shelves for every revisable resource type', a
   // Untermed legacy content is still reachable rather than silently dropped.
   assert.deepEqual(notesByTerm[terms.UNSCHEDULED_TERM], ['Legacy note']);
 
-  const papersByTerm = Object.fromEntries(home.data.terms.pastPapers.map((g) => [g.term, g.lessons.map((l) => l.title)]));
-  assert.deepEqual(papersByTerm['Term 3'], ['T3 paper']);
+  // Past papers are not shelved by term at all — they are filed by year.
+  assert.equal(home.data.terms.pastPapers, undefined, 'past papers have no term shelves');
+  assert.ok(home.data.pastPapers.some((p) => p.title === 'T3 paper'), 'past papers are still listed');
   const tutorialsByTerm = Object.fromEntries(home.data.terms.tutorials.map((g) => [g.term, g.lessons.map((l) => l.title)]));
   assert.deepEqual(tutorialsByTerm['Term 2'], ['T2 sheet']);
 });
@@ -484,16 +485,24 @@ test('publishing through the admin API applies the free/premium policy', async (
   assert.equal(lab.data.resource.isPremium, true, 'lab reports must publish as premium');
 });
 
-test('a course-bound upload without a term is refused, and lab reports are exempt', async () => {
+test('a course-bound upload without a term is refused, and past papers / lab reports are exempt', async () => {
   const admin = makeUser({ role: 'admin', program_code: null });
   const course = resolveCourse('MA110');
 
   const missingTerm = await call('POST', '/api/admin/resources', {
     user: admin,
-    body: { title: 'No term paper', category: 'past_paper', courseId: course.id, targetAll: true }
+    body: { title: 'No term notes', category: 'document', courseId: course.id, targetAll: true }
   });
   assert.equal(missingTerm.status, 400, missingTerm.text);
   assert.match(missingTerm.data.message, /Term 1, Term 2, or Term 3/);
+
+  // Past papers are filed by year rather than term, so they publish without one.
+  const paper = await call('POST', '/api/admin/resources', {
+    user: admin,
+    body: { title: 'Termless past paper', category: 'past_paper', courseId: course.id, targetAll: true }
+  });
+  assert.equal(paper.status, 201, paper.text);
+  assert.equal(db.prepare('SELECT semester FROM resources WHERE id = ?').get(paper.data.resource.id).semester, null);
 
   // Lab reports never carry a term, so they publish without one.
   const lab = await call('POST', '/api/admin/resources', {

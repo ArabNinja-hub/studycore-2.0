@@ -501,12 +501,14 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
   const pastPapers = flatLessons.filter((l) => l.category === 'past_paper');
 
   // ── Term shelves ────────────────────────────────────────────────────────
-  // Every revisable resource type is filed under Term 1 / Term 2 / Term 3 so
-  // the course page can present the year the way it is actually taught.
+  // Notes, tutorial sheets and video lessons are filed under Term 1 / Term 2
+  // / Term 3 so the course page can present the year the way it is actually
+  // taught.
   // Empty terms are kept so a student sees that the term exists and nothing
   // has been published for it yet. Content with no term (legacy uploads)
   // collects in an "Other" group rather than disappearing.
-  // Lab reports are deliberately NOT termed — they follow the lab schedule.
+  // Lab reports and past papers are deliberately NOT termed — lab reports
+  // follow the lab schedule, and past papers are filed by year/sitting.
   const termShelf = (items) => groupByTerm(items, { includeEmpty: true })
     .map((group) => ({ term: group.term, lessons: group.items, total: group.items.length }));
 
@@ -534,8 +536,7 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
     terms: {
       lessons: termShelf(flatLessons),
       notes: termShelf(notes),
-      tutorials: termShelf(tutorials),
-      pastPapers: termShelf(pastPapers)
+      tutorials: termShelf(tutorials)
     },
     sharedWithPrograms: sharedProgramCodes(user.program_code)
       .filter(() => isShareableCourse(course))

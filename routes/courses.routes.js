@@ -440,9 +440,10 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
   const tutorials = flatLessons.filter((l) => l.category === 'tutorial');
   const pastPapers = flatLessons.filter((l) => l.category === 'past_paper');
 
-  // Term shelves: every resource type a student revises from is grouped into
-  // Term 1 / 2 / 3 (plus "Other" for legacy rows with no term), so the
-  // legacy subject pages organise content exactly like the program courses.
+  // Term shelves: the resource types a student revises term by term are
+  // grouped into Term 1 / 2 / 3 (plus "Other" for legacy rows with no term),
+  // so the legacy subject pages organise content exactly like the program
+  // courses. Past papers are not termed — they are shelved by year instead.
   const termShelf = (items) => groupByTerm(items, { includeEmpty: true })
     .map((group) => ({ term: group.term, lessons: group.items, total: group.items.length }));
 
@@ -469,8 +470,7 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
     terms: {
       lessons: termShelf(flatLessons),
       notes: termShelf(notes),
-      tutorials: termShelf(tutorials),
-      pastPapers: termShelf(pastPapers)
+      tutorials: termShelf(tutorials)
     },
     announcements: announcements.map(withState),
     access: { premium: access.premium, trial: access.trial }
