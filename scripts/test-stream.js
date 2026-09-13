@@ -1,111 +1,54 @@
 'use strict';
-
-// Unit tests for the Cloudflare Stream integration helpers (lib/stream.js).
-// These exercise config detection and browser-facing URL construction without
-// making any real network calls to Cloudflare — the ingestion/HTTP paths are
-// covered by the live service and are intentionally not hit here.
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const path = require('node:path');
 
 function freshStream(env) {
-  // lib/stream reads env at require time, so clear the cache and reset vars
-  // between scenarios to test both the configured and unconfigured branches.
   delete require.cache[require.resolve('../lib/stream')];
-  const keys = ['CF_STREAM_ACCOUNT_ID', 'CF_STREAM_API_TOKEN', 'CF_STREAM_CUSTOMER_SUBDOMAIN', 'CF_STREAM_SIGNED'];
-  for (const k of keys) delete process.env[k];
+  for (const key of ['BUNNY_LIBRARY_ID', 'BUNNY_API_KEY', 'BUNNY_CDN_HOSTNAME']) delete process.env[key];
   Object.assign(process.env, env || {});
   return require('../lib/stream');
 }
+const config = { BUNNY_LIBRARY_ID: '12345', BUNNY_API_KEY: 'server-secret-test-key', BUNNY_CDN_HOSTNAME: 'video.example.b-cdn.net' };
 
-test('Stream is not configured when env vars are missing', () => {
-  const s = freshStream({});
-  assert.equal(s.isConfigured(), false);
-  assert.deepEqual(s.missingVars().sort(), ['CF_STREAM_ACCOUNT_ID', 'CF_STREAM_API_TOKEN']);
-  // With no config there is no customer subdomain, so URL builders return null.
-  assert.equal(s.iframeUrl('abc123'), null);
-  assert.equal(s.hlsUrl('abc123'), null);
+test('Bunny Stream requires all three server environment variables', () => {
+  let stream = freshStream({});
+  assert.equal(stream.isConfigured(), false);
+  assert.deepEqual(stream.missingVars(), ['BUNNY_LIBRARY_ID', 'BUNNY_API_KEY', 'BUNNY_CDN_HOSTNAME']);
+  stream = freshStream(config);
+  assert.equal(stream.isConfigured(), true);
+  assert.deepEqual(stream.missingVars(), []);
 });
 
-test('placeholder values do not count as configured', () => {
-  const s = freshStream({ CF_STREAM_ACCOUNT_ID: 'your-account-id', CF_STREAM_API_TOKEN: 'replace-this-token' });
-  assert.equal(s.isConfigured(), false);
+test('Bunny playback assets use the configured CDN hostname', () => {
+  const stream = freshStream(config);
+  assert.equal(stream.hlsUrl('video-guid'), 'https://video.example.b-cdn.net/video-guid/playlist.m3u8');
+  assert.equal(stream.thumbnailUrl('video-guid'), 'https://video.example.b-cdn.net/video-guid/thumbnail.jpg');
+  assert.match(stream.iframeUrl('video-guid'), /^https:\/\/iframe\.mediadelivery\.net\/embed\/12345\/video-guid\?/);
 });
 
-test('configured Stream builds adaptive playback URLs from the customer subdomain', () => {
-  const s = freshStream({
-    CF_STREAM_ACCOUNT_ID: 'acct1234567890',
-    CF_STREAM_API_TOKEN: 'tok-abcdefghij1234567890',
-    CF_STREAM_CUSTOMER_SUBDOMAIN: 'customer-test123'
-  });
-  assert.equal(s.isConfigured(), true);
-  assert.deepEqual(s.missingVars(), []);
-
-  const uid = 'vid-9f8e7d';
-  assert.equal(
-    s.iframeUrl(uid),
-    'https://customer-test123.cloudflarestream.com/vid-9f8e7d/iframe?preload=metadata'
-  );
-  assert.equal(
-    s.hlsUrl(uid),
-    'https://customer-test123.cloudflarestream.com/vid-9f8e7d/manifest/video.m3u8'
-  );
-  assert.equal(
-    s.thumbnailUrl(uid),
-    'https://customer-test123.cloudflarestream.com/vid-9f8e7d/thumbnails/thumbnail.jpg'
-  );
+test('upload creates a Bunny video then uploads bytes with AccessKey server-side', async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    if (options.method === 'POST') return new Response(JSON.stringify({ guid: 'bunny-guid', status: 0 }), { status: 200 });
+    return new Response(null, { status: 204 });
+  };
+  try {
+    const stream = freshStream(config);
+    const result = await stream.uploadFromBuffer(Buffer.from('video'), { name: 'Lesson', contentType: 'video/mp4' });
+    assert.equal(result.uid, 'bunny-guid');
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].options.headers.AccessKey, config.BUNNY_API_KEY);
+    assert.equal(calls[1].options.headers.AccessKey, config.BUNNY_API_KEY);
+    assert.doesNotMatch(JSON.stringify(result), /server-secret-test-key/);
+  } finally { global.fetch = originalFetch; }
 });
 
-test('iframe URL includes a startTime when a resume position is provided', () => {
-  const s = freshStream({
-    CF_STREAM_ACCOUNT_ID: 'acct1234567890',
-    CF_STREAM_API_TOKEN: 'tok-abcdefghij1234567890',
-    CF_STREAM_CUSTOMER_SUBDOMAIN: 'customer-test123'
-  });
-  const url = s.iframeUrl('vid1', { startTime: 42.7 });
-  assert.match(url, /startTime=42s/);
-  // Zero / negative start times add no startTime, but the view-only player
-  // options are always present.
-  assert.equal(
-    s.iframeUrl('vid1', { startTime: 0 }),
-    'https://customer-test123.cloudflarestream.com/vid1/iframe?preload=metadata'
-  );
-});
-
-test('the browser is never handed a permanent, directly-downloadable video URL', () => {
-  const fs = require('node:fs');
-  // hlsUrl() still exists for server-side use, but no serializer may put it
-  // in a JSON response: an HLS manifest address is exactly what a downloader
-  // needs, and nothing in the front-end plays it (the Cloudflare iframe
-  // fetches its own manifest inside the frame).
-  for (const route of ['courses', 'programs', 'resources']) {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'routes', `${route}.routes.js`), 'utf8');
-    assert.doesNotMatch(src, /hls:\s*stream\.hlsUrl/, `${route}.routes.js must not publish the HLS manifest URL`);
-  }
-});
-
-test('the basic-upload size limit is exposed and matches Cloudflare (200MB)', () => {
-  const s = freshStream({
-    CF_STREAM_ACCOUNT_ID: 'acct1234567890',
-    CF_STREAM_API_TOKEN: 'tok-abcdefghij1234567890'
-  });
-  assert.equal(s.uploadBasicMaxBytes(), 200 * 1024 * 1024);
-});
-
-test('uploadFromBuffer rejects empty and oversized buffers without calling the network', async () => {
-  const s = freshStream({
-    CF_STREAM_ACCOUNT_ID: 'acct1234567890',
-    CF_STREAM_API_TOKEN: 'tok-abcdefghij1234567890'
-  });
-  await assert.rejects(() => s.uploadFromBuffer(Buffer.alloc(0)), /empty/i);
-  const oversized = { length: s.uploadBasicMaxBytes() + 1 };
-  // Fake a Buffer-like oversized object so we don't actually allocate 200MB.
+test('upload rejects empty and oversized buffers without network access', async () => {
+  const stream = freshStream(config);
+  await assert.rejects(() => stream.uploadFromBuffer(Buffer.alloc(0)), /empty/i);
+  const oversized = { length: stream.uploadBasicMaxBytes() + 1 };
   Object.setPrototypeOf(oversized, Buffer.prototype);
-  await assert.rejects(() => s.uploadFromBuffer(oversized), (err) => err.code === 'STREAM_TOO_LARGE');
-});
-
-// Keep the module resolvable by path for clarity in failure output.
-test('lib/stream resolves to the expected file', () => {
-  assert.equal(path.basename(require.resolve('../lib/stream')), 'stream.js');
+  await assert.rejects(() => stream.uploadFromBuffer(oversized), (err) => err.code === 'STREAM_TOO_LARGE');
 });

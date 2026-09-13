@@ -10,7 +10,7 @@ const { issueTicket } = require('../lib/content-tickets');
 
 const router = express.Router();
 
-// Cloudflare Stream playback fields for a video row (null unless it has a
+// Bunny Stream playback fields for a video row (null unless it has a
 // Stream video and Stream is configured). Carries the adaptive-bitrate iframe
 // URL whose player offers the built-in quality selector (Auto / 1080p / …).
 function streamPlaybackFor(row) {
@@ -23,7 +23,7 @@ function streamPlaybackFor(row) {
     ready: (row.stream_status || 'ready') === 'ready',
     iframe,
     // The raw HLS manifest URL is deliberately NOT sent to the browser.
-    // Nothing in the front-end plays it (the Cloudflare iframe player fetches
+    // Nothing in the front-end plays it (the Bunny iframe player fetches
     // its own manifest inside the frame), so shipping it only published a
     // permanent, directly-downloadable video address — exactly what yt-dlp
     // needs — in every course/lesson JSON payload. Server-side callers that

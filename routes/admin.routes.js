@@ -361,7 +361,7 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
   // resumable-session sweeper must never reclaim it.
   claimResumableUpload(req);
 
-  // Offload videos to Cloudflare Stream for adaptive-bitrate playback with a
+  // Offload videos to Bunny Stream for adaptive-bitrate playback with a
   // real quality selector (Auto / 1080p / 720p / …). This is deliberately
   // scheduled in the BACKGROUND rather than awaited: the upload itself is
   // already complete and durable in R2 at this point, and making the admin
@@ -373,7 +373,7 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
   let streamNote = null;
   if (category === 'video' && req.file && stream.isConfigured()) {
     if ((Number(req.file.size) || 0) > stream.uploadBasicMaxBytes()) {
-      streamNote = 'This video is larger than the 200MB Cloudflare Stream limit, so it will play at its original quality without the HD quality selector.';
+      streamNote = 'This video is larger than the 200MB safe server-transfer limit, so it will play at its original quality without the HD quality selector.';
     } else {
       queueOffload(id);
       streamNote = 'HD quality options are being prepared in the background — the video is already published and playable.';
@@ -458,7 +458,7 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
 
   if (req.file) {
     deleteFileIfExists(existing.stored_name);
-    // The stored object is being replaced, so any Cloudflare Stream video
+    // The stored object is being replaced, so any Bunny Stream video
     // encoded from the OLD bytes is now stale — remove it and clear the
     // fields; a fresh offload happens after the row is updated below.
     if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
@@ -547,7 +547,7 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
 
   claimResumableUpload(req);
 
-  // A newly-replaced video file gets re-encoded on Cloudflare Stream. No-op
+  // A newly-replaced video file gets re-encoded on Bunny Stream. No-op
   // unless Stream is configured and the (new) file is a video. Queued rather
   // than awaited so saving an edit returns as soon as the row is written —
   // see lib/stream-ingest.js.
@@ -563,7 +563,7 @@ router.delete('/resources/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
   deleteFileIfExists(existing.stored_name);
-  // Remove the matching Cloudflare Stream video too, so deleting a lesson
+  // Remove the matching Bunny Stream video too, so deleting a lesson
   // never leaves a paid-for Stream video orphaned in the account.
   if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   db.prepare('DELETE FROM resources WHERE id = ?').run(existing.id);
