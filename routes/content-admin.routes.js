@@ -506,7 +506,7 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     return res.status(500).json({ message: 'Could not publish the resource. Please try again.' });
   }
 
-  // Offload videos to Cloudflare Stream for adaptive HD playback + quality
+  // Offload videos to Bunny Stream for adaptive HD playback + quality
   // selector. No-op unless Stream is configured; failures keep the video on
   // the R2 progressive player. Queued in the background so publishing returns
   // as soon as the bytes are stored — see lib/stream-ingest.js.

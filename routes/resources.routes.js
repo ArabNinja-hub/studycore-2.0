@@ -14,10 +14,10 @@ const { issueTicket, verifyTicket, DEFAULT_TTL_SECONDS } = require('../lib/conte
 
 const router = express.Router();
 
-// Playback fields for a Cloudflare Stream-backed video. Returns null unless
+// Playback fields for a Bunny Stream-backed video. Returns null unless
 // the row actually has a Stream video AND Stream is configured (so the
 // customer subdomain is known). The player uses `streamPlayback.iframe` to
-// mount Cloudflare's adaptive-bitrate player, which carries the built-in
+// mount Bunny's adaptive-bitrate player, which carries the built-in
 // quality selector (Auto / 1080p / 720p / …). When this is null the player
 // falls back to the classic /stream progressive URL exactly as before.
 function streamPlaybackFor(row, opts) {
@@ -30,7 +30,7 @@ function streamPlaybackFor(row, opts) {
     ready: (row.stream_status || 'ready') === 'ready',
     iframe,
     // The raw HLS manifest URL is deliberately NOT sent to the browser.
-    // Nothing in the front-end plays it (the Cloudflare iframe player fetches
+    // Nothing in the front-end plays it (the Bunny iframe player fetches
     // its own manifest inside the frame), so shipping it only published a
     // permanent, directly-downloadable video address — exactly what yt-dlp
     // needs — in every course/lesson JSON payload. Server-side callers that
