@@ -57,12 +57,12 @@
       case 'premium_active':
         cls = 'premium'; icon = 'crown';
         title = 'Premium Active';
-        body = `You have full Premium access${s.subscriptionEnd ? ` until ${new Date(s.subscriptionEnd).toLocaleDateString()}` : ''} — all videos, notes and past papers are unlocked.`;
+        body = `You have full Premium access${s.subscriptionEnd ? ` until ${new Date(s.subscriptionEnd).toLocaleDateString()}` : ''} — video lessons, lab reports and quizzes are all unlocked.`;
         break;
       case 'trial_active':
         cls = 'trial'; icon = 'sparkles';
         title = `Free Trial Active · ${s.trialDaysLeft} day${s.trialDaysLeft === 1 ? '' : 's'} left`;
-        body = 'Study notes and documents are unlocked during your trial. Video lessons are Premium content.';
+        body = 'Lab reports are open during your trial. Notes, tutorial sheets and past papers stay free for good; video lessons are Premium.';
         cta = `<a class="btn btn-amber btn-sm" href="#premium">Upgrade Now</a>`;
         break;
       case 'payment_pending':
@@ -73,13 +73,13 @@
       case 'premium_expired':
         cls = 'expired'; icon = 'crown';
         title = 'Premium Expired';
-        body = 'Your Premium period has ended. Renew to keep unlimited video lessons and full access.';
+        body = 'Your Premium period has ended. Notes, tutorial sheets and past papers are still free — renew for video lessons and lab reports.';
         cta = `<a class="btn btn-amber btn-sm" href="#premium">Renew Premium</a>`;
         break;
       default:
         cls = 'expired'; icon = 'lock';
         title = 'Free Trial Ended';
-        body = 'Your free trial has ended. Upgrade to Premium to continue with video lessons and full resource access.';
+        body = 'Your trial has ended. Notes, tutorial sheets and past papers remain free — upgrade for video lessons and lab reports.';
         cta = `<a class="btn btn-amber btn-sm" href="#premium">Upgrade Now</a>`;
     }
     slot.innerHTML = `
@@ -216,11 +216,13 @@
   }
 
   /* ── Premium panel ──────────────────────── */
+  // Notes, tutorial sheets and past papers are deliberately absent: they are
+  // free for every student, so listing them as a Premium perk would be a lie.
   const PREMIUM_PERKS = [
     'Unlimited video lessons in every course',
-    'All study notes, tutorial sheets and past papers',
+    'Lab reports for every practical, kept open after your trial',
+    'Practice quizzes with instant marking',
     'Video resume and completion tracking',
-    'Progress across all six courses',
     'Priority access to new content'
   ];
 

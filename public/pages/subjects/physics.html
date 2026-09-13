@@ -33,6 +33,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="/css/style.css" />
+    <!-- course.css carries the term-group / term-shelf styles these pages
+         render for lessons, notes, tutorial sheets and past papers. -->
+    <link rel="stylesheet" href="/css/course.css" />
     <link rel="stylesheet" href="/css/privacy-guard.css" />
   </head>
   <body data-page="course" data-subject-slug="physics" data-subject="Physics">
@@ -185,12 +188,15 @@
           <div class="section-heading">
             <span class="eyebrow">Resources</span>
             <h2>Notes &amp; tutorial sheets</h2>
-            <p>Structured documents for this course, read inside the StudyCore document viewer.</p>
+            <p>Organised by term and free for every student — read them inside the StudyCore document viewer.</p>
           </div>
-          <div class="resource-grid" id="resourceGrid">
-            <div class="skeleton skeleton-card"></div>
-            <div class="skeleton skeleton-card"></div>
-            <div class="skeleton skeleton-card"></div>
+          <!-- Term shelves are stacked; each shelf holds its own resource grid. -->
+          <div class="term-shelves" id="resourceGrid">
+            <div class="resource-grid">
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+            </div>
           </div>
         </div>
       </section>
@@ -201,11 +207,13 @@
           <div class="section-heading">
             <span class="eyebrow">Past papers</span>
             <h2>Practice with real exams</h2>
-            <p>Organised by year and examination — the fastest way to turn what you've learned into marks.</p>
+            <p>Grouped by term, then by year — always free, and the fastest way to turn what you've learned into marks.</p>
           </div>
-          <div class="resource-grid" id="paperGrid">
-            <div class="skeleton skeleton-card"></div>
-            <div class="skeleton skeleton-card"></div>
+          <div class="term-shelves" id="paperGrid">
+            <div class="resource-grid">
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+            </div>
           </div>
         </div>
       </section>

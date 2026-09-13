@@ -14,6 +14,14 @@ const { resolveCourse, targetingForResource, validProgramCode } = require('../li
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
 const { resourceTypeForCategory, resourceTypeLabel } = require('../lib/resource-types');
 const { validateLabReportPlacement } = require('../lib/lab-reports');
+const accessPolicy = require('../lib/access-policy');
+const {
+  TERMS,
+  normalizeTerm,
+  termAppliesTo,
+  termRequiredFor,
+  termRequiredMessage
+} = require('../lib/terms');
 
 const router = express.Router();
 // Main Admin only. Content Admin has its own scoped /api/content-admin routes
@@ -28,21 +36,29 @@ router.use(requireAuth, requireRole(ROLES.ADMIN));
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi']);
 const DOCUMENT_LIKE_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'lab_report', 'assignment']);
 const COURSE_CONTENT_CATEGORIES = new Set(['video', 'document', 'tutorial', 'lab_report', 'past_paper']);
-const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
+const VIDEO_TERMS = new Set(TERMS);
 
 // Course content can live on a dynamic program COURSE (courseId) — the
 // primary path on the multi-program platform — or on a legacy subject
 // (subject), which keeps older uploads working. Content with neither is a
 // general/platform resource (e.g. an all-programs "Study Skills Guide"):
 // perfectly valid, it just shows up via program targeting rather than on a
-// course home. Video lessons must still declare a term.
+// course home.
+//
+// TERMS: every course-bound resource a student revises from — video lessons,
+// notes/documents, tutorial sheets and past papers — must declare Term 1, 2
+// or 3 so it lands on the right term shelf. Lab reports are exempt: they run
+// on the laboratory schedule, not the teaching term.
 function validateCoursePlacement(category, subject, semester, courseId) {
   if (!COURSE_CONTENT_CATEGORIES.has(category)) return null;
   if (category === 'video' && !(courseId || subject)) {
     return 'Choose a program course (or subject) for every video lesson.';
   }
-  if (category === 'video' && !VIDEO_TERMS.has(semester)) {
+  if (category === 'video' && !VIDEO_TERMS.has(normalizeTerm(semester))) {
     return 'Choose Term 1, Term 2, or Term 3 for every video lesson.';
+  }
+  if (termRequiredFor(category, { courseId }) && !normalizeTerm(semester)) {
+    return termRequiredMessage(resourceTypeForCategory(category).label);
   }
   return null;
 }
@@ -239,6 +255,11 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
   // appears correctly anywhere the subject field is still used.
   const effectiveSubject = subject || (courseRow ? courseRow.name : null);
 
+  // Accept "term 2"/"T2"/"Term 2" and store the single canonical label so
+  // every term filter and shelf matches. Categories that carry no term
+  // (lab reports, announcements) store NULL.
+  const normalizedTerm = termAppliesTo(category) ? normalizeTerm(semester) : null;
+
   const placementError = validateCoursePlacement(category, effectiveSubject, semester, courseRow ? courseRow.id : null);
   if (placementError) return res.status(400).json({ message: placementError });
   if (category === 'quiz' && !quizData) return res.status(400).json({ message: 'Quiz questions (JSON) are required for quizzes.' });
@@ -299,7 +320,7 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
     target_all: targeting.targetAll ? 1 : 0,
     topic: (topic || '').trim() || null,
     year_level: yearLevel || null,
-    semester: semester || null,
+    semester: normalizedTerm,
     tags: tags || null,
     pinned: pinned === 'true' || pinned === '1' ? 1 : 0,
     file_name: req.file ? req.file.originalname : null,
@@ -310,7 +331,11 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
     external_url: category === 'video' ? null : (externalUrl || null),
     quiz_data: quizData || null,
     due_date: dueDate || null,
-    is_premium: isPremium === 'false' || isPremium === '0' ? 0 : 1,
+    // Free-vs-premium is a PLATFORM policy, not a per-upload choice, for the
+    // categories the policy names: past papers, notes and tutorial sheets are
+    // always free; lab reports are always premium. Everything else still
+    // honours the admin's "free preview" checkbox.
+    is_premium: accessPolicy.resolvePremiumFlag(category, isPremium),
     publish_status: publishStatus || 'published',
     resource_type: resourceTypeForCategory(category).label,
     uploaded_by: req.user.id,
@@ -394,6 +419,10 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     ? (subject || (courseRow ? courseRow.name : null))
     : (existing.subject || (courseRow ? courseRow.name : null));
   const effectiveSemester = semester ?? existing.semester;
+  // Store the canonical term label, and clear it for categories that carry
+  // no term (a row edited from "Past Paper" to "Lab Report" must not keep a
+  // stale term).
+  const normalizedTerm = termAppliesTo(effectiveCategory) ? normalizeTerm(effectiveSemester) : null;
   // Enforce placement when the admin is editing placement fields or replacing
   // the file, while still allowing a publish toggle on older legacy rows that
   // predate required video terms.
@@ -473,13 +502,20 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     course_id: effectiveCourseId ?? existing.course_id,
     topic: topic === undefined ? existing.topic : ((topic || '').trim() || null),
     year_level: yearLevel ?? existing.year_level,
-    semester: semester ?? existing.semester,
+    semester: normalizedTerm,
     tags: tags ?? existing.tags,
     pinned: pinned === undefined ? existing.pinned : (pinned === 'true' || pinned === '1' ? 1 : 0),
     external_url: (category ?? existing.category) === 'video' ? null : (externalUrl ?? existing.external_url),
     quiz_data: quizData ?? existing.quiz_data,
     due_date: dueDate ?? existing.due_date,
-    is_premium: isPremium === undefined ? existing.is_premium : (isPremium === 'false' || isPremium === '0' ? 0 : 1),
+    // Re-apply the platform policy on every save, so a row that changes
+    // category (e.g. Past Paper → Lab Report) immediately gets the correct
+    // free/premium flag instead of keeping the old one.
+    is_premium: accessPolicy.resolvePremiumFlag(
+      effectiveCategory,
+      isPremium,
+      existing.is_premium
+    ),
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
     storage_provider: req.file

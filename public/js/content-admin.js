@@ -269,14 +269,38 @@
     }
   }
 
+  // Uploader labels map onto the server's storage categories (lib/resource-types.js).
+  // Keep this in step with it so the term field and the access note match what
+  // the API will actually enforce on submit.
+  const TYPE_CATEGORY = {
+    notes: 'document',
+    lecture_material: 'document',
+    document: 'document',
+    other: 'document',
+    study_guide: 'tutorial',
+    past_paper: 'past_paper',
+    lab_report: 'lab_report',
+    video: 'video'
+  };
+
+  function categoryForType(resourceType) {
+    return TYPE_CATEGORY[String(resourceType || '').trim().toLowerCase()] || 'document';
+  }
+
   function updateTypeControls() {
     const resourceType = $('#caResourceType').value;
     const isVideo = resourceType === 'video';
+    const category = categoryForType(resourceType);
+    // Notes, tutorial sheets, past papers and videos are all filed under
+    // Term 1/2/3 on the course page. Lab reports belong to a lab session
+    // rather than a term, so they never ask for one.
+    const needsTerm = termAppliesTo(category);
     const termField = $('#caTermField');
     const term = $('#caTerm');
     const file = $('#caFile');
-    termField.hidden = !isVideo;
-    term.required = isVideo;
+    termField.hidden = !needsTerm;
+    term.required = needsTerm;
+    if (!needsTerm) term.value = '';
     file.accept = isVideo
       ? '.mp4,.m4v,.mov,.webm,.mkv,.avi,video/*'
       : '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav';
@@ -286,6 +310,19 @@
     $('#caFileHelp').textContent = isVideo
       ? 'Video resources must be assigned to Term 1, Term 2, or Term 3.'
       : 'To upload a video, select the Video resource type first.';
+
+    const accessNote = $('#caAccessNote');
+    if (accessNote) {
+      const message = isAlwaysFreeCategory(category)
+        ? 'Free for every student — this stays open after a trial or subscription ends.'
+        : isTrialPremiumCategory(category)
+          ? 'Premium study material — open during a trial and for Premium members.'
+          : isVideo
+            ? 'Premium only — video lessons need an active Premium plan.'
+            : '';
+      accessNote.textContent = message;
+      accessNote.hidden = !message;
+    }
   }
 
   function clearUploadForm() {
@@ -371,8 +408,12 @@
     if (!$('#caResourceType').value || !$('#caSchoolFaculty').value || !$('#caCourse').value || !$('#caTopic').value.trim() || !$('#caTitle').value.trim()) {
       return 'Complete every required resource and placement field.';
     }
-    if ($('#caResourceType').value === 'video' && !$('#caTerm').value) {
-      return 'Choose a term for a video resource.';
+    // Content Admin always uploads into a course, so every termed type needs
+    // its term. Lab reports are exempt — they are filed by lab session.
+    const category = categoryForType($('#caResourceType').value);
+    if (termAppliesTo(category) && !$('#caTerm').value) {
+      const label = ($('#caResourceType').selectedOptions[0] || {}).text || 'this resource';
+      return `Choose Term 1, Term 2, or Term 3 so students find this ${label.toLowerCase()} under the right term.`;
     }
     const driveFileId = $('#caGoogleDriveFileId').value || '';
     if (!state.editingId && !state.selectedFile && !driveFileId) {

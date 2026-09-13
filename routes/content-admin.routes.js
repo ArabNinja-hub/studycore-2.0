@@ -19,8 +19,17 @@ const storage = require('../lib/storage');
 const stream = require('../lib/stream');
 const { queueOffload } = require('../lib/stream-ingest');
 const { ROLES } = require('../lib/roles');
-const { resolveCourse, programIncludesCourse } = require('../lib/program-access');
+const { resolveCourse, programIncludesCourse, programOwnsCourse } = require('../lib/program-access');
 const { validateLabReportPlacement } = require('../lib/lab-reports');
+const accessPolicy = require('../lib/access-policy');
+const {
+  TERMS,
+  normalizeTerm,
+  termAppliesTo,
+  termRequiredFor,
+  termRequiredMessage
+} = require('../lib/terms');
+const { sharedProgramCodes, isShareableCourse, sharingNoticeFor } = require('../lib/program-sharing');
 const {
   CONTENT_RESOURCE_TYPES,
   normalizeResourceType,
@@ -31,7 +40,7 @@ const router = express.Router();
 router.use(requireAuth, requireRole(ROLES.CONTENT_ADMIN));
 
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi']);
-const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
+const VIDEO_TERMS = new Set(TERMS);
 const PUBLISH_STATUSES = new Set(['published', 'draft']);
 
 function conditionalUpload(req, res, next) {
@@ -72,6 +81,19 @@ function resourcePrograms(row) {
 
 function serializeOwnResource(row) {
   const programCodes = resourcePrograms(row);
+  // Pooled schools that also receive this upload. Empty unless the resource
+  // targets a pooled program AND sits on a shareable course, so the uploader
+  // is never told Biology or Engineering Drawing is being shared.
+  const shareable = !row.course_id || isShareableCourse({
+    id: row.course_id,
+    code: row.course_code,
+    name: row.course_name,
+    subject: row.subject
+  });
+  const alsoVisibleTo = shareable
+    ? [...new Set(programCodes.flatMap((code) => sharedProgramCodes(code)))]
+      .filter((code) => !programCodes.includes(code))
+    : [];
   return {
     id: row.id,
     title: row.title,
@@ -82,6 +104,9 @@ function serializeOwnResource(row) {
     schoolFaculty: row.program_name || null,
     programCode: programCodes[0] || null,
     programCodes,
+    alsoVisibleTo,
+    isPremium: Boolean(row.is_premium),
+    term: row.semester || null,
     courseId: row.course_id || null,
     courseCode: row.course_code || null,
     courseName: row.course_name || row.course || row.subject || null,
@@ -164,13 +189,22 @@ function validatePlacement({ programCode, courseId, topic, type, semester }) {
   if (!courseId) return { error: 'Select a course.' };
   const course = resolveCourse(courseId);
   if (!course) return { error: 'The selected course could not be found.' };
+  // programIncludesCourse accepts a course taught by a pooled partner school
+  // (School of Mines ↔ Non-Quota), which is exactly what lets one upload
+  // serve both. Biology and Engineering Drawing are excluded inside the
+  // sharing library, so they can still only be published by their own school.
   if (!programIncludesCourse(program.code, course.id)) {
     return { error: 'That course is not part of the selected school or faculty.' };
   }
 
   if (!topic) return { error: 'Select or enter a topic.' };
-  if (type.category === 'video' && !VIDEO_TERMS.has(semester)) {
+  if (type.category === 'video' && !VIDEO_TERMS.has(normalizeTerm(semester))) {
     return { error: 'Choose Term 1, Term 2, or Term 3 for a video resource.' };
+  }
+  // Notes, tutorial sheets and past papers are shelved by term on the course
+  // page, so the term is required for them too. Lab reports are exempt.
+  if (termRequiredFor(type.category, { courseId: course.id }) && !normalizeTerm(semester)) {
+    return { error: termRequiredMessage(type.label) };
   }
   if (type.category === 'lab_report') {
     const labError = validateLabReportPlacement([program.code], course);
@@ -235,7 +269,8 @@ function parseResourceInput(body, existing = null, existingProgramCode = null) {
       program: placement.program,
       course: placement.course,
       topic,
-      semester: semester || null,
+      // Canonical term label, or NULL for categories that carry no term.
+      semester: termAppliesTo(type.category) ? normalizeTerm(semester) : null,
       yearLevel: yearLevel || null,
       publishStatus: requestedStatus
     }
@@ -282,29 +317,66 @@ router.get('/dashboard', (req, res) => {
 
 // A safe catalog for the limited uploader. It contains only school/faculty,
 // course and topic structure — not the Main Admin program-management API.
+//
+// Pooled schools (School of Mines ↔ Non-Quota) list each other's shareable
+// courses as well, each tagged with `sharedFrom` and `sharedWith`, so the
+// uploader can see at a glance that one upload reaches both. Biology and
+// Engineering Drawing are never pooled and stay under their own school only.
 router.get('/catalog', (req, res) => {
-  const programs = db.prepare('SELECT code, name, short_name, group_name, icon FROM programs ORDER BY rowid ASC').all()
-    .map((program) => ({
+  const programRows = db.prepare('SELECT code, name, short_name, group_name, icon FROM programs ORDER BY rowid ASC').all();
+  const nameByCode = Object.fromEntries(programRows.map((p) => [p.code, p.short_name || p.name]));
+  const coursesFor = (code) => db.prepare(`
+    SELECT c.id, c.code, c.slug, c.name, c.icon, c.subject
+    FROM program_courses pc
+    JOIN courses c ON c.id = pc.course_id
+    WHERE pc.program_code = ?
+    ORDER BY pc.sort_order ASC, c.code ASC
+  `).all(code);
+
+  const programs = programRows.map((program) => {
+    const peers = sharedProgramCodes(program.code);
+    const own = coursesFor(program.code).map((course) => ({
+      id: course.id,
+      code: course.code,
+      slug: course.slug,
+      name: course.name,
+      icon: course.icon || 'book-open',
+      subject: course.subject || null,
+      sharedFrom: null,
+      // Which other schools will also receive content published here.
+      sharedWith: isShareableCourse(course) ? peers : []
+    }));
+
+    const seen = new Set(own.map((course) => course.id));
+    const shared = [];
+    for (const peer of peers) {
+      for (const course of coursesFor(peer)) {
+        if (seen.has(course.id) || !isShareableCourse(course)) continue;
+        seen.add(course.id);
+        shared.push({
+          id: course.id,
+          code: course.code,
+          slug: course.slug,
+          name: course.name,
+          icon: course.icon || 'book-open',
+          subject: course.subject || null,
+          sharedFrom: peer,
+          sharedWith: [peer]
+        });
+      }
+    }
+
+    return {
       code: program.code,
       name: program.name,
       shortName: program.short_name || program.name,
       groupName: program.group_name || null,
       icon: program.icon || 'book-open',
-      courses: db.prepare(`
-        SELECT c.id, c.code, c.slug, c.name, c.icon, c.subject
-        FROM program_courses pc
-        JOIN courses c ON c.id = pc.course_id
-        WHERE pc.program_code = ?
-        ORDER BY pc.sort_order ASC, c.code ASC
-      `).all(program.code).map((course) => ({
-        id: course.id,
-        code: course.code,
-        slug: course.slug,
-        name: course.name,
-        icon: course.icon || 'book-open',
-        subject: course.subject || null
-      }))
-    }));
+      sharesWith: peers,
+      sharingNotice: sharingNoticeFor(program.code, nameByCode),
+      courses: [...own, ...shared]
+    };
+  });
 
   const topics = db.prepare(`
     SELECT DISTINCT course_id, topic
@@ -386,7 +458,9 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     external_url: isDriveFile ? null : (req.body.external_url || null),
     quiz_data: null,
     due_date: null,
-    is_premium: 1,
+    // Platform policy decides this, not the uploader: past papers, notes and
+    // tutorial sheets publish as free; lab reports publish as premium.
+    is_premium: accessPolicy.resolvePremiumFlag(parsed.value.type.category, undefined),
     pinned: 0,
     publish_status: parsed.value.publishStatus,
     uploaded_by: req.user.id,
@@ -483,6 +557,13 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     topic: parsed.value.topic,
     year_level: parsed.value.yearLevel,
     semester: parsed.value.semester,
+    // Switching an upload's type (e.g. Past Paper → Lab Report) must move it
+    // to the right side of the paywall immediately.
+    is_premium: accessPolicy.resolvePremiumFlag(
+      parsed.value.type.category,
+      undefined,
+      existing.is_premium
+    ),
     publish_status: parsed.value.publishStatus,
     updated_at: now,
     file_name: replacingFile ? req.file.originalname : (isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || existing.file_name) : existing.file_name),
@@ -517,7 +598,8 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
         title = @title, description = @description, category = @category,
         resource_type = @resource_type, subject = @subject, course = @course,
         course_id = @course_id, topic = @topic, year_level = @year_level,
-        semester = @semester, publish_status = @publish_status,
+        semester = @semester, is_premium = @is_premium,
+        publish_status = @publish_status,
         updated_at = @updated_at, file_name = @file_name,
         stored_name = @stored_name, file_size = @file_size,
         mime_type = @mime_type, content_hash = @content_hash,

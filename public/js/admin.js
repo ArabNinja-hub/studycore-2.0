@@ -37,10 +37,39 @@
     document.getElementById('resPinned').parentElement.style.display = category === 'announcement' ? 'flex' : 'none';
 
     const isVideo = category === 'video';
+    // Notes, tutorial sheets, past papers and videos are all shelved by term
+    // on the course page, so the term is required for every one of them.
+    // Lab reports, quizzes, assignments and announcements are term-exempt.
+    const needsTerm = termAppliesTo(category);
     const termSelect = document.getElementById('resSemester');
-    termSelect.required = isVideo;
-    document.getElementById('resSemesterRequired').textContent = isVideo ? '*' : '';
-    document.getElementById('resSemesterHelp').style.display = isVideo ? 'block' : 'none';
+    termSelect.required = needsTerm;
+    const termGroup = document.getElementById('resSemesterGroup');
+    if (termGroup) termGroup.style.display = needsTerm ? 'block' : 'none';
+    if (!needsTerm) termSelect.value = '';
+    document.getElementById('resSemesterRequired').textContent = needsTerm ? '*' : '';
+    const termHelp = document.getElementById('resSemesterHelp');
+    termHelp.style.display = needsTerm ? 'block' : 'none';
+    termHelp.textContent = isVideo
+      ? 'Students browse video lessons term by term, so every video needs a term.'
+      : `Students open ${(CATEGORY_LABELS[category] || 'this resource').toLowerCase()}s under Term 1, Term 2 or Term 3 on the course page.`;
+
+    // Past papers, notes and tutorial sheets are free for everyone; lab
+    // reports are the premium study material. Show the admin which rule
+    // applies instead of offering a toggle the server will overrule.
+    const freeToggle = document.getElementById('resIsFree');
+    const freeRow = document.getElementById('resIsFreeRow');
+    const policyNote = document.getElementById('resAccessPolicyNote');
+    const policyManaged = isAlwaysFreeCategory(category) || isTrialPremiumCategory(category);
+    if (freeRow) freeRow.style.display = policyManaged ? 'none' : 'flex';
+    if (freeToggle && policyManaged) freeToggle.checked = isAlwaysFreeCategory(category);
+    if (policyNote) {
+      policyNote.style.display = policyManaged ? 'block' : 'none';
+      policyNote.textContent = isAlwaysFreeCategory(category)
+        ? `${CATEGORY_LABELS[category] || 'This resource'} is always free — students keep it after a trial or subscription ends.`
+        : isTrialPremiumCategory(category)
+          ? 'Lab reports are Premium study material — open during a trial and for Premium members.'
+          : '';
+    }
 
     const courseLabel = document.querySelector('label[for="resCourseSelect"]');
     if (courseLabel) courseLabel.innerHTML = isVideo
@@ -100,7 +129,17 @@
       const courseId = resourceFormControls ? resourceFormControls.getCourseId() : '';
       if (!courseId) return 'Select a program course for this video. Videos without a course are not shown in Video Lessons.';
       if (!selectedFile) return 'Choose the video file before publishing.';
-      if (!document.getElementById('resSemester').value) return 'Choose Term 1, Term 2, or Term 3 for this video.';
+    }
+
+    // Anything shelved by term on the course page needs a term, but only once
+    // it is attached to a course — a general, library-wide upload has no term
+    // shelf to land on. This mirrors termRequiredFor() on the server.
+    if (termAppliesTo(category)) {
+      const courseId = resourceFormControls ? resourceFormControls.getCourseId() : '';
+      if (courseId && !document.getElementById('resSemester').value) {
+        const label = (CATEGORY_LABELS[category] || 'this resource').toLowerCase();
+        return `Choose Term 1, Term 2, or Term 3 so students find this ${label} under the right term.`;
+      }
     }
     return null;
   }

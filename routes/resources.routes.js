@@ -8,6 +8,7 @@ const { requireAuth, attachUser } = require('../middleware/auth');
 const storage = require('../lib/storage');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
 const { isAdmin, isStudent } = require('../lib/roles');
+const accessPolicy = require('../lib/access-policy');
 const stream = require('../lib/stream');
 const { issueTicket, verifyTicket, DEFAULT_TTL_SECONDS } = require('../lib/content-tickets');
 
@@ -84,12 +85,16 @@ function serializeResource(row, user) {
 //   trial   = STUDENT who is not premium but whose server-stored trial_end
 //             is still in the future.
 //
+//   Past papers / notes / tutorial sheets -> ALWAYS FREE. They stay readable
+//                      after a trial expires and after Premium lapses.
+//   Lab reports     -> Premium study material: premium OR active trial.
 //   Video lessons   -> premium ONLY. A trial (or expired) student never
 //                      receives a video source, at any point.
-//   Documents/notes -> premium OR active trial. Free previews (is_premium=0)
-//                      and announcements are open to every logged-in student.
+//   Quizzes         -> premium ONLY.
 //
-// The client never decides any of this - it only reflects it.
+// The decision itself lives in lib/access-policy.js so this route, the course
+// routes and the program routes cannot drift apart. The client never decides
+// any of this - it only reflects it.
 // ---------------------------------------------------------------------------
 
 function accessFor(user) {
@@ -119,23 +124,17 @@ function gate(req, res, next) {
   return next();
 }
 
-// Can this student open this specific resource right now?
+// Can this student open this specific resource right now? Single shared
+// policy — see lib/access-policy.js.
 function canAccess(row, access) {
-  if (row.category === 'announcement') return true;
-  // Match the canonical quiz API even on compatibility resource endpoints.
-  if (row.category === 'quiz') return access.premium;
-  if (!row.is_premium) return true; // free preview
-  if (row.category === 'video') return access.premium; // videos are Premium-only, always
-  return access.premium || access.trial; // documents, tutorials, past papers
+  return accessPolicy.canAccessResource(row, access);
 }
 
 // Why it's locked (drives the exact upgrade message the student sees):
-// 'video' -> Premium Video wall; 'premium' -> trial expired wall.
+// 'video' -> Premium Video wall; 'lab_report' -> Premium lab wall;
+// 'quiz' -> Premium quiz wall; 'premium' -> trial expired wall.
 function lockReason(row, access) {
-  if (row.category === 'quiz' && !access.premium) return 'quiz';
-  if (row.category === 'video' && !access.premium) return 'video';
-  if (!access.premium && !access.trial) return 'premium';
-  return null;
+  return accessPolicy.lockReasonForResource(row, access);
 }
 
 // Streams a stored object (Cloudflare R2, or the local-disk fallback) without
@@ -464,12 +463,11 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
 }
 
 function lockedResponse(res, reason) {
-  const messages = {
-    quiz: 'Quizzes are a Premium feature. Upgrade your plan to take this quiz.',
-    video: 'Video lessons are available exclusively to StudyCore Premium students. Upgrade to unlock this video.',
-    premium: 'Your free access period has ended. Upgrade to StudyCore Premium to continue reading this resource.'
-  };
-  return res.status(403).json({ message: messages[reason] || 'This content is not available with your current plan.', locked: true, lockReason: reason });
+  return res.status(403).json({
+    message: accessPolicy.lockMessage(reason),
+    locked: true,
+    lockReason: reason
+  });
 }
 
 // GET /api/resources?category=&subject=&course=&year=&semester=&search=&sort=&page=&pageSize=
