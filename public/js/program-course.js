@@ -40,6 +40,12 @@
   function termVideosHref(term) {
     return `/pages/videos.html?course=${encodeURIComponent(courseKey())}&term=${encodeURIComponent(term)}&program=1`;
   }
+
+  // Notes and tutorial sheets open their own per-term page, where each type
+  // gets a separate slot instead of being stacked together on the course home.
+  function termStudyHref(term) {
+    return `/pages/study.html?course=${encodeURIComponent(courseKey())}&term=${encodeURIComponent(term)}&program=1`;
+  }
   function courseKey() { return window.__course ? window.__course.slug : key; }
 
   function termCardHtml(term, copy) {
@@ -138,7 +144,8 @@
           </div>`).join('')
       : emptyState({ icon: 'play', title: 'No lessons yet', body: 'Lessons for this course will appear here as soon as they are published.' });
 
-    // Resources — notes and tutorial sheets, shelved term by term so a
+    // Resources — one card per term. Clicking a term opens the term page,
+    // where notes and tutorial sheets sit in their own separate slots, so a
     // student revising Term 2 is not scrolling through the whole year.
     const bookmarked = await loadBookmarkedIds();
     const cardsFor = (items) =>
@@ -146,17 +153,11 @@
         .map((r) => resourceCard({ ...r, courseCode: course.code, courseSlug: course.slug }, bookmarked))
         .join('')}</div>`;
 
-    const resItems = [...data.notes, ...data.tutorials];
-    const studyTerms = mergeTermShelves(data.terms && data.terms.notes, data.terms && data.terms.tutorials);
-    $('#resourceGrid').innerHTML = resItems.length
-      ? termShelvesHtml(studyTerms, cardsFor, {
-        noun: 'resource',
-        nounPlural: 'resources',
-        anchorPrefix: 'notes-term',
-        emptyBody: `No notes or tutorial sheets for this term yet.`
-      })
-      : emptyState({ icon: 'file-text', title: 'No resources yet', body: `New ${escapeHtml(course.code)} notes and tutorials will appear here soon.` });
-    bindCardInteractions($('#resourceGrid'));
+    $('#resourceGrid').innerHTML = studyTermCardsHtml(
+      data.terms && data.terms.notes,
+      data.terms && data.terms.tutorials,
+      termStudyHref
+    );
 
     // Lab Reports is a dedicated slot only for Physics/Chemistry in Mines,
     // Non-Quota and Natural Resources, plus Physics in SICT. The API is the
@@ -179,28 +180,11 @@
       }
     }
 
-    // Past papers — term first (that is how students revise), then by year
-    // within each term so the most recent sitting leads.
+    // Past papers — grouped by year so the most recent sitting leads. Papers
+    // are not filed under a teaching term.
     const papers = data.pastPapers || [];
     $('#paperGrid').innerHTML = papers.length
-      ? termShelvesHtml(data.terms && data.terms.pastPapers, (items) => {
-        const byYear = new Map();
-        for (const p of [...items].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')))) {
-          const year = p.yearLevel ? String(p.yearLevel) : 'All years';
-          if (!byYear.has(year)) byYear.set(year, []);
-          byYear.get(year).push(p);
-        }
-        return [...byYear.entries()].map(([year, group]) => `
-          <div style="margin-bottom:14px;">
-            <h4 style="margin:0 0 10px;font-size:0.95rem;color:var(--muted);">${escapeHtml(year)}${group.length > 1 ? ` <span class="resource-meta">(${group.length} papers)</span>` : ''}</h4>
-            ${cardsFor(group)}
-          </div>`).join('');
-      }, {
-        noun: 'paper',
-        nounPlural: 'papers',
-        anchorPrefix: 'papers-term',
-        emptyBody: 'No past papers for this term yet.'
-      })
+      ? papersByYearHtml(papers, cardsFor)
       : emptyState({ icon: 'file', title: 'No past papers yet', body: `Past papers for ${escapeHtml(course.code)} will appear here soon.` });
     bindCardInteractions($('#paperGrid'));
 

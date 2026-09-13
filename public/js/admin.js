@@ -37,9 +37,9 @@
     document.getElementById('resPinned').parentElement.style.display = category === 'announcement' ? 'flex' : 'none';
 
     const isVideo = category === 'video';
-    // Notes, tutorial sheets, past papers and videos are all shelved by term
-    // on the course page, so the term is required for every one of them.
-    // Lab reports, quizzes, assignments and announcements are term-exempt.
+    // Notes, tutorial sheets and videos are shelved by term on the course
+    // page, so the term is required for those. Past papers (filed by year),
+    // lab reports, quizzes, assignments and announcements are term-exempt.
     const needsTerm = termAppliesTo(category);
     const termSelect = document.getElementById('resSemester');
     termSelect.required = needsTerm;

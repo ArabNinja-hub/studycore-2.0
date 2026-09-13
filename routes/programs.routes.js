@@ -141,6 +141,101 @@ function publishedCourseVideos(user, courseId, term) {
   return db.prepare(sql).all({ courseId, ...(term ? { term } : {}), ...params });
 }
 
+// Same query again, narrowed to the study material a student revises term by
+// term: notes/documents and tutorial sheets. Powers /pages/study.html, which
+// shows ONE course and ONE term and keeps the two types in separate slots.
+function publishedCourseStudyMaterials(user, courseId, term) {
+  const { clause, params } = resourceVisibilityClause(user, 'r', 'pcProgram');
+  const sql = `
+    SELECT r.* FROM resources r
+    WHERE r.publish_status = 'published'
+      AND r.course_id = @courseId
+      AND r.category IN ('document', 'tutorial')
+      ${term ? 'AND r.semester = @term' : ''}
+      ${clause ? `AND ${clause}` : ''}
+    ORDER BY r.created_at ASC
+  `;
+  return db.prepare(sql).all({ courseId, ...(term ? { term } : {}), ...params });
+}
+
+// Build the compact Study Materials payload: one term's notes and tutorial
+// sheets, returned as two separate lists so the page can give each its own
+// slot instead of merging them into one grid. Counts for the other terms let
+// the term switcher show what is waiting in each term.
+function studyTermPayload({ user, access, term, rows, counts, extra }) {
+  const ids = rows.map((r) => r.id);
+  const completedById = new Map();
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    for (const r of db.prepare(
+      `SELECT resource_id, completed_at FROM lesson_progress WHERE user_id = ? AND resource_id IN (${placeholders})`
+    ).all(user.id, ...ids)) {
+      completedById.set(r.resource_id, r.completed_at);
+    }
+  }
+
+  const serialize = (row) => {
+    const item = {
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      category: row.category,
+      topic: row.topic || null,
+      term: row.semester || null,
+      yearLevel: row.year_level || null,
+      fileName: row.file_name,
+      isPremium: Boolean(row.is_premium),
+      createdAt: row.created_at,
+      completed: completedById.has(row.id),
+      completedAt: completedById.get(row.id) || null
+    };
+    const reason = canAccess(row, access) ? null : lockReason(row, access);
+    if (reason) item.locked = reason;
+    return item;
+  };
+
+  const items = rows.map(serialize);
+  return {
+    ...(extra || {}),
+    term,
+    // Two separate slots — notes and tutorial sheets are never merged.
+    notes: items.filter((i) => i.category === 'document'),
+    tutorials: items.filter((i) => i.category === 'tutorial'),
+    termCounts: counts || [],
+    access: { premium: access.premium, trial: access.trial }
+  };
+}
+
+// Per-term totals for the term switcher, in one grouped query rather than
+// three round trips.
+function studyTermCounts(user, courseId) {
+  const { clause, params } = resourceVisibilityClause(user, 'r', 'pcProgram');
+  const rows = db.prepare(`
+    SELECT r.semester AS term, r.category AS category, COUNT(*) AS n
+    FROM resources r
+    WHERE r.publish_status = 'published'
+      AND r.course_id = @courseId
+      AND r.category IN ('document', 'tutorial')
+      ${clause ? `AND ${clause}` : ''}
+    GROUP BY r.semester, r.category
+  `).all({ courseId, ...params });
+  return summarizeStudyCounts(rows);
+}
+
+// Shape grouped (term, category, n) rows into the ordered Term 1/2/3 summary
+// the term switcher renders. Shared by both course models.
+function summarizeStudyCounts(rows) {
+  const byTerm = new Map(VIDEO_TERMS.map((t) => [t, { term: t, notes: 0, tutorials: 0, total: 0 }]));
+  for (const row of rows) {
+    const bucket = byTerm.get(row.term);
+    if (!bucket) continue;
+    if (row.category === 'document') bucket.notes += row.n;
+    else if (row.category === 'tutorial') bucket.tutorials += row.n;
+    bucket.total = bucket.notes + bucket.tutorials;
+  }
+  return [...byTerm.values()];
+}
+
 // Build the compact Video Lessons payload: the term's lessons (with lock
 // state and resume position) plus the single "continue watching" card the
 // page shows. Progress lookups are scoped to just these lessons instead of
@@ -393,6 +488,24 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
     }));
   }
 
+  // ---- Lightweight mode: one term's notes + tutorial sheets ---------------
+  // /pages/study.html is the term page a student lands on from a term card on
+  // the course home. Same reasoning as ?view=videos above: it renders two
+  // lists, so it is served exactly those two lists under the same access
+  // rules rather than the whole course home.
+  if (view === 'study') {
+    const requestedTerm = String(req.query.term || '').trim();
+    const term = VIDEO_TERMS.includes(requestedTerm) ? requestedTerm : null;
+    return res.json(studyTermPayload({
+      user,
+      access,
+      term,
+      rows: publishedCourseStudyMaterials(user, course.id, term),
+      counts: studyTermCounts(user, course.id),
+      extra: { course: serializeCourse(course, { subject: course.subject }) }
+    }));
+  }
+
   const rows = publishedCourseResources(user, course.id);
 
   const completedById = new Map(
@@ -501,12 +614,14 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
   const pastPapers = flatLessons.filter((l) => l.category === 'past_paper');
 
   // ── Term shelves ────────────────────────────────────────────────────────
-  // Every revisable resource type is filed under Term 1 / Term 2 / Term 3 so
-  // the course page can present the year the way it is actually taught.
+  // Notes, tutorial sheets and video lessons are filed under Term 1 / Term 2
+  // / Term 3 so the course page can present the year the way it is actually
+  // taught.
   // Empty terms are kept so a student sees that the term exists and nothing
   // has been published for it yet. Content with no term (legacy uploads)
   // collects in an "Other" group rather than disappearing.
-  // Lab reports are deliberately NOT termed — they follow the lab schedule.
+  // Lab reports and past papers are deliberately NOT termed — lab reports
+  // follow the lab schedule, and past papers are filed by year/sitting.
   const termShelf = (items) => groupByTerm(items, { includeEmpty: true })
     .map((group) => ({ term: group.term, lessons: group.items, total: group.items.length }));
 
@@ -534,8 +649,7 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
     terms: {
       lessons: termShelf(flatLessons),
       notes: termShelf(notes),
-      tutorials: termShelf(tutorials),
-      pastPapers: termShelf(pastPapers)
+      tutorials: termShelf(tutorials)
     },
     sharedWithPrograms: sharedProgramCodes(user.program_code)
       .filter(() => isShareableCourse(course))

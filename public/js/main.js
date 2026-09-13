@@ -47,9 +47,10 @@ const SUBJECT_OPTIONS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Comm
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 const UNSCHEDULED_TERM = 'Other';
 
-// Study material that students revise term by term. Lab reports are keyed to
-// a lab session rather than a term, so they are deliberately absent.
-const TERMED_CATEGORIES = ['video', 'document', 'tutorial', 'past_paper'];
+// Study material that students revise term by term. Past papers are filed by
+// year/sitting and lab reports are keyed to a lab session rather than a term,
+// so both are deliberately absent.
+const TERMED_CATEGORIES = ['video', 'document', 'tutorial'];
 
 // Always free, even once a trial or subscription has ended.
 const ALWAYS_FREE_CATEGORIES = ['past_paper', 'document', 'tutorial', 'announcement'];
@@ -214,42 +215,70 @@ function lockOverlayHtml(reason) {
       </div>`;
 }
 
-// Renders the API's `terms` shelves (Term 1/2/3 plus an "Other" bucket for
-// legacy content that predates the term field). Empty terms are kept so a
-// student can see that a term exists but has nothing published yet.
-function termShelvesHtml(groups, renderItems, options) {
-  const opts = options || {};
-  const shelves = (groups || []).filter((g) => g && (g.lessons || g.items || []).length > 0 || !opts.hideEmpty);
-  if (!shelves.length) return '';
-  return shelves.map((group) => {
-    const items = group.lessons || group.items || [];
-    const count = items.length;
+// ── Study material term cards (course home → term page) ──
+// The Resources section of a course home shows one card per term rather than
+// stacking every note and tutorial sheet inline. Clicking a card opens
+// /pages/study.html for that course + term, where notes and tutorial sheets
+// each get their own slot. The card carries both counts so a student can see
+// what is in a term before opening it.
+//
+// `noteShelves` / `tutorialShelves` are the API's `terms.notes` and
+// `terms.tutorials` arrays; `hrefFor(term)` builds the term page URL.
+// `fallbackCopy` replaces the counts when they are unknown — the anonymous
+// course page has no counts, and must not claim a term is empty.
+function studyTermCardsHtml(noteShelves, tutorialShelves, hrefFor, fallbackCopy) {
+  const countIn = (shelves, term) => {
+    const group = (shelves || []).find((g) => g.term === term);
+    return group ? (group.lessons || group.items || []).length : 0;
+  };
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  return TERMS.map((term) => {
+    const notes = countIn(noteShelves, term);
+    const tutorials = countIn(tutorialShelves, term);
+    // Only mention what is actually there, so a term with notes but no
+    // tutorial sheets does not read as "3 sets of notes · 0 tutorial sheets".
+    const parts = [];
+    if (notes) parts.push(plural(notes, 'set of notes', 'sets of notes'));
+    if (tutorials) parts.push(plural(tutorials, 'tutorial sheet', 'tutorial sheets'));
+    const copy = fallbackCopy || (parts.length ? parts.join(' · ') : 'Nothing published for this term yet.');
     return `
-      <div class="term-group" id="${opts.anchorPrefix ? `${opts.anchorPrefix}-${slugifyTerm(group.term)}` : ''}">
-        <h3 class="term-group-heading">
-          ${escapeHtml(group.term)}
-          <span class="resource-meta">${count === 0 ? 'Nothing published yet' : `${count} ${count === 1 ? opts.noun || 'item' : opts.nounPlural || `${opts.noun || 'item'}s`}`}</span>
-        </h3>
-        ${count ? renderItems(items, group) : `<p class="resource-meta" style="margin:0 0 6px;">${escapeHtml(opts.emptyBody || `Nothing has been published for ${group.term} yet.`)}</p>`}
-      </div>`;
+      <a class="video-term-card" href="${hrefFor(term)}" id="resources-${slugifyTerm(term)}">
+        <div class="video-term-card-heading">
+          <span class="card-icon">${SC.icon('file-text', { size: 20 })}</span>
+          <div>
+            <h3>${escapeHtml(term)}</h3>
+            <p>${escapeHtml(copy)}</p>
+          </div>
+        </div>
+        <span class="video-term-cta">Open ${escapeHtml(term)} materials ${SC.icon('arrow-right', { size: 16 })}</span>
+      </a>`;
   }).join('');
+}
+
+// Past papers are not shelved by term — they are filed by the year/sitting
+// they come from, with the most recent year first. Papers with no year land
+// in an "All years" group at the end.
+function papersByYearHtml(papers, renderItems) {
+  const items = papers || [];
+  if (!items.length) return '';
+  const byYear = new Map();
+  for (const p of [...items].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')))) {
+    const year = p.yearLevel ? String(p.yearLevel) : 'All years';
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year).push(p);
+  }
+  return [...byYear.entries()].map(([year, group]) => `
+      <div class="term-group" id="papers-year-${slugifyTerm(year)}">
+        <h3 class="term-group-heading">
+          ${escapeHtml(year)}
+          <span class="resource-meta">${group.length} ${group.length === 1 ? 'paper' : 'papers'}</span>
+        </h3>
+        ${renderItems(group)}
+      </div>`).join('');
 }
 
 function slugifyTerm(term) {
   return String(term || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-}
-
-// Notes and tutorial sheets share one "Resources" section, so their two term
-// shelves are zipped into a single list that keeps Term 1/2/3/Other order.
-function mergeTermShelves(...shelfLists) {
-  const byTerm = new Map();
-  for (const shelves of shelfLists) {
-    for (const group of shelves || []) {
-      if (!byTerm.has(group.term)) byTerm.set(group.term, { term: group.term, lessons: [] });
-      byTerm.get(group.term).lessons.push(...(group.lessons || []));
-    }
-  }
-  return [...byTerm.values()];
 }
 
 function resourceCard(resource, bookmarkedIds) {
@@ -280,6 +309,18 @@ function resourceCard(resource, bookmarkedIds) {
       ${resource.locked ? '' : `<a class="course-card-cta" href="${lessonHref}">Open ${resource.category === 'video' ? 'lesson' : 'in StudyCore'} ${SC.icon('arrow-right', { size: 15 })}</a>`}
     </div>
   `;
+}
+
+// The ids of everything the student has bookmarked, so resourceCard() can
+// draw the filled/outline bookmark icon. Failure is non-fatal — a card with
+// an un-filled bookmark is far better than a page that refuses to render.
+// (The course pages each keep their own copy inside their IIFE; this is the
+// shared one used by pages that do not.)
+async function loadBookmarkedIds() {
+  try {
+    const { resources } = await StudyCoreAPI.myBookmarks();
+    return new Set(resources.map((r) => r.id));
+  } catch { return new Set(); }
 }
 
 function bindCardInteractions(grid) {

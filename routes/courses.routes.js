@@ -88,6 +88,24 @@ function publishedSubjectVideos(user, subject, term) {
   `).all({ subject, ...(term ? { term } : {}), ...vis.params });
 }
 
+// Notes and tutorial sheets for one subject, optionally narrowed to a single
+// term. Powers /pages/study.html for the legacy subject pages — the term page
+// renders exactly these two lists, so it is served exactly these two lists.
+function publishedSubjectStudyMaterials(user, subject, term) {
+  const vis = resourceVisibilityClause(user, 'r', 'subjectProgram');
+  return db.prepare(`
+    SELECT DISTINCT r.* FROM resources r
+    LEFT JOIN courses c ON c.id = r.course_id
+    LEFT JOIN courses counterpart ON counterpart.id = c.shared_with_course_id OR c.id = counterpart.shared_with_course_id
+    WHERE (LOWER(r.subject) = LOWER(@subject) OR LOWER(c.name) = LOWER(@subject) OR LOWER(c.subject) = LOWER(@subject) OR LOWER(counterpart.name) = LOWER(@subject) OR LOWER(counterpart.subject) = LOWER(@subject))
+      AND r.publish_status = 'published'
+      AND r.category IN ('document', 'tutorial')
+      ${term ? 'AND r.semester = @term' : ''}
+      ${vis.clause ? `AND ${vis.clause}` : ''}
+    ORDER BY r.created_at ASC
+  `).all({ subject, ...(term ? { term } : {}), ...vis.params });
+}
+
 function serializeResource(row, extra = {}) {
   let mime = row.mime_type;
   const fName = String(row.file_name || '').trim();
@@ -320,6 +338,53 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
     });
   }
 
+  // Compact payload for /pages/study.html — one subject, one term, notes and
+  // tutorial sheets kept in two separate lists so the page can give each its
+  // own slot. Same visibility and access rules as the full course home.
+  if (view === 'study') {
+    const requestedTerm = String(req.query.term || '').trim();
+    const term = VIDEO_TERMS.includes(requestedTerm) ? requestedTerm : null;
+    const rows = publishedSubjectStudyMaterials(user, subject, term);
+    const ids = rows.map((r) => r.id);
+    const completedById = new Map();
+    if (ids.length) {
+      const placeholders = ids.map(() => '?').join(',');
+      for (const r of db.prepare(
+        `SELECT resource_id, completed_at FROM lesson_progress WHERE user_id = ? AND resource_id IN (${placeholders})`
+      ).all(user.id, ...ids)) completedById.set(r.resource_id, r.completed_at);
+    }
+    const items = rows.map((row) => {
+      const item = serializeResource(row, {
+        completed: completedById.has(row.id),
+        completedAt: completedById.get(row.id) || null
+      });
+      const reason = canAccess(row, access) ? null : lockReason(row, access);
+      if (reason) item.locked = reason;
+      return item;
+    });
+
+    // Per-term totals for the term switcher.
+    const countRows = publishedSubjectStudyMaterials(user, subject, null);
+    const byTerm = new Map(VIDEO_TERMS.map((t) => [t, { term: t, notes: 0, tutorials: 0, total: 0 }]));
+    for (const row of countRows) {
+      const bucket = byTerm.get(row.semester);
+      if (!bucket) continue;
+      if (row.category === 'document') bucket.notes += 1;
+      else bucket.tutorials += 1;
+      bucket.total = bucket.notes + bucket.tutorials;
+    }
+
+    return res.json({
+      subject,
+      slug: COURSES.find((c) => c.subject === subject)?.slug || key,
+      term,
+      notes: items.filter((i) => i.category === 'document'),
+      tutorials: items.filter((i) => i.category === 'tutorial'),
+      termCounts: [...byTerm.values()],
+      access: { premium: access.premium, trial: access.trial }
+    });
+  }
+
   const rows = publishedSubjectResources(user, subject);
 
   const completed = (id) => Boolean(db.prepare('SELECT 1 x FROM lesson_progress WHERE user_id = ? AND resource_id = ?').get(user.id, id));
@@ -440,9 +505,10 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
   const tutorials = flatLessons.filter((l) => l.category === 'tutorial');
   const pastPapers = flatLessons.filter((l) => l.category === 'past_paper');
 
-  // Term shelves: every resource type a student revises from is grouped into
-  // Term 1 / 2 / 3 (plus "Other" for legacy rows with no term), so the
-  // legacy subject pages organise content exactly like the program courses.
+  // Term shelves: the resource types a student revises term by term are
+  // grouped into Term 1 / 2 / 3 (plus "Other" for legacy rows with no term),
+  // so the legacy subject pages organise content exactly like the program
+  // courses. Past papers are not termed — they are shelved by year instead.
   const termShelf = (items) => groupByTerm(items, { includeEmpty: true })
     .map((group) => ({ term: group.term, lessons: group.items, total: group.items.length }));
 
@@ -469,8 +535,7 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
     terms: {
       lessons: termShelf(flatLessons),
       notes: termShelf(notes),
-      tutorials: termShelf(tutorials),
-      pastPapers: termShelf(pastPapers)
+      tutorials: termShelf(tutorials)
     },
     announcements: announcements.map(withState),
     access: { premium: access.premium, trial: access.trial }

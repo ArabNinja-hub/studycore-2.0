@@ -298,6 +298,7 @@ const contentAdminStudentPagePaths = [
   '/pages/lesson.html',
   '/pages/resources.html',
   '/pages/search.html',
+  '/pages/study.html',
   '/pages/videos.html',
   '/pages/subjects/biology.html',
   '/pages/subjects/chemistry.html',

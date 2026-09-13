@@ -49,6 +49,7 @@
     viewer: 'strict',    // /viewer/:id       — standalone document reader
     course: 'strict',    // /course/:key + /pages/subjects/*.html
     videos: 'strict',    // /pages/videos.html
+    study: 'basic',      // /pages/study.html — notes + tutorial sheets by term
     courses: 'basic',    // /pages/courses.html
     resources: 'basic',  // /pages/resources.html
     search: 'basic'      // /pages/search.html
