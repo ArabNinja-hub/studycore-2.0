@@ -38,6 +38,45 @@ const CATEGORY_ICONS = {
 
 const SUBJECT_OPTIONS = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'Communication Skills', 'Programming'];
 
+// ---------------------------------------------------------------------------
+// Terms and access policy — these mirror lib/terms.js and lib/access-policy.js
+// on the server. The server is always the authority (it re-checks every
+// upload and every read); these copies only drive labels, required-field
+// markers and lock badges so the UI never contradicts the API.
+// ---------------------------------------------------------------------------
+const TERMS = ['Term 1', 'Term 2', 'Term 3'];
+const UNSCHEDULED_TERM = 'Other';
+
+// Study material that students revise term by term. Lab reports are keyed to
+// a lab session rather than a term, so they are deliberately absent.
+const TERMED_CATEGORIES = ['video', 'document', 'tutorial', 'past_paper'];
+
+// Always free, even once a trial or subscription has ended.
+const ALWAYS_FREE_CATEGORIES = ['past_paper', 'document', 'tutorial', 'announcement'];
+// Premium OR an active trial.
+const TRIAL_PREMIUM_CATEGORIES = ['lab_report'];
+
+function termAppliesTo(category) {
+  return TERMED_CATEGORIES.includes(String(category || '').trim().toLowerCase());
+}
+
+function isAlwaysFreeCategory(category) {
+  return ALWAYS_FREE_CATEGORIES.includes(String(category || '').trim().toLowerCase());
+}
+
+function isTrialPremiumCategory(category) {
+  return TRIAL_PREMIUM_CATEGORIES.includes(String(category || '').trim().toLowerCase());
+}
+
+// Accepts the loose forms a person might type or a legacy row might hold
+// ("term2", "T2", "2") and returns the one canonical label, or null.
+function normalizeTerm(value) {
+  const raw = String(value == null ? '' : value).trim().toLowerCase();
+  if (!raw) return null;
+  const match = raw.match(/^(?:t|term)?[\s_-]*([123])$/);
+  return match ? `Term ${match[1]}` : null;
+}
+
 const SUBJECT_SLUGS = {
   'mathematics': 'mathematics',
   'physics': 'physics',
@@ -139,6 +178,80 @@ function emptyState({ icon = 'library', title = 'Nothing here yet', body = 'New 
 // Cards open the item INSIDE StudyCore: video lessons go to the lesson
 // page (player), documents/past papers go to the lesson page (reader).
 // Locked items render an honest Premium overlay with an upgrade path.
+// The lock copy has to name the real reason, because the three reasons now
+// carry different remedies: a video needs Premium, a lab report opens on a
+// trial too, and everything else that locks is legacy premium content.
+const LOCK_COPY = {
+  video: {
+    title: 'Premium Video',
+    body: 'Video lessons are available exclusively to StudyCore Premium students.',
+    href: '/pages/pricing.html'
+  },
+  lab_report: {
+    title: 'Premium Lab Report',
+    body: 'Lab reports are Premium study material. Start a trial or upgrade to open them.',
+    href: '/pages/pricing.html'
+  },
+  quiz: {
+    title: 'Premium Quiz',
+    body: 'Practice quizzes are available to StudyCore Premium students.',
+    href: '/pages/pricing.html'
+  },
+  premium: {
+    title: 'Premium Resource',
+    body: 'Your free access period has ended. Upgrade to keep reading.',
+    href: '/dashboard.html#premium'
+  }
+};
+
+function lockOverlayHtml(reason) {
+  const copy = LOCK_COPY[reason] || LOCK_COPY.premium;
+  return `<div class="resource-lock-overlay">
+        <div class="lock-ring">${SC.icon('lock', { size: 22 })}</div>
+        <strong>${escapeHtml(copy.title)}</strong>
+        <p>${escapeHtml(copy.body)}</p>
+        <a class="btn btn-amber btn-sm" href="${copy.href}">${SC.icon('crown', { size: 14 })} Upgrade to Premium</a>
+      </div>`;
+}
+
+// Renders the API's `terms` shelves (Term 1/2/3 plus an "Other" bucket for
+// legacy content that predates the term field). Empty terms are kept so a
+// student can see that a term exists but has nothing published yet.
+function termShelvesHtml(groups, renderItems, options) {
+  const opts = options || {};
+  const shelves = (groups || []).filter((g) => g && (g.lessons || g.items || []).length > 0 || !opts.hideEmpty);
+  if (!shelves.length) return '';
+  return shelves.map((group) => {
+    const items = group.lessons || group.items || [];
+    const count = items.length;
+    return `
+      <div class="term-group" id="${opts.anchorPrefix ? `${opts.anchorPrefix}-${slugifyTerm(group.term)}` : ''}">
+        <h3 class="term-group-heading">
+          ${escapeHtml(group.term)}
+          <span class="resource-meta">${count === 0 ? 'Nothing published yet' : `${count} ${count === 1 ? opts.noun || 'item' : opts.nounPlural || `${opts.noun || 'item'}s`}`}</span>
+        </h3>
+        ${count ? renderItems(items, group) : `<p class="resource-meta" style="margin:0 0 6px;">${escapeHtml(opts.emptyBody || `Nothing has been published for ${group.term} yet.`)}</p>`}
+      </div>`;
+  }).join('');
+}
+
+function slugifyTerm(term) {
+  return String(term || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// Notes and tutorial sheets share one "Resources" section, so their two term
+// shelves are zipped into a single list that keeps Term 1/2/3/Other order.
+function mergeTermShelves(...shelfLists) {
+  const byTerm = new Map();
+  for (const shelves of shelfLists) {
+    for (const group of shelves || []) {
+      if (!byTerm.has(group.term)) byTerm.set(group.term, { term: group.term, lessons: [] });
+      byTerm.get(group.term).lessons.push(...(group.lessons || []));
+    }
+  }
+  return [...byTerm.values()];
+}
+
 function resourceCard(resource, bookmarkedIds) {
   const isBookmarked = bookmarkedIds && bookmarkedIds.has(resource.id);
   const meta = SC.icon(CATEGORY_ICONS[resource.category] || 'file-text', { size: 15 });
@@ -149,16 +262,7 @@ function resourceCard(resource, bookmarkedIds) {
       ${SC.icon(isBookmarked ? 'bookmark-check' : 'bookmark', { size: 16 })}
     </button>`;
 
-  const lockOverlay = resource.locked
-    ? `<div class="resource-lock-overlay">
-        <div class="lock-ring">${SC.icon('lock', { size: 22 })}</div>
-        <strong>${resource.locked === 'video' ? 'Premium Video' : 'Premium Resource'}</strong>
-        <p>${resource.locked === 'video'
-            ? 'Video lessons are available exclusively to StudyCore Premium students.'
-            : 'Your free access period has ended. Upgrade to keep reading.'}</p>
-        <a class="btn btn-amber btn-sm" href="${resource.locked === 'video' ? '/pages/pricing.html' : '/dashboard.html#premium'}">${SC.icon('crown', { size: 14 })} Upgrade to Premium</a>
-      </div>`
-    : '';
+  const lockOverlay = resource.locked ? lockOverlayHtml(resource.locked) : '';
 
   return `
     <div class="resource-card" data-resource-id="${resource.id}">

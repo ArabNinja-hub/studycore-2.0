@@ -39,6 +39,9 @@ const {
   resolveCourse
 } = require('../lib/program-access');
 const { canUseLabReports } = require('../lib/lab-reports');
+const accessPolicy = require('../lib/access-policy');
+const { TERMS: VIDEO_TERMS, groupByTerm } = require('../lib/terms');
+const { sharedProgramCodes, isShareableCourse } = require('../lib/program-sharing');
 
 const router = express.Router();
 const requireStudentLearningAccount = requireRole(ROLES.STUDENT, ROLES.ADMIN);
@@ -95,17 +98,15 @@ function accessFor(user) {
   return { premium, trial };
 }
 
+// One shared policy for every surface: past papers, notes and tutorial
+// sheets are always free, lab reports are the Premium study material, and
+// videos/quizzes stay Premium-only. See lib/access-policy.js.
 function canAccess(row, access) {
-  if (row.category === 'announcement') return true;
-  if (!row.is_premium) return true;
-  if (row.category === 'video') return access.premium;
-  return access.premium || access.trial;
+  return accessPolicy.canAccessResource(row, access);
 }
 
 function lockReason(row, access) {
-  if (row.category === 'video' && !access.premium) return 'video';
-  if (!access.premium && !access.trial) return 'premium';
-  return null;
+  return accessPolicy.lockReasonForResource(row, access);
 }
 
 // Published, program-visible resources for a course — the core query used by
@@ -120,8 +121,6 @@ function publishedCourseResources(user, courseId) {
   `;
   return db.prepare(sql).all({ courseId, ...params });
 }
-
-const VIDEO_TERMS = ['Term 1', 'Term 2', 'Term 3'];
 
 // Same query as above, narrowed to video lessons (optionally one term) in
 // SQL rather than in JavaScript. The Video Lessons page renders exactly this
@@ -245,8 +244,11 @@ router.get('/', attachUser, (req, res) => {
 });
 
 // ---- Student: their own program + courses -------------------------------
-// This is the endpoint the student dashboard uses: it returns ONLY the
-// courses belonging to the logged-in student's program, with content counts.
+// This is the endpoint the student dashboard uses: it returns the courses
+// belonging to the logged-in student's program, with content counts. For a
+// pooled program (School of Mines ↔ Non-Quota) it also returns the peer
+// school's shared courses, flagged with `sharedFrom` — except Biology and
+// Engineering Drawing, which stay exclusive to the school that teaches them.
 router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
   if (!user) return res.status(404).json({ message: 'User not found.' });
@@ -268,7 +270,8 @@ router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
         SUM(CASE WHEN r.category = 'video' THEN 1 ELSE 0 END) AS videos,
         SUM(CASE WHEN r.category = 'document' THEN 1 ELSE 0 END) AS documents,
         SUM(CASE WHEN r.category = 'tutorial' THEN 1 ELSE 0 END) AS tutorials,
-        SUM(CASE WHEN r.category = 'past_paper' THEN 1 ELSE 0 END) AS past_papers
+        SUM(CASE WHEN r.category = 'past_paper' THEN 1 ELSE 0 END) AS past_papers,
+        SUM(CASE WHEN r.category = 'lab_report' THEN 1 ELSE 0 END) AS lab_reports
       FROM resources r
       LEFT JOIN lesson_progress lp ON lp.resource_id = r.id AND lp.user_id = @userId
       WHERE r.publish_status = 'published' AND r.course_id = @courseId
@@ -286,8 +289,12 @@ router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
         videos: countRow.videos || 0,
         documents: countRow.documents || 0,
         tutorials: countRow.tutorials || 0,
-        pastPapers: countRow.past_papers || 0
+        pastPapers: countRow.past_papers || 0,
+        labReports: countRow.lab_reports || 0
       },
+      // Courses pooled in from the partner school carry the code they came
+      // from, so the dashboard can label them honestly.
+      sharedFrom: c.shared_from_program || null,
       progress: {
         completed,
         total: totalLearned,
@@ -458,7 +465,7 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
 
   const flatLessons = topics.flatMap((t) => t.lessons.map((l) => ({ ...l, topic: t.name })));
   const lectures = flatLessons.filter((l) => l.category === 'video');
-  const videoTerms = ['Term 1', 'Term 2', 'Term 3'].map((term) => ({
+  const videoTerms = VIDEO_TERMS.map((term) => ({
     term,
     lessons: lectures.filter((l) => l.term === term)
   }));
@@ -488,6 +495,21 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
   // Study streak (whole-platform habit).
   const streak = studyStreak(user.id);
 
+  const notes = flatLessons.filter((l) => l.category === 'document');
+  const tutorials = flatLessons.filter((l) => l.category === 'tutorial');
+  const labReports = flatLessons.filter((l) => l.category === 'lab_report');
+  const pastPapers = flatLessons.filter((l) => l.category === 'past_paper');
+
+  // ── Term shelves ────────────────────────────────────────────────────────
+  // Every revisable resource type is filed under Term 1 / Term 2 / Term 3 so
+  // the course page can present the year the way it is actually taught.
+  // Empty terms are kept so a student sees that the term exists and nothing
+  // has been published for it yet. Content with no term (legacy uploads)
+  // collects in an "Other" group rather than disappearing.
+  // Lab reports are deliberately NOT termed — they follow the lab schedule.
+  const termShelf = (items) => groupByTerm(items, { includeEmpty: true })
+    .map((group) => ({ term: group.term, lessons: group.items, total: group.items.length }));
+
   res.json({
     course: serializeCourse(course, { subject: course.subject }),
     program: program ? serializeProgram(program) : null,
@@ -504,11 +526,24 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
     lessons: flatLessons,
     lectures,
     videoTerms,
-    notes: flatLessons.filter((l) => l.category === 'document'),
-    tutorials: flatLessons.filter((l) => l.category === 'tutorial'),
-    labReports: flatLessons.filter((l) => l.category === 'lab_report'),
+    notes,
+    tutorials,
+    labReports,
     labReportsEnabled,
-    pastPapers: flatLessons.filter((l) => l.category === 'past_paper'),
+    pastPapers,
+    terms: {
+      lessons: termShelf(flatLessons),
+      notes: termShelf(notes),
+      tutorials: termShelf(tutorials),
+      pastPapers: termShelf(pastPapers)
+    },
+    sharedWithPrograms: sharedProgramCodes(user.program_code)
+      .filter(() => isShareableCourse(course))
+      .map((code) => {
+        const peer = db.prepare('SELECT code, name, short_name FROM programs WHERE code = ?').get(code);
+        return peer ? { code: peer.code, name: peer.name, shortName: peer.short_name || peer.name } : null;
+      })
+      .filter(Boolean),
     announcements,
     access: { premium: access.premium, trial: access.trial }
   });

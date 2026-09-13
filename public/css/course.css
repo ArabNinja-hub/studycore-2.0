@@ -31,3 +31,13 @@
   font-family: var(--font-body);
 }
 body[data-theme='dark'] .term-group-heading { color: #fff; }
+
+/* Term shelves
+   ------------------------------------------------------------------
+   Notes, tutorial sheets and past papers are filed under Term 1/2/3
+   (plus an "Other" shelf for content uploaded before terms existed).
+   The section container stacks the shelves; each shelf keeps its own
+   .resource-grid so the cards still lay out in the usual columns. */
+.term-shelves { display: block; }
+.term-shelves .term-group:last-child { margin-bottom: 0; }
+.term-shelves .resource-grid { margin-bottom: 0; }

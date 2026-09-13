@@ -3,6 +3,8 @@ const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const { resourceVisibilityClause, programCanSeeResource } = require('../lib/program-access');
+const accessPolicy = require('../lib/access-policy');
+const { TERMS: VIDEO_TERMS, groupByTerm } = require('../lib/terms');
 const stream = require('../lib/stream');
 const { issueTicket } = require('../lib/content-tickets');
 
@@ -65,8 +67,6 @@ function publishedSubjectResources(user, subject) {
     ORDER BY r.created_at ASC
   `).all({ subject, ...vis.params });
 }
-
-const VIDEO_TERMS = ['Term 1', 'Term 2', 'Term 3'];
 
 // Video lessons for one subject, optionally narrowed to a single term, in
 // SQL. Used by the Video Lessons page (?view=videos), which renders exactly
@@ -131,17 +131,15 @@ function accessFor(user) {
   return { premium, trial };
 }
 
+// Access decisions come from the one shared policy: past papers, notes and
+// tutorial sheets are always free; lab reports are Premium (or trial);
+// videos and quizzes stay Premium-only. See lib/access-policy.js.
 function canAccess(row, access) {
-  if (row.category === 'announcement') return true;
-  if (!row.is_premium) return true;
-  if (row.category === 'video') return access.premium; // videos are Premium-only, always
-  return access.premium || access.trial;
+  return accessPolicy.canAccessResource(row, access);
 }
 
 function lockReason(row, access) {
-  if (row.category === 'video' && !access.premium) return 'video';
-  if (!access.premium && !access.trial) return 'premium';
-  return null;
+  return accessPolicy.lockReasonForResource(row, access);
 }
 
 // Study streak: count consecutive calendar days (ending today or yesterday
@@ -433,10 +431,20 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
   }
 
   const lectures = flatLessons.filter((l) => l.category === 'video');
-  const videoTerms = ['Term 1', 'Term 2', 'Term 3'].map((term) => ({
+  const videoTerms = VIDEO_TERMS.map((term) => ({
     term,
     lessons: lectures.filter((lesson) => lesson.term === term)
   }));
+
+  const notes = flatLessons.filter((l) => l.category === 'document');
+  const tutorials = flatLessons.filter((l) => l.category === 'tutorial');
+  const pastPapers = flatLessons.filter((l) => l.category === 'past_paper');
+
+  // Term shelves: every resource type a student revises from is grouped into
+  // Term 1 / 2 / 3 (plus "Other" for legacy rows with no term), so the
+  // legacy subject pages organise content exactly like the program courses.
+  const termShelf = (items) => groupByTerm(items, { includeEmpty: true })
+    .map((group) => ({ term: group.term, lessons: group.items, total: group.items.length }));
 
   res.json({
     subject,
@@ -455,9 +463,15 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
     lessons: flatLessons,
     lectures,
     videoTerms,
-    notes: flatLessons.filter((l) => l.category === 'document'),
-    tutorials: flatLessons.filter((l) => l.category === 'tutorial'),
-    pastPapers: flatLessons.filter((l) => l.category === 'past_paper'),
+    notes,
+    tutorials,
+    pastPapers,
+    terms: {
+      lessons: termShelf(flatLessons),
+      notes: termShelf(notes),
+      tutorials: termShelf(tutorials),
+      pastPapers: termShelf(pastPapers)
+    },
     announcements: announcements.map(withState),
     access: { premium: access.premium, trial: access.trial }
   });

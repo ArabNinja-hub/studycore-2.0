@@ -256,11 +256,20 @@ c.commit()
     pass('trial video locked', `status=${s.res.status}`);
   } catch (err) { fail('trial video locked', err); }
 
-  // Expired cannot open premium document
+  // Past papers, notes and tutorial sheets are always-free study material:
+  // they must keep opening after the trial AND the subscription have lapsed.
+  for (const [label, row] of [['notes', smallPdf], ['tutorial sheet', multiPdf], ['past paper', largePdf]]) {
+    try {
+      const s = await inspectStream(expired.jar, row.id, { expectStatus: 200 });
+      pass(`expired student still reads the ${label}`, `status=${s.res.status}`);
+    } catch (err) { fail(`expired student still reads the ${label}`, err); }
+  }
+
+  // Video is the Premium-only format, so it stays locked for the same student.
   try {
-    const s = await inspectStream(expired.jar, multiPdf.id, { expectStatus: 403 });
-    pass('expired premium document locked', `status=${s.res.status}`);
-  } catch (err) { fail('expired premium document locked', err); }
+    const s = await inspectStream(expired.jar, smallVid.id, { expectStatus: 403 });
+    pass('expired video locked', `status=${s.res.status}`);
+  } catch (err) { fail('expired video locked', err); }
 
   // Premium / admin video + range
   for (const [label, jar] of [['admin', admin.jar], ['premium', premiumLogin.jar]]) {

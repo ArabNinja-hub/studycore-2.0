@@ -440,9 +440,11 @@ router.get('/image/:key', requireAuth, (req, res) => {
   }).catch(() => res.status(404).json({ message: 'Image not found.' }));
 });
 
-// Quizzes are a Premium feature. A student may take them only with an active
-// Premium subscription; Main Admin may preview them. Trial and free students
-// see the cards but every take/attempt is blocked server-side.
+// Quizzes are a Premium feature — `quiz` is in PREMIUM_ONLY_CATEGORIES in
+// lib/access-policy.js, alongside video. A student may take them only with an
+// active Premium subscription; Main Admin may preview them. Trial and free
+// students see the cards but every take/attempt is blocked server-side.
+// (Unlike lab reports, a trial does NOT open quizzes.)
 //
 // req.user (from the JWT) intentionally carries only id/email/role, so we load
 // the full subscription state from SQLite here — the same pattern the rest of

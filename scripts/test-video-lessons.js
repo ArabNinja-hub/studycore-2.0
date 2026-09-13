@@ -124,14 +124,20 @@ test('the video view never widens access: another program still gets 403', async
 test('the video view applies the same program targeting filter as the course home', async () => {
   const mines = createUser({ program_code: 'SMMS' });
   const nonQuota = createUser({ program_code: 'SMNS' });
-  // Targeted at Mines only, on a course both programs share.
+  const law = createUser({ program_code: 'LAW' });
+  // Targeted at Mines, on a course both pooled schools share.
   createVideo({ title: 'Targeted at Mines', target_all: 0 }, ['SMMS']);
 
   const forMines = await call('GET', '/api/programs/course/MA110?view=videos', { user: mines });
   const forNonQuota = await call('GET', '/api/programs/course/MA110?view=videos', { user: nonQuota });
   assert.ok(forMines.data.lectures.some((l) => l.title === 'Targeted at Mines'));
-  assert.ok(!forNonQuota.data.lectures.some((l) => l.title === 'Targeted at Mines'),
-    'a non-targeted program must not receive the video through the compact view');
+  // Mines and Non-Quota pool their content, so one upload serves both.
+  assert.ok(forNonQuota.data.lectures.some((l) => l.title === 'Targeted at Mines'),
+    'the pooled partner school receives the same upload');
+  // Pooling must not widen beyond the group: an unrelated program is still
+  // refused outright by the course-membership gate.
+  const forLaw = await call('GET', '/api/programs/course/MA110?view=videos', { user: law });
+  assert.equal(forLaw.status, 403, 'an unrelated program is still denied');
 });
 
 test('a non-premium student gets the video lock flag, never a playable payload', async () => {

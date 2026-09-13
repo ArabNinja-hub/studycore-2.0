@@ -42,7 +42,11 @@ test('direct and SQL visibility enforce both targeting and course membership', (
     [createResource({ course_id: sharedCourse }), [mines, nonQuota, admin]],
     [createResource({ target_all: 0 }, ['LAW']), [law, admin]],
     [createResource({ target_all: 0, course_id: sharedCourse }, ['LAW']), [admin]],
-    [createResource({ target_all: 0, course_id: sharedCourse }, ['SMMS']), [mines, admin]]
+    // School of Mines and Non-Quota POOL their content: an upload targeted at
+    // Mines on a shared course reaches Non-Quota students too, from the one
+    // row, without widening to any other program.
+    [createResource({ target_all: 0, course_id: sharedCourse }, ['SMMS']), [mines, nonQuota, admin]],
+    [createResource({ target_all: 0, course_id: sharedCourse }, ['SMNS']), [mines, nonQuota, admin]]
   ];
   for (const [row, allowedUsers] of cases) {
     for (const user of [law, mines, nonQuota, unassigned, publisher, admin, null]) {
@@ -110,7 +114,7 @@ test('dashboard lesson counts and progress use the same visible published learni
   const result = await call('GET', '/api/programs/mine', { user });
   assert.equal(result.status, 200, result.text);
   const course = result.data.courses.find((c) => c.id === courseId);
-  assert.deepEqual(course.counts, { lessons: 4, videos: 1, documents: 1, tutorials: 1, pastPapers: 1 });
+  assert.deepEqual(course.counts, { lessons: 4, videos: 1, documents: 1, tutorials: 1, pastPapers: 1, labReports: 0 });
   assert.deepEqual(course.progress, { completed: 2, total: 4, percent: 50 });
   const home = await call('GET', `/api/programs/course/${courseId}`, { user });
   assert.equal(home.data.progress.totalCount, course.progress.total);

@@ -82,7 +82,9 @@ function uploadBody(course, overrides = {}) {
     topic: 'Foundations',
     title: 'Contract Law revision notes',
     description: 'A concise revision pack.',
-    semester: '',
+    // Course-bound notes, tutorial sheets and past papers are shelved by
+    // term on the course page, so the term is a required upload field.
+    semester: 'Term 1',
     yearLevel: 'Year 1',
     publishStatus: 'published',
     ...overrides

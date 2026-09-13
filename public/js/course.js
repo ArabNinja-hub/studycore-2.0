@@ -165,28 +165,43 @@
           </div>`).join('')
       : emptyState({ icon: 'play', title: 'No lessons yet', body: 'Lessons for this course will appear here as soon as they are published.' });
 
-    // Resources (notes + tutorials)
+    // Resources (notes + tutorial sheets), shelved term by term.
     const resItems = [...data.notes, ...data.tutorials];
     const bookmarked = await loadBookmarkedIds();
+    const cardsFor = (items) =>
+      `<div class="resource-grid">${items.map((r) => resourceCard(r, bookmarked)).join('')}</div>`;
+    const studyTerms = mergeTermShelves(data.terms && data.terms.notes, data.terms && data.terms.tutorials);
     $('#resourceGrid').innerHTML = resItems.length
-      ? resItems.map((r) => resourceCard(r, bookmarked)).join('')
+      ? termShelvesHtml(studyTerms, cardsFor, {
+        noun: 'resource',
+        nounPlural: 'resources',
+        anchorPrefix: 'notes-term',
+        emptyBody: 'No notes or tutorial sheets for this term yet.'
+      })
       : emptyState({ icon: 'file-text', title: 'No resources yet', body: `New ${escapeHtml(subject)} notes and tutorials will appear here soon.` });
     bindCardInteractions($('#resourceGrid'));
 
-    // Past papers (grouped by year when available)
-    const papers = [...data.pastPapers].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')));
-    const paperGroups = new Map();
-    for (const p of papers) {
-      const year = p.yearLevel ? String(p.yearLevel) : 'All years';
-      if (!paperGroups.has(year)) paperGroups.set(year, []);
-      paperGroups.get(year).push(p);
-    }
+    // Past papers — term first, then by year within the term.
+    const papers = data.pastPapers || [];
     $('#paperGrid').innerHTML = papers.length
-      ? [...paperGroups.entries()].map(([year, items]) => `
-          <div style="grid-column:1/-1;">
-            <h3 style="margin-bottom:14px;font-size:1.05rem;">${escapeHtml(year)} ${items.length > 1 ? `<span class="resource-meta">(${items.length} papers)</span>` : ''}</h3>
-            <div class="resource-grid">${items.map((r) => resourceCard(r, bookmarked)).join('')}</div>
-          </div>`).join('')
+      ? termShelvesHtml(data.terms && data.terms.pastPapers, (items) => {
+        const byYear = new Map();
+        for (const p of [...items].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')))) {
+          const year = p.yearLevel ? String(p.yearLevel) : 'All years';
+          if (!byYear.has(year)) byYear.set(year, []);
+          byYear.get(year).push(p);
+        }
+        return [...byYear.entries()].map(([year, group]) => `
+          <div style="margin-bottom:14px;">
+            <h4 style="margin:0 0 10px;font-size:0.95rem;color:var(--muted);">${escapeHtml(year)}${group.length > 1 ? ` <span class="resource-meta">(${group.length} papers)</span>` : ''}</h4>
+            ${cardsFor(group)}
+          </div>`).join('');
+      }, {
+        noun: 'paper',
+        nounPlural: 'papers',
+        anchorPrefix: 'papers-term',
+        emptyBody: 'No past papers for this term yet.'
+      })
       : emptyState({ icon: 'file', title: 'No past papers yet', body: `Past papers for ${escapeHtml(subject)} will appear here soon.` });
     bindCardInteractions($('#paperGrid'));
 
