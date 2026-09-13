@@ -143,8 +143,13 @@ async function main() {
     password: 'password1',
     program: 'SMMS'
   });
-  // Expire trial via sqlite
-  const dbPath = path.join(__dirname, '..', 'data', 'studycore.sqlite');
+  // Expire trial via the same SQLite database used by the server under test.
+  // DATA_DIR is configurable in production/tests, so never silently mutate
+  // the repository's default database when the server is using another one.
+  const dbPath = process.env.TEST_DB_PATH || path.join(
+    process.env.DATA_DIR || path.join(__dirname, '..', 'data'),
+    'studycore.sqlite'
+  );
   const sql = `UPDATE users SET trial_end = '2000-01-01T00:00:00.000Z' WHERE email = '${expired.user.email}';`;
   spawnSync('python3', ['-c', `
 import sqlite3

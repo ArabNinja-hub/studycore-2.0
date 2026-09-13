@@ -20,6 +20,7 @@ const stream = require('../lib/stream');
 const { queueOffload } = require('../lib/stream-ingest');
 const { ROLES } = require('../lib/roles');
 const { resolveCourse, programIncludesCourse } = require('../lib/program-access');
+const { validateLabReportPlacement } = require('../lib/lab-reports');
 const {
   CONTENT_RESOURCE_TYPES,
   normalizeResourceType,
@@ -170,6 +171,10 @@ function validatePlacement({ programCode, courseId, topic, type, semester }) {
   if (!topic) return { error: 'Select or enter a topic.' };
   if (type.category === 'video' && !VIDEO_TERMS.has(semester)) {
     return { error: 'Choose Term 1, Term 2, or Term 3 for a video resource.' };
+  }
+  if (type.category === 'lab_report') {
+    const labError = validateLabReportPlacement([program.code], course);
+    if (labError) return { error: labError };
   }
   return { program, course };
 }

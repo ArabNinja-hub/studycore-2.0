@@ -19,8 +19,8 @@
   let announcementTargetControls = null;
 
   const $ = (sel) => document.querySelector(sel);
-  const CATEGORY_LABELS = { document: 'Notes', video: 'Video', tutorial: 'Tutorial', past_paper: 'Past paper', quiz: 'Quiz', assignment: 'Assignment', announcement: 'Announcement' };
-  const CATEGORY_ICONS = { document: 'file-text', video: 'video', tutorial: 'file-text', past_paper: 'file', quiz: 'circle-help', assignment: 'edit', announcement: 'bell' };
+  const CATEGORY_LABELS = { document: 'Notes', video: 'Video', tutorial: 'Tutorial', past_paper: 'Past paper', lab_report: 'Lab report', quiz: 'Quiz', assignment: 'Assignment', announcement: 'Announcement' };
+  const CATEGORY_ICONS = { document: 'file-text', video: 'video', tutorial: 'file-text', past_paper: 'file', lab_report: 'flask', quiz: 'circle-help', assignment: 'edit', announcement: 'bell' };
 
   function setResourceFormStatus(message, kind) {
     const status = document.getElementById('resourceFormStatus');
@@ -500,6 +500,7 @@
         <option value="video">Video</option>
         <option value="tutorial">Tutorial</option>
         <option value="past_paper">Past paper</option>
+        <option value="lab_report">Lab report</option>
         <option value="announcement">Announcement</option>
         <option value="quiz">Quiz</option>
         <option value="assignment">Assignment</option>

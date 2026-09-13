@@ -152,8 +152,34 @@
   }
 
 
+  /* Printing and "Print to PDF" expose a full-quality copy. The matching
+     print stylesheet blanks protected pages; replacing window.print also
+     prevents scripts and browser shortcuts from opening the dialog. */
+  function blockPrinting() {
+    try {
+      global.print = function blockedPrint() {
+        notify('Printing is disabled on protected StudyCore content.');
+      };
+    } catch { /* some browsers make window.print non-writable */ }
+  }
+
   /* In-page extraction guards for protected PDF/video surfaces. */
   function blockCaptureApis() {
+    // Back up the display-capture=() Permissions-Policy in JavaScript. Install
+    // this even on basic listing pages so a later polyfill cannot reopen the
+    // API after this guard has initialized.
+    const blocked = function blockedGetDisplayMedia() {
+      notify('Screen capture is disabled on protected StudyCore content.');
+      const Err = global.DOMException || Error;
+      return Promise.reject(new Err('Screen capture is disabled on StudyCore.', 'NotAllowedError'));
+    };
+    try {
+      if (navigator.mediaDevices) navigator.mediaDevices.getDisplayMedia = blocked;
+    } catch { /* read-only in some hardened browsers; the header still applies */ }
+    try {
+      navigator.getDisplayMedia = blocked;
+    } catch { /* legacy entry point is non-writable */ }
+
     if (!strict) return;
 
     /* ── In-page capture of the PROTECTED SURFACES themselves ───────────
@@ -251,16 +277,50 @@
     }, true);
   }
 
-  /* Keep print, save-page and select-all shortcuts from exposing the viewer. */
+  /* Keep print, save-page, screenshots and obvious developer-tool shortcuts
+     from exposing the viewer. OS-level capture remains outside a web page's
+     control, but clipboard-backed PrintScreen can still be scrubbed. */
   function blockPageShortcuts() {
+    const scrubClipboard = () => {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText && document.hasFocus()) {
+          navigator.clipboard.writeText(CLIPBOARD_NOTICE).catch(() => {});
+        }
+      } catch { /* clipboard permission denied */ }
+    };
+
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'PrintScreen' || e.code === 'PrintScreen' || e.keyCode === 44) {
+        scrubClipboard();
+        notify('Screenshots of protected StudyCore content are not permitted.');
+      }
+    }, true);
+
     document.addEventListener('keydown', (e) => {
       const key = String(e.key || '').toLowerCase();
       const mod = e.ctrlKey || e.metaKey;
       if (mod && ['p', 's', 'u'].includes(key)) {
         e.preventDefault();
         notify('This action is disabled on protected StudyCore content.');
-      } else if (mod && key === 'a' && !isEditable(e.target)) {
+        return;
+      }
+      if (mod && key === 'a' && !isEditable(e.target)) {
         e.preventDefault();
+        return;
+      }
+
+      // Best-effort interception for macOS screenshots and Windows snipping.
+      if ((e.metaKey && e.shiftKey && ['3', '4', '5', '6'].includes(key)) ||
+          (e.metaKey && e.shiftKey && key === 's')) {
+        e.preventDefault();
+        notify('Screenshots of protected StudyCore content are not permitted.');
+        return;
+      }
+
+      const devtoolsCombo = key === 'f12' || (mod && e.shiftKey && ['i', 'j', 'c'].includes(key));
+      if (devtoolsCombo) {
+        e.preventDefault();
+        notify('Developer tools are disabled on protected StudyCore content.');
       }
     }, true);
   }
@@ -305,6 +365,22 @@
 
   }
 
+  /* Native wrappers can provide a real OS-level secure-screen flag. These
+     bridges are optional and safely no-op in an ordinary browser. */
+  function applyNativeSecureFlag() {
+    try {
+      if (global.WTN && typeof global.WTN.disableScreenshot === 'function') {
+        global.WTN.disableScreenshot({ ssKey: true });
+      }
+      if (global.AndroidSecure && typeof global.AndroidSecure.setSecure === 'function') {
+        global.AndroidSecure.setSecure(true);
+      }
+      if (global.ReactNativeWebView && typeof global.ReactNativeWebView.postMessage === 'function') {
+        global.ReactNativeWebView.postMessage(JSON.stringify({ type: 'sc:secure-screen', value: true }));
+      }
+    } catch { /* not running in a native wrapper */ }
+  }
+
   /* ══════════════════════════════════════════
      Boot
      ══════════════════════════════════════════ */
@@ -315,6 +391,7 @@
     blockPrinting();
     blockCaptureApis();
     blockPageShortcuts();
+    applyNativeSecureFlag();
 
     if (strict) {
       blockPictureInPicture();

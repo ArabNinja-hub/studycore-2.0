@@ -566,6 +566,7 @@ try {
     SET resource_type = CASE category
       WHEN 'video' THEN 'Video'
       WHEN 'past_paper' THEN 'Past Paper'
+      WHEN 'lab_report' THEN 'Lab Report'
       WHEN 'tutorial' THEN 'Study Guide'
       WHEN 'announcement' THEN 'Announcement'
       WHEN 'quiz' THEN 'Quiz'
