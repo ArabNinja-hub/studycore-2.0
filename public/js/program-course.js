@@ -146,6 +146,27 @@
       : emptyState({ icon: 'file-text', title: 'No resources yet', body: `New ${escapeHtml(course.code)} notes and tutorials will appear here soon.` });
     bindCardInteractions($('#resourceGrid'));
 
+    // Lab Reports is a dedicated slot only for Physics/Chemistry in Mines,
+    // Non-Quota and Natural Resources, plus Physics in SICT. The API is the
+    // authority for eligibility; unrelated course pages keep it fully hidden.
+    if (data.labReportsEnabled) {
+      const section = $('#lab-reports');
+      section.hidden = false;
+      const reports = data.labReports || [];
+      $('#labReportGrid').innerHTML = reports.length
+        ? reports.map((r) => resourceCard({ ...r, courseCode: course.code, courseSlug: course.slug }, bookmarked)).join('')
+        : emptyState({ icon: 'flask', title: 'No lab reports yet', body: `Lab reports for ${escapeHtml(course.code)} will appear here soon.` });
+      bindCardInteractions($('#labReportGrid'));
+      const jump = $('#courseJump');
+      if (jump && ![...jump.options].some((option) => option.value === '#lab-reports')) {
+        const option = document.createElement('option');
+        option.value = '#lab-reports';
+        option.textContent = 'Lab reports';
+        const papersOption = [...jump.options].find((item) => item.value === '#past-papers');
+        jump.insertBefore(option, papersOption || null);
+      }
+    }
+
     // Past papers
     const papers = [...data.pastPapers].sort((a, b) => String(b.yearLevel || '').localeCompare(String(a.yearLevel || '')));
     const paperGroups = new Map();
@@ -231,7 +252,7 @@
   }
 
   function wireSectionNav() {
-    const sectionIds = ['topics', 'video-lessons', 'lessons', 'resources', 'past-papers', 'progress'];
+    const sectionIds = ['topics', 'video-lessons', 'lessons', 'resources', 'lab-reports', 'past-papers', 'progress'];
     const sections = sectionIds.map((id) => document.getElementById(id)).filter(Boolean);
     const links = [...document.querySelectorAll('#courseSubnav a')];
     const jump = $('#courseJump');

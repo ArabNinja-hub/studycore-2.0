@@ -38,6 +38,7 @@ const {
   coursesForProgram,
   resolveCourse
 } = require('../lib/program-access');
+const { canUseLabReports } = require('../lib/lab-reports');
 
 const router = express.Router();
 const requireStudentLearningAccount = requireRole(ROLES.STUDENT, ROLES.ADMIN);
@@ -48,8 +49,8 @@ router.use((req, res, next) => {
   next();
 });
 
-const LEARN_CATEGORIES = ['video', 'document', 'tutorial', 'past_paper'];
-const CATEGORY_ORDER = { video: 0, document: 1, tutorial: 2, past_paper: 3 };
+const LEARN_CATEGORIES = ['video', 'document', 'tutorial', 'lab_report', 'past_paper'];
+const CATEGORY_ORDER = { video: 0, document: 1, tutorial: 2, lab_report: 3, past_paper: 4 };
 
 // Consecutive days (ending today, or yesterday if nothing yet today) on which
 // the student completed a lesson or took a quiz. A whole-platform habit
@@ -271,7 +272,7 @@ router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
       FROM resources r
       LEFT JOIN lesson_progress lp ON lp.resource_id = r.id AND lp.user_id = @userId
       WHERE r.publish_status = 'published' AND r.course_id = @courseId
-        AND r.category IN ('video', 'document', 'tutorial', 'past_paper')
+        AND r.category IN ('video', 'document', 'tutorial', 'lab_report', 'past_paper')
       ${clause ? `AND ${clause}` : ''}
     `).get({ courseId: c.id, userId: user.id, ...params });
 
@@ -421,7 +422,9 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
     return item;
   };
 
-  const learn = rows.filter((r) => LEARN_CATEGORIES.includes(r.category));
+  const labReportsEnabled = canUseLabReports(user.program_code, course);
+  const learn = rows.filter((r) => LEARN_CATEGORIES.includes(r.category) &&
+    (r.category !== 'lab_report' || labReportsEnabled));
   const announcements = rows
     .filter((r) => r.category === 'announcement')
     .sort((a, b) => {
@@ -503,6 +506,8 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
     videoTerms,
     notes: flatLessons.filter((l) => l.category === 'document'),
     tutorials: flatLessons.filter((l) => l.category === 'tutorial'),
+    labReports: flatLessons.filter((l) => l.category === 'lab_report'),
+    labReportsEnabled,
     pastPapers: flatLessons.filter((l) => l.category === 'past_paper'),
     announcements,
     access: { premium: access.premium, trial: access.trial }

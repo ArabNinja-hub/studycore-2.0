@@ -13,6 +13,7 @@ const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
 const { resourceTypeForCategory, resourceTypeLabel } = require('../lib/resource-types');
+const { validateLabReportPlacement } = require('../lib/lab-reports');
 
 const router = express.Router();
 // Main Admin only. Content Admin has its own scoped /api/content-admin routes
@@ -25,8 +26,8 @@ router.use(requireAuth, requireRole(ROLES.ADMIN));
 // which would silently land in the wrong place with a broken player or a
 // document that never streams.
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi']);
-const DOCUMENT_LIKE_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'assignment']);
-const COURSE_CONTENT_CATEGORIES = new Set(['video', 'document', 'tutorial', 'past_paper']);
+const DOCUMENT_LIKE_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'lab_report', 'assignment']);
+const COURSE_CONTENT_CATEGORIES = new Set(['video', 'document', 'tutorial', 'lab_report', 'past_paper']);
 const VIDEO_TERMS = new Set(['Term 1', 'Term 2', 'Term 3']);
 
 // Course content can live on a dynamic program COURSE (courseId) — the
@@ -279,6 +280,13 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
   // Program targeting (one / multiple / all programs).
   const targeting = parseTargeting(req.body);
   if (targeting.error) return res.status(400).json({ message: targeting.error });
+  if (category === 'lab_report') {
+    const labError = validateLabReportPlacement(targeting.targetAll ? [] : targeting.programCodes, courseRow);
+    if (labError) {
+      if (req.file && req.file.key) storage.deleteObject(req.file.key).catch(() => {});
+      return res.status(400).json({ message: labError });
+    }
+  }
 
   const row = {
     id,
@@ -438,9 +446,18 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   }
 
   // Program targeting — only re-synced when the admin sends targeting fields.
-  if (req.body.targetAll !== undefined || req.body.programs !== undefined || req.body.targetPrograms !== undefined || req.body.target !== undefined) {
-    const targeting = parseTargeting(req.body);
-    if (targeting.error) return res.status(400).json({ message: targeting.error });
+  const targetingChanged = req.body.targetAll !== undefined || req.body.programs !== undefined ||
+    req.body.targetPrograms !== undefined || req.body.target !== undefined;
+  const existingTargeting = targetingForResource(existing);
+  const targeting = targetingChanged
+    ? parseTargeting(req.body)
+    : { targetAll: existingTargeting.targetAll, programCodes: existingTargeting.programs, error: null };
+  if (targeting.error) return res.status(400).json({ message: targeting.error });
+  if (effectiveCategory === 'lab_report') {
+    const labError = validateLabReportPlacement(targeting.targetAll ? [] : targeting.programCodes, courseRow);
+    if (labError) return res.status(400).json({ message: labError });
+  }
+  if (targetingChanged) {
     db.prepare('UPDATE resources SET target_all = ? WHERE id = ?').run(targeting.targetAll ? 1 : 0, existing.id);
     syncResourcePrograms(existing.id, targeting.targetAll, targeting.programCodes);
   }

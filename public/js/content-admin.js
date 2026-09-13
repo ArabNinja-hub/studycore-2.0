@@ -21,6 +21,7 @@
   const TYPE_META = {
     notes: { label: 'Notes', category: 'document', icon: 'file-text' },
     past_paper: { label: 'Past Paper', category: 'past_paper', icon: 'file' },
+    lab_report: { label: 'Lab Report', category: 'lab_report', icon: 'flask' },
     study_guide: { label: 'Study Guide', category: 'tutorial', icon: 'book-open' },
     lecture_material: { label: 'Lecture Material', category: 'document', icon: 'file-text' },
     document: { label: 'Document', category: 'document', icon: 'file-text' },

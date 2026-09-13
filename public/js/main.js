@@ -17,6 +17,7 @@ const CATEGORY_LABELS = {
   video: 'Video lesson',
   tutorial: 'Tutorial sheet',
   past_paper: 'Past paper',
+  lab_report: 'Lab report',
   announcement: 'Announcement',
   quiz: 'Quiz',
   assignment: 'Assignment',
@@ -28,6 +29,7 @@ const CATEGORY_ICONS = {
   video: 'video',
   tutorial: 'file-text',
   past_paper: 'file',
+  lab_report: 'flask',
   announcement: 'bell',
   quiz: 'circle-help',
   assignment: 'edit',
@@ -52,7 +54,7 @@ function subjectSlug(subject) {
 
 // Categories that open in the internal document viewer (/viewer/:id) rather
 // than the lesson experience page. Videos always play in the lesson player.
-const DOC_VIEWER_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'material']);
+const DOC_VIEWER_CATEGORIES = new Set(['document', 'tutorial', 'past_paper', 'lab_report', 'material']);
 
 function isViewerCategory(category) {
   return DOC_VIEWER_CATEGORIES.has(category);
