@@ -448,9 +448,17 @@
     const doc = (data.docs && data.docs[0]) || null;
     if (!doc) return;
     console.info('[StudyCore][GooglePicker] file picked:', doc.id, doc.name);
-    // Hand the Drive file off to the existing Content Admin dashboard code.
+    // Hand the Drive file off to the existing Content Admin dashboard code,
+    // WITH the access token this picker session obtained.
+    //
+    // The token is what lets the StudyCore server copy the chosen file out of
+    // Drive at publish time. Without it the server could only store a link,
+    // and students who are not shared on the uploader's private Drive file
+    // would be sent to Google's "Request access" page instead of the
+    // document. The token is short-lived, used for that single server-side
+    // read, and never stored.
     if (typeof window.onGoogleDriveFilePicked === 'function') {
-      window.onGoogleDriveFilePicked(doc);
+      window.onGoogleDriveFilePicked(doc, { accessToken: state.accessToken });
     } else {
       console.warn('[StudyCore][GooglePicker] onGoogleDriveFilePicked handler missing');
     }

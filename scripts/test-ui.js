@@ -170,41 +170,38 @@ test('document reader is view-only and uses on-demand PDF ranges', () => {
   assert.doesNotMatch(resourceRoutes, /disposition:\s*['"]attachment['"]|INSERT INTO downloads/);
 });
 
-test('Google Drive previews go fullscreen and drop Google/floating buttons', () => {
+// Replaces the old "Google Drive previews go fullscreen and drop
+// Google/floating buttons" test.
+//
+// That test pinned a workaround: Drive documents were shown in an embedded
+// drive.google.com /preview iframe whose toolbar was cropped off with CSS to
+// hide Google's Share button. The embed itself was the bug — Google authorizes
+// that frame against the FILE's Drive sharing list, not the StudyCore session,
+// so students who were not shared on the uploader's private file were shown
+// "Request access" instead of the document.
+//
+// Drive files are now copied into StudyCore storage at publish time
+// (lib/google-drive.js) and read through the normal protected reader, so the
+// embed, its CSS crop and the Drive-only toolbar are all gone.
+test('Drive documents read through the protected reader, never a Google embed', () => {
   const viewerJs = read('public/js/viewer.js');
   const viewerCss = read('public/css/viewer.css');
   const readerJs = read('public/js/doc-reader.js');
 
-  // The Drive branch must keep the toolbar up with only the Fullscreen
-  // button. Hiding the whole toolbar (the old behaviour) left Drive
-  // documents with no way to enter fullscreen at all.
-  const driveBranch = viewerJs.slice(
-    viewerJs.indexOf('if (resource.googleDriveFileId)'),
-    viewerJs.indexOf('Legacy link-only resources')
-  );
-  assert.match(driveBranch, /showDriveToolbar\(\)/, 'Drive preview enables the Drive toolbar');
-  assert.doesNotMatch(driveBranch, />Open in Google Drive<\/a>/, 'no floating "Open in Google Drive" button over the document');
-  assert.doesNotMatch(driveBranch, /doc-reader-drive-preview/, 'old inline-styled Drive wrapper is gone');
-  assert.match(driveBranch, /class="drive-preview-frame"/, 'Drive preview renders the cropped frame');
+  // No Drive-specific rendering branch survives in the student's reader.
+  assert.doesNotMatch(viewerJs, /showDriveToolbar\(\)\s*;/, 'the Drive-only toolbar is gone');
+  assert.doesNotMatch(viewerJs, /class="drive-preview-frame"/, 'the Google Drive iframe is gone');
+  assert.doesNotMatch(viewerJs, />Open in Google Drive<\/a>/, 'no "open in Drive" escape hatch');
 
-  // showDriveToolbar hides every control except Fullscreen.
-  const driveToolbarFn = viewerJs.slice(viewerJs.indexOf('function showDriveToolbar'));
-  assert.doesNotMatch(driveToolbarFn.slice(0, driveToolbarFn.indexOf('\n  }')), /viewerFullscreen/, 'Fullscreen must stay visible on Drive previews');
+  // Every document — Drive-sourced or uploaded — goes through the same
+  // session-gated reader, so page nav, zoom, fit and search all work on it.
+  assert.match(viewerJs, /StudyCoreReader\.init/);
+  assert.match(viewerJs, /chrome: 'bare'/);
 
-  // With no reader object (Drive path), fullscreen must target the reading
-  // surface so the document fills the screen; the built-in reader still
-  // promotes its own stage.
+  // Fullscreen still targets the reading surface.
   assert.match(viewerJs, /const el = \$\('#viewerHost'\) \|\| \$\('#viewerShell'\);/);
   assert.match(viewerCss, /\.viewer-stage:fullscreen/);
   assert.match(readerJs, /const fsTarget = stage/);
-
-  // Google's /preview frame is cross-origin, so its toolbar (which carries
-  // the floating Share button) is cropped off: frame shifted up by the bar
-  // height, grown by the same amount, wrapper clips the strip.
-  assert.match(viewerCss, /\.drive-preview\s*\{[^}]*--drive-toolbar-crop:\s*64px/m);
-  assert.match(viewerCss, /\.drive-preview\s*\{[^}]*overflow: hidden/m);
-  assert.match(viewerCss, /\.drive-preview-frame\s*\{[^}]*top: calc\(-1 \* var\(--drive-toolbar-crop\)\)/m);
-  assert.match(viewerCss, /\.drive-preview-frame\s*\{[^}]*height: calc\(100% \+ var\(--drive-toolbar-crop\)\)/m);
 
   // Hiding individual viewer controls needs explicit [hidden] suppression —
   // author display rules outrank the UA default.

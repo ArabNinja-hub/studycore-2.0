@@ -18,6 +18,7 @@ const { attachResumableUpload, claimResumableUpload } = require('../middleware/r
 const resumableUploads = require('../lib/resumable-uploads');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
+const googleDrive = require('../lib/google-drive');
 const { ROLES } = require('../lib/roles');
 const { resolveCourse, programIncludesCourse, programOwnsCourse } = require('../lib/program-access');
 const { validateLabReportPlacement } = require('../lib/lab-reports');
@@ -415,15 +416,26 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
   }
 
-  const dummyFile = isDriveFile ? {
-    originalname: req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document',
-    mimetype: req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf',
-    size: Number(req.body.file_size) || 0,
-    key: req.body.google_drive_file_id,
-    stored_name: req.body.google_drive_file_id
-  } : null;
-  const fileForValidation = req.file || dummyFile;
-  const fileError = validateFileForType(parsed.value.type, fileForValidation);
+  // A Drive selection is IMPORTED, not linked. The bytes are copied into
+  // StudyCore's own storage here, so students read the document through the
+  // protected /stream endpoint and never touch Google's permission system.
+  // See lib/google-drive.js for why linking could not work.
+  let driveImport = null;
+  if (isDriveFile && !req.file) {
+    try {
+      driveImport = await googleDrive.importToStorage({
+        fileId: req.body.google_drive_file_id,
+        accessToken: req.body.google_drive_access_token,
+        fileName: req.body.file_name || req.body.google_drive_file_name,
+        mimeType: req.body.mime_type || req.body.google_drive_mime_type
+      });
+    } catch (err) {
+      return uploadError(req, res, err.statusCode || 502, err.message);
+    }
+    req.file = driveImport;
+  }
+
+  const fileError = validateFileForType(parsed.value.type, req.file);
   if (fileError) {
     cleanupIncomingFile(req);
     return uploadError(req, res, 400, fileError);
@@ -432,14 +444,12 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   const now = new Date().toISOString();
   const uploader = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
   const id = `res-${uuidv4()}`;
-  // When selecting from Google Drive, clean up any accidentally uploaded file.
-  if (isDriveFile && req.file) cleanupIncomingFile(req);
 
-  const fileName = isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document') : req.file.originalname;
-  const storedName = isDriveFile ? (req.body.google_drive_file_id || null) : (req.file.key || null);
-  const fileSizeVal = isDriveFile ? (Number(req.body.file_size) || 0) : req.file.size;
-  const mimeTypeVal = isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf') : req.file.mimetype;
-  const contentHashVal = isDriveFile ? null : (req.file.contentHash || null);
+  const fileName = req.file.originalname;
+  const storedName = req.file.key || null;
+  const fileSizeVal = req.file.size;
+  const mimeTypeVal = req.file.mimetype;
+  const contentHashVal = req.file.contentHash || null;
 
   const row = {
     id,
@@ -475,11 +485,17 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     uploaded_at: now,
     created_at: now,
     updated_at: now,
-    storage_provider: isDriveFile ? 'google_drive' : (req.file.bucket || storage.backendName()),
-    stream_uid: isDriveFile ? null : (req.file.streamUid || null),
-    stream_status: isDriveFile ? null : (req.file.streamStatus || null),
-    stream_duration: isDriveFile ? null : (req.file.streamDuration || null),
-    google_drive_file_id: isDriveFile ? req.body.google_drive_file_id : null,
+    // An imported Drive file now lives in R2/local storage like any other
+    // upload, so it records the REAL backend. It is deliberately no longer
+    // 'google_drive': that provider meant "the bytes are still in Drive",
+    // which is precisely the state that forced students to request access.
+    storage_provider: req.file.bucket || storage.backendName(),
+    stream_uid: req.file.streamUid || null,
+    stream_status: req.file.streamStatus || null,
+    stream_duration: req.file.streamDuration || null,
+    // Kept only as provenance ("this came from Drive"). Nothing in the
+    // student read path consults these; the reader streams the stored object.
+    google_drive_file_id: isDriveFile ? (req.body.google_drive_file_id || null) : null,
     google_drive_url: isDriveFile ? (req.body.google_drive_url || null) : null
   };
 
@@ -536,15 +552,31 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
   if (isDriveFile && parsed.value.type.category === 'video') {
     return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
   }
-  const fileForValidation = req.file || (isDriveFile ? {
-    originalname: req.body.file_name || req.body.google_drive_file_name || existing.file_name || 'Google Drive Document',
-    stored_name: req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name,
-    mimetype: req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type
-  } : {
+
+  // Picking a (new) Drive file while editing imports it, exactly like publish.
+  // A token is only present when the Picker actually ran in this submission,
+  // so re-saving a previously imported resource does not re-download it.
+  const reimportingDrive = isDriveFile && !req.file &&
+    Boolean(req.body.google_drive_access_token) &&
+    req.body.google_drive_file_id !== existing.google_drive_file_id;
+  if (reimportingDrive) {
+    try {
+      req.file = await googleDrive.importToStorage({
+        fileId: req.body.google_drive_file_id,
+        accessToken: req.body.google_drive_access_token,
+        fileName: req.body.file_name || req.body.google_drive_file_name,
+        mimeType: req.body.mime_type || req.body.google_drive_mime_type
+      });
+    } catch (err) {
+      return uploadError(req, res, err.statusCode || 502, err.message);
+    }
+  }
+
+  const fileForValidation = req.file || {
     originalname: existing.file_name,
     stored_name: existing.stored_name,
     mimetype: existing.mime_type
-  });
+  };
   const fileError = validateFileForType(parsed.value.type, fileForValidation);
   if (fileError) return uploadError(req, res, 400, fileError);
 
@@ -571,11 +603,15 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     ),
     publish_status: parsed.value.publishStatus,
     updated_at: now,
-    file_name: replacingFile ? req.file.originalname : (isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || existing.file_name) : existing.file_name),
-    stored_name: replacingFile ? (req.file.key || null) : (isDriveFile ? (req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name || null) : existing.stored_name),
-    file_size: replacingFile ? req.file.size : (isDriveFile ? (Number(req.body.file_size) || existing.file_size || 0) : existing.file_size),
-    mime_type: replacingFile ? req.file.mimetype : (isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type || 'application/pdf') : existing.mime_type),
-    content_hash: replacingFile ? (req.file.contentHash || null) : (isDriveFile ? null : existing.content_hash),
+    // `replacingFile` now covers an imported Drive file too, because the
+    // import produced a real stored object above. There is no longer a branch
+    // that writes a Drive file id into stored_name - that value was never a
+    // storage key, which is why those rows could not be streamed.
+    file_name: replacingFile ? req.file.originalname : existing.file_name,
+    stored_name: replacingFile ? (req.file.key || null) : existing.stored_name,
+    file_size: replacingFile ? req.file.size : existing.file_size,
+    mime_type: replacingFile ? req.file.mimetype : existing.mime_type,
+    content_hash: replacingFile ? (req.file.contentHash || null) : existing.content_hash,
     // Replacing the file invalidates any Stream video encoded from the old
     // bytes; clear the fields (and delete the old Stream video below) so a
     // fresh offload can run. Otherwise carry the existing Stream fields.
@@ -585,9 +621,7 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     owner_id: req.user.id,
     storage_provider: replacingFile
       ? (req.file.bucket || storage.backendName())
-      : ((req.body.google_drive_file_id !== undefined)
-        ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
-        : (existing.storage_provider || 'local')),
+      : (existing.storage_provider || 'local'),
     google_drive_file_id: (req.body.google_drive_file_id !== undefined)
       ? (req.body.google_drive_file_id || null)
       : (existing.google_drive_file_id || null),
@@ -631,7 +665,12 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     return res.status(500).json({ message: 'Could not save the resource. Please try again.' });
   }
 
-  if (replacingFile && existing.stored_name && existing.stored_name !== req.file.key) {
+  // Legacy Drive-linked rows stored the DRIVE FILE ID in stored_name rather
+  // than a storage key, so there is no object to delete for them - skip it
+  // instead of issuing a delete for a key that was never written.
+  const hadStoredObject = existing.stored_name &&
+    (existing.storage_provider || 'local') !== 'google_drive';
+  if (replacingFile && hadStoredObject && existing.stored_name !== req.file.key) {
     storage.deleteObject(existing.stored_name).catch(() => {});
   }
   // The old Bunny video is removed only after the row safely references the
@@ -655,7 +694,11 @@ router.delete('/resources/:id', (req, res) => {
     console.error('Content Admin resource delete failed:', err.message);
     return res.status(500).json({ message: 'Could not delete the resource. Please try again.' });
   }
-  if (existing.stored_name) storage.deleteObject(existing.stored_name).catch(() => {});
+  // Legacy Drive-linked rows kept the Drive file id in stored_name, which is
+  // not a storage key - deleting it would be a no-op against the bucket.
+  if (existing.stored_name && (existing.storage_provider || 'local') !== 'google_drive') {
+    storage.deleteObject(existing.stored_name).catch(() => {});
+  }
   if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   return res.json({ message: 'Resource deleted.' });
 });

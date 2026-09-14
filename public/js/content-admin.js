@@ -15,7 +15,10 @@
     catalog: { programs: [], topics: [] },
     resources: [],
     selectedFile: null,
-    editingId: null
+    editingId: null,
+    // Short-lived Google Picker OAuth token for the file currently selected.
+    // In memory only, for the duration of one publish; never persisted.
+    driveAccessToken: null
   };
 
   const TYPE_META = {
@@ -335,6 +338,7 @@
     $('#caGoogleDriveFileName').value = '';
     $('#caGoogleDriveMimeType').value = '';
     $('#caGoogleDriveFileSize').value = '';
+    state.driveAccessToken = null;
     $('#caSchoolFaculty').value = '';
     renderCourses('', '');
     $('#caFile').required = true;
@@ -377,6 +381,12 @@
       formData.append('file_name', $('#caGoogleDriveFileName').value || '');
       formData.append('mime_type', $('#caGoogleDriveMimeType').value || '');
       formData.append('file_size', $('#caGoogleDriveFileSize').value || '');
+      // Lets the server fetch the file's bytes from Drive once, at publish
+      // time. Sent only when the Picker just ran in this session; editing an
+      // already-imported resource has no token and re-imports nothing.
+      if (state.driveAccessToken) {
+        formData.append('google_drive_access_token', state.driveAccessToken);
+      }
     }
     formData.append('publishStatus', $('#caPublishStatus').value);
     if (state.selectedFile) formData.append('file', state.selectedFile);
@@ -390,17 +400,30 @@
   // calls back here with the picked Drive document so this dashboard can
   // populate its hidden form fields.
   // ---------------------------------------------------------------
-  window.onGoogleDriveFilePicked = function (doc) {
+  window.onGoogleDriveFilePicked = function (doc, auth) {
     if (!doc || !doc.id) return;
     $('#caGoogleDriveFileId').value = doc.id || '';
     $('#caGoogleDriveUrl').value = doc.url || `https://drive.google.com/file/d/${doc.id}/view`;
     $('#caGoogleDriveFileName').value = doc.name || '';
     $('#caGoogleDriveMimeType').value = doc.mimeType || '';
     $('#caGoogleDriveFileSize').value = doc.sizeBytes || 0;
+    // The Picker's short-lived access token travels with the publish request
+    // so the server can COPY the file into StudyCore storage. Held in memory
+    // only (never a DOM value, never localStorage) and cleared on submit.
+    state.driveAccessToken = (auth && auth.accessToken) || null;
+    const isWorkspaceDoc = String(doc.mimeType || '').startsWith('application/vnd.google-apps.');
     $('#caFileName').textContent = `Selected: ${doc.name || 'Google Drive Document'}${doc.sizeBytes ? ` (${fileSize(doc.sizeBytes)})` : ''}`;
     $('#caFile').required = false;
     $('#caFile').value = '';
     $('#caFileDropTitle').innerHTML = 'Drive file selected <span style="font-weight:400;color:var(--muted);">(optional — replace with a file upload)</span>';
+    // Publishing copies the file into StudyCore, so say so: the uploader needs
+    // to know students are not being sent to Google for permission.
+    setStatus(
+      $('#caUploadStatus'),
+      isWorkspaceDoc
+        ? 'This Google Doc will be imported into StudyCore as a PDF when you publish, so every student can read it without requesting Drive access.'
+        : 'This file will be copied into StudyCore when you publish, so every student can read it without requesting Drive access.'
+    );
     state.selectedFile = null;
   };
 
@@ -516,6 +539,9 @@
     $('#caFileDropTitle').innerHTML = 'Replace resource file <span style="font-weight:400;color:var(--muted);">(optional)</span>';
     // Restore Drive-backed file info when editing an existing resource.
     const hasDriveFile = Boolean(resource.googleDriveFileId);
+    // No token when merely editing: the file was already imported, so saving
+    // must not trigger another Drive download.
+    state.driveAccessToken = null;
     $('#caGoogleDriveFileId').value = resource.googleDriveFileId || '';
     $('#caGoogleDriveUrl').value = resource.googleDriveUrl || '';
     $('#caGoogleDriveFileName').value = resource.fileName || '';

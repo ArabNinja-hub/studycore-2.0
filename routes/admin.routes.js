@@ -406,6 +406,19 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
 
   const effectiveCategory = category ?? existing.category;
 
+  // Linking a document to a file that stays in Google Drive is no longer a
+  // supported way to publish: students who were not individually shared on
+  // that file got Google's "request access" wall instead of the document.
+  // This dashboard has no Drive Picker (and therefore no OAuth token), so it
+  // cannot import the bytes either - point the admin at the route that can.
+  const linkingNewDriveFile = Boolean(req.body.google_drive_file_id) &&
+    req.body.google_drive_file_id !== existing.google_drive_file_id;
+  if (linkingNewDriveFile) {
+    return failUpload(
+      'Documents can no longer be linked to Google Drive from this dashboard, because students who are not shared on the file would be asked to request access. Publish it from the Content Admin dashboard with "Select from Google Drive", which copies the file into StudyCore, or upload the file directly here.'
+    );
+  }
+
   // Dynamic course: resolve when supplied; keep existing when omitted.
   let courseRow = null;
   let effectiveCourseId = existing.course_id;
@@ -517,18 +530,25 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     ),
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
+    // This route never marks a row as Drive-hosted. 'google_drive' meant "the
+    // bytes are still in the uploader's Drive", and a student opening such a
+    // row was sent to Google to request access from the admin. Documents
+    // sourced from Drive are imported into StudyCore storage by the Content
+    // Admin route (lib/google-drive.js) and carry a real storage provider.
     storage_provider: req.file
       // Replacements already carry their final provider: Bunny for video,
       // object storage for documents/images/audio.
       ? (req.file.bucket || storage.backendName())
-      : ((req.body.google_drive_file_id !== undefined)
-        ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
-        : (existing.storage_provider || 'local')),
-    google_drive_file_id: (req.body.google_drive_file_id !== undefined)
-      ? (req.body.google_drive_file_id || null)
+      : (existing.storage_provider || 'local'),
+    // Drive ids are provenance only, and are accepted here purely so an edit
+    // that touches other fields does not silently drop them. Clearing is
+    // still allowed; setting a NEW one is not, because this route has no
+    // Picker token and so cannot fetch the bytes those ids point at.
+    google_drive_file_id: (req.body.google_drive_file_id !== undefined && !req.body.google_drive_file_id)
+      ? null
       : (existing.google_drive_file_id || null),
-    google_drive_url: (req.body.google_drive_file_id !== undefined)
-      ? (req.body.google_drive_url || null)
+    google_drive_url: (req.body.google_drive_file_id !== undefined && !req.body.google_drive_file_id)
+      ? null
       : (existing.google_drive_url || null),
     ...fileFields
   };
