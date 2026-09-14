@@ -5,7 +5,7 @@ const asyncHandler = require('../lib/async-handler');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, attachUser } = require('../middleware/auth');
-const storage = require('../lib/storage');
+const storage = require('../lib/document-storage');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
 const { isAdmin, isStudent } = require('../lib/roles');
 const accessPolicy = require('../lib/access-policy');
@@ -347,16 +347,16 @@ function r2StreamError(err, res) {
   return res.status(502).json({ message: 'Could not reach file storage. Please try again shortly.' });
 }
 
-async function resolveType(key, storedType, fallbackType) {
+async function resolveType(key, storedType, fallbackType, provider) {
   // Always try to sniff the real file type first — stored metadata can be
   // wrong when a file was uploaded without an extension (mobile browsers
   // sometimes send application/octet-stream for a PDF named as a UUID).
   // Sniffing is cheap (first 16 bytes, 8KB for ZIP containers so Office
   // part names are visible) and authoritative.
   try {
-    const first = await storage.readBytes(key, 0, 15);
+    const first = await storage.readBytes(key, 0, 15, provider);
     const isZip = first.length >= 4 && first[0] === 0x50 && first[1] === 0x4b && first[2] === 0x03 && first[3] === 0x04;
-    const head = isZip ? await storage.readBytes(key, 0, 8191) : first;
+    const head = isZip ? await storage.readBytes(key, 0, 8191, provider) : first;
     const sniffed = sniffMime(head);
     if (sniffed) return sniffed;
   } catch {
@@ -375,7 +375,7 @@ function isSpecificMime(value) {
   return Boolean(type && type !== 'application/octet-stream' && type !== 'binary/octet-stream');
 }
 
-async function streamStoredObject(req, res, key, { filename, mimeType, fileSize }) {
+async function streamStoredObject(req, res, key, { filename, mimeType, fileSize, storageProvider }) {
   // The database already stores the exact upload size and normalized type.
   // Use those values for GET/range requests so every 128 KB PDF chunk maps to
   // one storage request rather than HEAD + signature probe + GET. Keep the
@@ -388,7 +388,7 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
   if (req.method === 'HEAD' || !hasKnownSize) {
     let meta;
     try {
-      meta = await storage.headObject(key);
+      meta = await storage.headObject(key, storageProvider);
     } catch (err) {
       return r2StreamError(err, res);
     }
@@ -398,7 +398,7 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
 
   const detectedType = isSpecificMime(mimeType)
     ? String(mimeType).trim().toLowerCase().split(';')[0].trim()
-    : await resolveType(key, storedType, mimeType);
+    : await resolveType(key, storedType, mimeType, storageProvider);
   const range = parseRange(req.headers.range, size);
 
   // SVG is active content: served same-origin as image/svg+xml it can
@@ -445,7 +445,7 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize 
 
   let object;
   try {
-    object = await storage.getObject(key, range || undefined);
+    object = await storage.getObject(key, range || undefined, storageProvider);
   } catch (err) {
     return r2StreamError(err, res);
   }
@@ -644,7 +644,8 @@ async function handleStream(req, res) {
   await streamStoredObject(req, res, row.stored_name, {
     filename: row.file_name || row.stored_name,
     mimeType: inferMime(row),
-    fileSize: row.file_size
+    fileSize: row.file_size,
+    storageProvider: row.storage_provider
   });
 }
 

@@ -3,7 +3,8 @@ const crypto = require('crypto');
 const { Transform } = require('stream');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const storage = require('../lib/storage');
+const rawStorage = require('../lib/storage');
+const documentStorage = require('../lib/document-storage');
 const bunnyStream = require('../lib/stream');
 
 // NOTE: .svg / image/svg+xml are deliberately NOT in the allowlist.
@@ -219,6 +220,19 @@ function fileFilter(req, file, cb) {
 // the first bytes for the magic-byte check. The whole object is never
 // buffered in this process.
 class ObjectStorage {
+  // `backend` decides where non-video bytes for THIS multer instance land.
+  // - documentStorage (default): resource files (notes/tutorials/past
+  //   papers/lab reports) — dispatches to the Google Drive vault when one is
+  //   connected, otherwise R2/local. This is the only upload surface the
+  //   Drive vault applies to.
+  // - rawStorage: avatars and quiz question images. These are small,
+  //   app-managed assets rather than "documents" and are deliberately kept
+  //   on R2/local always, so they never depend on (or get stuck behind) an
+  //   admin's personal Google account being connected.
+  constructor(backend) {
+    this.backend = backend || documentStorage;
+  }
+
   _handleFile(req, file, cb) {
     const ext = extensionFor(file);
     const key = `${uuidv4()}${ext}`;
@@ -285,14 +299,20 @@ class ObjectStorage {
       });
     }
 
-    storage.putObject({
+    // Documents (PDFs, office files, past papers, images, archives, audio)
+    // go through this instance's backend. For the default document backend
+    // that means the Google Drive vault when a Main Admin has connected one,
+    // otherwise the pre-existing R2/local backend. See lib/document-storage.js.
+    const backend = this.backend;
+    backend.putObject({
       key,
       body: hashingPassThrough,
-      contentType: file.mimetype
+      contentType: file.mimetype,
+      fileName: file.originalname || key
     })
-      .then(() => {
+      .then((written) => {
         if (!matchesSignature(head.subarray(0, headLen), ext)) {
-          return storage.deleteObject(key).then(() => {
+          return backend.deleteObject(written.key, written.backend).then(() => {
             const err = new Error('The uploaded file does not match its file type. Please check the file and try again.');
             err.statusCode = 400;
             err.userSafe = true;
@@ -300,10 +320,10 @@ class ObjectStorage {
           });
         }
         cb(null, {
-          key,
+          key: written.key,
           size,
           contentHash: hash.digest('hex'),
-          bucket: storage.backendName()
+          bucket: written.backend
         });
       })
       .catch((err) => cb(err));
@@ -314,7 +334,7 @@ class ObjectStorage {
       return bunnyStream.deleteVideo(file.streamUid).then(() => cb(null)).catch((err) => cb(err));
     }
     if (!file.key) return cb(null);
-    storage.deleteObject(file.key)
+    this.backend.deleteObject(file.key, file.bucket)
       .then(() => cb(null))
       .catch((err) => cb(err));
   }
@@ -322,8 +342,21 @@ class ObjectStorage {
 
 const maxMb = resolveMaxUploadMb();
 
+// Resource uploads (notes/tutorials/past papers/lab reports/lessons) — the
+// only surface that dispatches through the Google Drive vault when one is
+// connected. See ObjectStorage's constructor comment above.
 const upload = multer({
-  storage: new ObjectStorage(),
+  storage: new ObjectStorage(documentStorage),
+  fileFilter,
+  limits: { fileSize: maxMb * 1024 * 1024 }
+});
+
+// Quiz question images are small, app-managed assets rather than course
+// documents. They always stay on R2/local, independent of whether the
+// Google Drive vault is connected, so quiz authoring never depends on (or
+// is blocked by) an admin's personal Drive connection.
+const assetUpload = multer({
+  storage: new ObjectStorage(rawStorage),
   fileFilter,
   limits: { fileSize: maxMb * 1024 * 1024 }
 });
@@ -347,7 +380,7 @@ function avatarFileFilter(req, file, cb) {
 }
 
 const avatarUpload = multer({
-  storage: new ObjectStorage(),
+  storage: new ObjectStorage(rawStorage),
   fileFilter: avatarFileFilter,
   limits: { fileSize: AVATAR_MAX_BYTES }
 });
@@ -355,4 +388,4 @@ const avatarUpload = multer({
 // matchesSignature is exported for tests: the magic-byte rules decide whether
 // a legitimate upload is kept or deleted, so they need to be verifiable
 // directly rather than only through a full multipart round trip.
-module.exports = { upload, avatarUpload, ALLOWED_EXTENSIONS, VIDEO_EXTENSIONS, resolveMaxUploadMb, matchesSignature };
+module.exports = { upload, assetUpload, avatarUpload, ALLOWED_EXTENSIONS, VIDEO_EXTENSIONS, resolveMaxUploadMb, matchesSignature };

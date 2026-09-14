@@ -642,6 +642,68 @@
     } catch { /* non-fatal */ }
   }
 
+  /* ── Google Drive vault (Integrations) ────── */
+  // "Select from Google Drive" in the upload form (content-admin.js /
+  // google-picker.js) is a per-file, per-uploader pick and is unrelated to
+  // this: this is the ONE account StudyCore uses as its document storage
+  // backend for every non-video upload once connected.
+  async function loadDriveIntegration() {
+    const target = document.getElementById('driveIntegrationStatus');
+    if (!target) return;
+    try {
+      const data = await StudyCoreAPI.adminGoogleDriveStatus();
+      if (data.connected) {
+        target.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:0.9rem;">
+              <strong style="color:var(--green-600);">Connected</strong> —
+              documents are being stored in <strong>${escapeHtml(data.email || 'the connected Google account')}</strong>'s Google Drive.
+            </span>
+            <button class="btn btn-outline btn-sm" id="driveDisconnectBtn" type="button">Disconnect</button>
+          </div>
+          <p style="margin-top:10px;color:var(--muted);font-size:0.82rem;">
+            Disconnecting does not delete or move any document already stored there — it only stops
+            new uploads from being sent to Drive. Existing documents keep opening exactly as before.
+          </p>`;
+        document.getElementById('driveDisconnectBtn').addEventListener('click', async () => {
+          if (!confirm('Disconnect this Google Drive account? New documents will go back to StudyCore\'s default storage. Already-stored documents keep working.')) return;
+          try {
+            await StudyCoreAPI.adminGoogleDriveDisconnect();
+            showToast('Google Drive disconnected.', 'success');
+            loadDriveIntegration();
+          } catch (err) {
+            showToast(err.message, 'error');
+          }
+        });
+      } else {
+        target.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <span style="font-size:0.9rem;color:var(--muted);">Not connected — new documents use StudyCore's default storage.</span>
+            <a class="btn btn-primary btn-sm" href="/api/admin/google-drive/connect">Connect Google Drive</a>
+          </div>`;
+      }
+    } catch (err) {
+      target.innerHTML = `<p style="color:var(--red-600);">${escapeHtml(err.message)}</p>`;
+    }
+  }
+
+  // The connect/disconnect round trip finishes with a full-page redirect
+  // back here (see routes/admin.routes.js's /google-drive/callback), so the
+  // result arrives as a query param rather than a fetch response.
+  function reportDriveCallbackResult() {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('drive_connected');
+    const error = params.get('drive_error');
+    if (!connected && !error) return;
+    if (connected) showToast('Google Drive connected. New documents will now be stored there.', 'success');
+    else if (error) showToast(error, 'error');
+    params.delete('drive_connected');
+    params.delete('drive_error');
+    const qs = params.toString();
+    const hash = window.location.hash || '#integrations';
+    window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`);
+  }
+
   /* ── Payments ───────────────────────────── */
   async function loadPayments() {
     const target = document.getElementById('paymentsList');
@@ -921,6 +983,8 @@
     loadContentAdmins();
     loadUsers();
     loadTopicSuggest();
+    reportDriveCallbackResult();
+    loadDriveIntegration();
   }
 
   document.addEventListener('DOMContentLoaded', initAdminPage);

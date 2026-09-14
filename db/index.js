@@ -301,6 +301,38 @@ try {
   // column already exists - fine
 }
 
+// -----------------------------------------------------------------------
+// Google Drive VAULT (documents are now stored IN Google Drive, not just
+// picked from it). One Main Admin connects one real Google account with
+// offline access; StudyCore keeps the resulting refresh token here,
+// encrypted at rest with a key derived from JWT_SECRET (see
+// lib/google-drive-vault.js). Every document upload (multipart, resumable,
+// or "Select from Google Drive") is written into a dedicated StudyCore
+// folder inside that account, and every student read is proxied through
+// the normal session/subscription-gated /stream endpoint - students and
+// their browsers never talk to Google directly, so Drive's own sharing
+// permissions are never in the access path.
+//
+// Only one row is ever expected (single connected vault account), but the
+// table is not literally singleton-constrained so a re-connect can insert
+// a fresh row and the old one can be inspected/rotated if ever needed.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS google_drive_accounts (
+      id TEXT PRIMARY KEY,
+      google_email TEXT,
+      encrypted_refresh_token TEXT NOT NULL,
+      folder_id TEXT,
+      connected_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      connected_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+    )
+  `);
+} catch {
+  // already exists - fine
+}
+
 // Bunny Stream integration. New uploaded videos are written only to Bunny,
 // which serves adaptive-bitrate HLS with a built-in quality selector. Legacy
 // stored_name remains nullable for old rows and documents; new Bunny videos

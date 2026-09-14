@@ -16,7 +16,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
 const resumableUploads = require('../lib/resumable-uploads');
-const storage = require('../lib/storage');
+const storage = require('../lib/document-storage');
 const stream = require('../lib/stream');
 const googleDrive = require('../lib/google-drive');
 const { ROLES } = require('../lib/roles');
@@ -68,7 +68,7 @@ function cleanupIncomingFile(req) {
   const file = req && req.file;
   if (!file) return;
   if (file.streamUid) stream.deleteVideo(file.streamUid).catch(() => {});
-  else if (file.key) storage.deleteObject(file.key).catch(() => {});
+  else if (file.key) storage.deleteObject(file.key, file.bucket).catch(() => {});
   if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
 }
 
@@ -671,7 +671,7 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
   const hadStoredObject = existing.stored_name &&
     (existing.storage_provider || 'local') !== 'google_drive';
   if (replacingFile && hadStoredObject && existing.stored_name !== req.file.key) {
-    storage.deleteObject(existing.stored_name).catch(() => {});
+    storage.deleteObject(existing.stored_name, existing.storage_provider).catch(() => {});
   }
   // The old Bunny video is removed only after the row safely references the
   // replacement that Bunny accepted.
@@ -697,7 +697,7 @@ router.delete('/resources/:id', (req, res) => {
   // Legacy Drive-linked rows kept the Drive file id in stored_name, which is
   // not a storage key - deleting it would be a no-op against the bucket.
   if (existing.stored_name && (existing.storage_provider || 'local') !== 'google_drive') {
-    storage.deleteObject(existing.stored_name).catch(() => {});
+    storage.deleteObject(existing.stored_name, existing.storage_provider).catch(() => {});
   }
   if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   return res.json({ message: 'Resource deleted.' });
