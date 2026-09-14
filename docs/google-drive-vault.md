@@ -17,11 +17,15 @@ otherwise independent — the Picker keeps working exactly as documented in
 
 ## What problem this solves
 
-Historically, picking a file from Google Drive **copied** its bytes once into
-StudyCore's own object storage (R2, or local disk) at publish time — see the
-"WHY THIS EXISTS" header comment in `lib/google-drive.js`. That fixed the
-original access bug (students bounced to Google's "Request access" page) but
-meant Drive was only ever a *picker*, never real, durable storage.
+> **Note:** this page covers the *vault* — the account StudyCore **uploads
+> into** when a file is uploaded directly to StudyCore. Documents picked from
+> an admin's own Drive with the Picker are a separate (and also Drive-hosted)
+> path, documented in `docs/google-drive-documents.md`; those are referenced
+> in place and never copied anywhere.
+
+For a brief period, picking a file from Google Drive **copied** its bytes into
+StudyCore's own object storage at publish time. That is no longer done: Google
+Drive is the storage, and documents are read back out of it on demand.
 
 This feature makes Google Drive the actual storage backend: every new
 document (past papers, notes, tutorial sheets, lab reports — **not video**,
@@ -47,7 +51,8 @@ relied on by, a student.
    response. Only one row has `status = 'active'` at a time.
 3. **Writes.** `lib/document-storage.js` is the single dispatcher every
    upload path goes through (`middleware/upload.js`, `lib/resumable-
-   uploads.js`, `lib/google-drive.js`'s Picker-import path). When the vault
+   uploads.js`). Picker-selected documents are *not* a write path at all —
+   they already live in Drive and are only referenced. When the vault
    is connected (`lib/google-drive-vault.js`'s `isConfigured()`), a new
    document is uploaded straight into a private "StudyCore Documents" folder
    inside the connected account, using Drive's resumable-upload protocol
@@ -82,14 +87,18 @@ relied on by, a student.
 
 ## Naming: `google_drive_vault` vs. `google_drive`
 
-`resources.storage_provider` can already contain the pre-existing value
-`'google_drive'` (no suffix) on **legacy, broken rows**: those were published
-before the import fix and kept only a Drive file id in `stored_name`, which
-is not a storage key — those rows cannot be streamed and are reported by
-`scripts/list-drive-linked-resources.js`. The vault deliberately uses a
-different string, `'google_drive_vault'`, so a real, readable vault-stored
-document can never be mistaken for that broken legacy state. See
-`lib/document-storage.js`'s `backendFor()` for the exact dispatch logic.
+`resources.storage_provider` distinguishes two **different, both fully
+working** Google Drive arrangements:
+
+| Value | Meaning |
+| --- | --- |
+| `google_drive` | The document lives in a Drive file StudyCore did **not** upload — an admin picked it with the Drive Picker. The Drive file id is the storage key; `lib/drive-documents.js` reads it through on demand. See `docs/google-drive-documents.md`. |
+| `google_drive_vault` | The document is a file **StudyCore itself uploaded** into the connected vault account's "StudyCore Documents" folder. |
+
+Both read from Google Drive; they differ only in who put the file there and
+therefore in whether StudyCore may delete it (it may delete its own vault
+objects, never a Picker-referenced file). See `lib/document-storage.js`'s
+`backendFor()` for the exact dispatch logic.
 
 ## Environment variables
 
@@ -126,7 +135,7 @@ need R2 (or Bunny, for video) regardless of the vault.
 real account is connected, the refresh token being encrypted at rest, a full
 write → head → get → ranged-get → delete round trip against a faked Drive
 API, and the critical "reads dispatch by the object's own provider, not by
-what's active now" guarantee. `scripts/test-google-drive-import.js` and
-`scripts/test-drive-student-access.js` continue to cover the Picker-import
-path and the student access guarantees, unmodified — they run with the vault
-disconnected, exercising the R2/local fallback exactly as before.
+what's active now" guarantee. `scripts/test-google-drive-link.js` and
+`scripts/test-drive-student-access.js` cover the separate Picker path — where
+Google Drive is the storage and documents are referenced rather than copied —
+and the student access guarantees.

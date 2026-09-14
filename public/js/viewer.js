@@ -137,18 +137,18 @@
     bindBackButtons();
   }
 
-  // A resource published back when Drive files were LINKED rather than copied
-  // into StudyCore. Its bytes never left the uploader's Drive, so there is
-  // nothing here to render. The old behaviour embedded Google's preview,
-  // which asked the student to request access from the admin — a request they
-  // could not action themselves and which StudyCore could not honour. Telling
-  // them to re-open it later is honest; the admin fixes it by re-saving the
-  // resource from the Content Admin dashboard, which imports the file.
-  function driveNotMigrated() {
+  // (driveNotMigrated lived here.) It announced a migration of the document
+  // into StudyCore's own storage — something that does not happen. Google
+  // Drive IS the document storage: the backend reads the file out of Drive and
+  // streams it into this same viewer, so a document published from Drive years
+  // ago and one picked from Drive a minute ago both open normally. The ONLY
+  // Drive failure a student can now see is the genuine one below: Google Drive
+  // itself cannot serve the file.
+  function driveUnavailable(message) {
     renderState({
-      icon: 'refresh',
-      title: 'This document is being moved into StudyCore',
-      body: 'It was published from Google Drive before StudyCore started storing documents itself, so it cannot be opened here yet. Opening it has been logged for your admin — please check back shortly, and tell them if it stays unavailable.',
+      icon: 'alert-triangle',
+      title: 'Document unavailable',
+      body: message || 'This document could not be opened from Google Drive. It may have been moved, renamed or deleted there — please tell your admin.',
       secondary: `<button class="btn btn-outline" type="button" data-viewer-back>${SC.icon('arrow-left', { size: 16 })} Go back</button>`
     });
     bindBackButtons();
@@ -369,32 +369,26 @@
 
     renderHeader();
 
-    // NOTE: there is deliberately NO Google Drive branch here any more.
+    // NOTE: there is deliberately NO Google Drive branch here.
     //
-    // Drive-sourced documents used to be shown in an embedded
-    // drive.google.com/.../preview iframe. Google authorizes that frame
-    // against the FILE's own Drive sharing list — not against the StudyCore
-    // session — so every student who was not individually shared on the
-    // uploader's private file was shown Google's "You need access / Request
-    // access" screen instead of the document.
+    // Google Drive is the document STORAGE, not a destination the student is
+    // sent to. A Drive-hosted document is fetched from Drive by the StudyCore
+    // backend and served through the ordinary protected /stream endpoint, so
+    // it renders in this same reader as any other document — on desktop and
+    // mobile alike. Rows published from Drive BEFORE the storage changes and
+    // rows picked from Drive today are identical here.
     //
-    // Drive files are now copied into StudyCore's own storage at publish time
-    // (lib/google-drive.js), so they are ordinary stored resources and fall
-    // through to the protected reader below like every other document. No
-    // Google account, no Drive sharing, no access request.
+    // What must never come back:
+    //   · embedding drive.google.com/.../preview — Google authorizes that
+    //     frame against the FILE's own sharing list, not the StudyCore
+    //     session, so unshared students got "Request access";
+    //   · a "document is being migrated into StudyCore" state — nothing is
+    //     ever copied or moved into StudyCore storage.
     //
-    // `googleDriveFileId` survives only as provenance on imported rows and is
-    // intentionally not consulted when deciding how to render.
+    // `storageProvider` / `googleDriveFileId` are provenance for admin tooling
+    // and are intentionally not consulted when deciding how to render.
 
-    // Legacy rows: imported before the change, so the bytes are still only in
-    // Drive and there is nothing to stream. Say so plainly rather than
-    // bouncing the student to a Google permission wall they cannot clear.
-    if (resource.storageProvider === 'google_drive' || (resource.googleDriveFileId && !resource.hasFile)) {
-      driveNotMigrated();
-      return;
-    }
-
-    // Legacy link-only resources have no stored file to render.
+    // Resources with no readable file at all (link-only rows).
     if (!resource.hasFile) {
       if (resource.externalUrl) externalOnly();
       else noFile();

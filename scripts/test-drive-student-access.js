@@ -1,16 +1,30 @@
 'use strict';
 
-// END-TO-END proof of the reported bug and its fix.
+// END-TO-END proof that Google Drive is the document storage and that both
+// generations of Drive document open in the StudyCore viewer.
 //
-// THE REPORT: "for some students it's telling them to ask for access from the
-// admin who uploaded the document from Google Drive".
+// THE REPORTED BUG
 //
-// This suite runs the real server and walks the whole path:
-//   Content Admin picks a Drive file -> publishes it -> a student who has NO
-//   relationship whatsoever with the uploader's Google account opens it.
+//   "This document is being moved into StudyCore. It was published from
+//    Google Drive before StudyCore started storing documents itself…"
+//
+// That message described a migration StudyCore does not perform. The correct
+// architecture is:
+//
+//     Google Drive -> StudyCore backend -> StudyCore document viewer
+//
+// This suite runs the real server and walks the whole path for BOTH:
+//
+//   · an OLD resource, published from Google Drive BEFORE the storage changes
+//     (storage_provider='google_drive', Drive id in stored_name), and
+//   · a NEW resource, published right now through the Google Drive Picker,
+//
+// each opened by a student who has NO relationship whatsoever with the
+// uploader's Google account, using DESKTOP and MOBILE request patterns.
 //
 // The student must receive the document's actual bytes from StudyCore. Any
-// redirect to Google, or any response mentioning access requests, is the bug.
+// redirect to Google, any "request access" text, any "being moved" state, and
+// any copy of the bytes into StudyCore storage is a failure.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -28,64 +42,113 @@ process.env.R2_ACCOUNT_ID = '';
 process.env.R2_ACCESS_KEY_ID = '';
 process.env.R2_SECRET_ACCESS_KEY = '';
 process.env.R2_BUCKET_NAME = '';
+// StudyCore's OWN server-side Drive credential. This — not the student, and
+// not the uploader's browser — is what reads the document out of Drive.
+process.env.GOOGLE_API_KEY = 'AIzaTestServerSideKey0000000000000000000';
 
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { createToken, COOKIE_NAME } = require('../middleware/auth');
 const { ROLES } = require('../lib/roles');
+const driveDocuments = require('../lib/drive-documents');
 const app = require('../server');
 
-// The document the admin has in their private Drive. The student must end up
-// holding exactly these bytes.
-const DRIVE_PDF = Buffer.concat([
-  Buffer.from('%PDF-1.4\n', 'latin1'),
-  Buffer.from('1 0 obj<</Type/Catalog>>endobj\n', 'latin1'),
-  Buffer.from('StudyCore Drive import: Contract Law lecture notes.\n', 'latin1'),
-  Buffer.from('trailer<</Root 1 0 R>>\n%%EOF', 'latin1')
-]);
-const DRIVE_FILE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345';
+// The documents that live in Google Drive. Students must end up holding
+// exactly these bytes — fetched from Drive, not from a StudyCore copy.
+function pdfOf(text) {
+  return Buffer.concat([
+    Buffer.from('%PDF-1.4\n', 'latin1'),
+    Buffer.from('1 0 obj<</Type/Catalog>>endobj\n', 'latin1'),
+    Buffer.from(`${text}\n`, 'latin1'),
+    // Padding so range requests have something meaningful to slice.
+    Buffer.from('0123456789'.repeat(64), 'latin1'),
+    Buffer.from('trailer<</Root 1 0 R>>\n%%EOF', 'latin1')
+  ]);
+}
 
-// Stand-in for Google Drive. Crucially it models the real permission rule:
-// the file is PRIVATE, so it is released only to a caller presenting the
-// uploader's OAuth token - a student could never fetch it directly.
+const NEW_PDF = pdfOf('StudyCore Drive document: Contract Law lecture notes.');
+const OLD_PDF = pdfOf('StudyCore Drive document: legacy Torts past paper.');
+const NEW_FILE_ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345';
+const OLD_FILE_ID = '1OldLegacyDriveFileId000000000000';
+
+// Stand-in for Google Drive. It models the real permission rule: these files
+// are PRIVATE, released only to a caller presenting either the uploader's
+// Picker token or StudyCore's own server-side credential. A student could
+// never fetch them directly, which is the whole point of proxying.
 const ADMIN_TOKEN = 'ya29.admin-picker-token';
+const SERVER_KEY = process.env.GOOGLE_API_KEY;
+
 function installFakeDrive() {
   const realFetch = global.fetch;
+  const files = new Map([
+    [NEW_FILE_ID, { name: 'Contract Law Lecture Notes.pdf', mime: 'application/pdf', bytes: NEW_PDF }],
+    [OLD_FILE_ID, { name: 'Torts Past Paper 2019.pdf', mime: 'application/pdf', bytes: OLD_PDF }]
+  ]);
+  const calls = [];
+
   global.fetch = async (url, options = {}) => {
     const target = String(url);
     if (!target.startsWith('https://www.googleapis.com/drive/')) {
       return realFetch(url, options);
     }
+    const method = (options && options.method) || 'GET';
+    calls.push({ url: target, method, headers: (options && options.headers) || {} });
+
     const auth = (options.headers && options.headers.Authorization) || '';
-    if (auth !== `Bearer ${ADMIN_TOKEN}`) {
+    const authorized = auth === `Bearer ${ADMIN_TOKEN}` || target.includes(`key=${SERVER_KEY}`);
+    if (!authorized) {
       // Exactly what Drive does to a caller without permission.
       return { ok: false, status: 404, json: async () => ({ error: { message: 'File not found' } }) };
     }
+
+    const idMatch = target.match(/\/drive\/v3\/files\/([^?/]+)/);
+    const fileId = idMatch ? decodeURIComponent(idMatch[1]) : null;
+
+    if (target.includes('/permissions')) {
+      return { ok: true, status: 200, json: async () => ({ id: 'perm-1' }) };
+    }
+
+    const file = files.get(fileId);
+    if (!file) return { ok: false, status: 404, json: async () => ({}) };
+
     if (target.includes('fields=')) {
       return {
         ok: true,
         status: 200,
         json: async () => ({
-          id: DRIVE_FILE_ID,
-          name: 'Contract Law Lecture Notes.pdf',
-          mimeType: 'application/pdf',
-          size: String(DRIVE_PDF.length)
+          id: fileId, name: file.name, mimeType: file.mime, size: String(file.bytes.length)
         })
       };
     }
+
+    // alt=media — the real byte read, with Range support.
+    const requested = (options.headers && options.headers.Range) || null;
+    let bytes = file.bytes;
+    const headers = new Map([['Content-Type', file.mime]]);
+    if (requested) {
+      const m = /bytes=(\d+)-(\d+)/.exec(requested);
+      if (m) {
+        const start = Number(m[1]);
+        const end = Math.min(Number(m[2]), file.bytes.length - 1);
+        bytes = file.bytes.subarray(start, end + 1);
+        headers.set('Content-Range', `bytes ${start}-${end}/${file.bytes.length}`);
+      }
+    }
+    headers.set('Content-Length', String(bytes.length));
     return {
       ok: true,
-      status: 200,
+      status: requested ? 206 : 200,
+      headers: { get: (h) => headers.get(h) || null },
       body: new ReadableStream({
         start(controller) {
-          controller.enqueue(new Uint8Array(DRIVE_PDF));
+          controller.enqueue(new Uint8Array(bytes));
           controller.close();
         }
       })
     };
   };
-  return () => { global.fetch = realFetch; };
+  return { calls, restore() { global.fetch = realFetch; } };
 }
 
 function cookieFrom(response) {
@@ -97,14 +160,18 @@ function cookieFrom(response) {
   return raw.split(';')[0];
 }
 
-async function call(baseUrl, method, pathname, { cookie, body, manualRedirect = false } = {}) {
-  const headers = {};
-  if (cookie) headers.Cookie = cookie;
-  const options = { method, headers, redirect: manualRedirect ? 'manual' : 'follow' };
+// A real iPhone Safari UA + the Range pattern mobile PDF readers issue.
+const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
+const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
+async function call(baseUrl, method, pathname, { cookie, body, manualRedirect = false, headers = {} } = {}) {
+  const requestHeaders = { ...headers };
+  if (cookie) requestHeaders.Cookie = cookie;
+  const options = { method, headers: requestHeaders, redirect: manualRedirect ? 'manual' : 'follow' };
   if (body !== undefined) {
     if (body instanceof FormData) options.body = body;
     else {
-      headers['Content-Type'] = 'application/json';
+      requestHeaders['Content-Type'] = 'application/json';
       options.body = JSON.stringify(body);
     }
   }
@@ -137,16 +204,80 @@ function createStudent() {
   return { ...user, cookie: `${COOKIE_NAME}=${createToken(user)}` };
 }
 
-test('a Drive-published document is readable by a student who has no Drive access', {
+// Everything a student device does to read a document, asserted as a unit so
+// both the old and the new resource are held to the identical standard on
+// both desktop and mobile.
+async function assertOpensInViewer(baseUrl, { resourceId, student, expected, label, userAgent }) {
+  const ua = { 'User-Agent': userAgent };
+
+  // 1. Metadata — what the viewer uses to choose its renderer.
+  const meta = await call(baseUrl, 'GET', `/api/resources/${resourceId}`, { cookie: student.cookie, headers: ua });
+  assert.equal(meta.response.status, 200, `${label}: metadata must load — ${meta.raw}`);
+  assert.equal(meta.data.resource.hasFile, true, `${label}: the resource has a readable file`);
+  assert.equal(meta.data.resource.mimeType, 'application/pdf', `${label}: served as a PDF`);
+  // No Drive credential or "being moved" state may reach the browser.
+  assert.doesNotMatch(meta.raw, /ya29\./, `${label}: no OAuth token exposed`);
+  assert.doesNotMatch(meta.raw, /being moved/i, `${label}: no migration state`);
+
+  // 2. A short-lived viewing ticket, exactly as the viewer mints one.
+  const ticket = await call(baseUrl, 'GET', `/api/resources/${resourceId}/ticket`, { cookie: student.cookie, headers: ua });
+  assert.equal(ticket.response.status, 200, `${label}: ticket — ${ticket.raw}`);
+
+  // 3. The full document, through the ticketed URL the reader actually loads.
+  const full = await call(baseUrl, 'GET', ticket.data.url, {
+    cookie: student.cookie, manualRedirect: true, headers: ua
+  });
+  assert.equal(full.response.status, 200,
+    `${label}: served directly by StudyCore, never redirected to Google`);
+  assert.equal(full.response.headers.get('content-type'), 'application/pdf');
+  assert.equal(full.response.headers.get('location'), null, `${label}: no redirect`);
+  assert.deepEqual(full.buffer, expected, `${label}: the exact bytes stored in Google Drive`);
+  assert.doesNotMatch(full.raw, /request access/i, `${label}: no Google access wall`);
+  assert.doesNotMatch(full.raw, /drive\.google\.com/i, `${label}: no Drive URL leaks`);
+  assert.doesNotMatch(full.raw, /being moved/i, `${label}: no migration message`);
+
+  // 4. Range reads — pdf.js pages a document in 128KB chunks on every device,
+  //    and mobile Safari in particular will not render a PDF without them.
+  const ranged = await call(baseUrl, 'GET', ticket.data.url, {
+    cookie: student.cookie, manualRedirect: true, headers: { ...ua, Range: 'bytes=0-63' }
+  });
+  assert.equal(ranged.response.status, 206, `${label}: partial content is supported`);
+  assert.equal(ranged.response.headers.get('accept-ranges'), 'bytes');
+  assert.deepEqual(ranged.buffer, expected.subarray(0, 64), `${label}: correct byte range`);
+  assert.equal(
+    ranged.response.headers.get('content-range'),
+    `bytes 0-63/${expected.length}`,
+    `${label}: honest Content-Range`
+  );
+
+  // 5. A late-offset range (a student jumping to the last page).
+  const tail = await call(baseUrl, 'GET', ticket.data.url, {
+    cookie: student.cookie,
+    manualRedirect: true,
+    headers: { ...ua, Range: `bytes=${expected.length - 32}-${expected.length - 1}` }
+  });
+  assert.equal(tail.response.status, 206, `${label}: tail range`);
+  assert.deepEqual(tail.buffer, expected.subarray(expected.length - 32), `${label}: correct tail bytes`);
+
+  // 6. The viewer page itself is served to this device (same internal viewer,
+  //    no Google-hosted preview).
+  const page = await call(baseUrl, 'GET', `/viewer/${resourceId}`, {
+    cookie: student.cookie, manualRedirect: true, headers: ua
+  });
+  assert.equal(page.response.status, 200, `${label}: the StudyCore viewer page loads`);
+  assert.doesNotMatch(page.raw, /drive\.google\.com/i, `${label}: the viewer embeds no Drive frame`);
+}
+
+test('Google Drive documents — old and new — open in the StudyCore viewer', {
   timeout: 30000, concurrency: false
 }, async (t) => {
-  const restoreDrive = installFakeDrive();
+  const drive = installFakeDrive();
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
 
   try {
-    // ── The Content Admin publishes a file straight from their Drive ──────
+    // ── A Content Admin publishes a file straight from their Drive ────────
     const signup = await call(baseUrl, 'POST', '/api/auth/register-content-admin', {
       body: {
         name: 'Alice Publisher',
@@ -176,81 +307,39 @@ test('a Drive-published document is readable by a student who has no Drive acces
       semester: 'Term 1',
       publishStatus: 'published',
       // Exactly what the Picker hands the dashboard.
-      google_drive_file_id: DRIVE_FILE_ID,
-      google_drive_url: `https://drive.google.com/file/d/${DRIVE_FILE_ID}/view`,
+      google_drive_file_id: NEW_FILE_ID,
+      google_drive_url: `https://drive.google.com/file/d/${NEW_FILE_ID}/view`,
       google_drive_access_token: ADMIN_TOKEN,
       file_name: 'Contract Law Lecture Notes.pdf',
       mime_type: 'application/pdf',
-      file_size: String(DRIVE_PDF.length)
+      file_size: String(NEW_PDF.length)
     }).forEach(([k, v]) => form.append(k, v));
 
     const publish = await call(baseUrl, 'POST', '/api/content-admin/resources', {
       cookie: adminCookie, body: form
     });
     assert.equal(publish.response.status, 201, publish.raw);
-    const resourceId = publish.data.resource.id;
+    const newResourceId = publish.data.resource.id;
 
-    await t.test('publishing copied the file into StudyCore storage', () => {
-      const row = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
-      // The decisive assertion: stored_name is a real storage key, NOT the
-      // Drive file id that the old code wrote here.
-      assert.ok(row.stored_name, 'the resource has a stored object');
-      assert.notEqual(row.stored_name, DRIVE_FILE_ID,
-        'stored_name must be a storage key, never the Drive file id');
-      assert.match(row.stored_name, /\.pdf$/);
-      assert.notEqual(row.storage_provider, 'google_drive',
-        'the bytes live in StudyCore storage now, so the provider is local/r2');
-      assert.equal(row.file_size, DRIVE_PDF.length);
-      // Provenance is retained, but it is no longer what serves the file.
-      assert.equal(row.google_drive_file_id, DRIVE_FILE_ID);
+    await t.test('publishing REFERENCES the Drive file and copies nothing', () => {
+      const row = db.prepare('SELECT * FROM resources WHERE id = ?').get(newResourceId);
+      // Google Drive remains the storage.
+      assert.equal(row.storage_provider, 'google_drive',
+        'the bytes stay in Google Drive; StudyCore records the reference');
+      assert.equal(row.google_drive_file_id, NEW_FILE_ID);
+      assert.equal(row.stored_name, NEW_FILE_ID,
+        'the storage key IS the Drive file id');
+
+      // Nothing was copied into StudyCore's object store.
+      const uploadsDir = path.join(testDataDir, 'uploads');
+      const written = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
+      assert.equal(written.length, 0, 'no document bytes may be copied into StudyCore');
     });
 
-    // ── The student: a different person, no Google account involved ───────
-    const student = createStudent();
-
-    await t.test('the student gets the document bytes, not an access request', async () => {
-      const meta = await call(baseUrl, 'GET', `/api/resources/${resourceId}`, { cookie: student.cookie });
-      assert.equal(meta.response.status, 200, meta.raw);
-      assert.equal(meta.data.resource.hasFile, true);
-
-      const stream = await call(baseUrl, 'GET', `/api/resources/${resourceId}/stream`, {
-        cookie: student.cookie, manualRedirect: true
-      });
-
-      // The bug produced a 302 to docs.google.com / drive.google.com.
-      assert.equal(stream.response.status, 200,
-        'the student must be served the file directly, never redirected to Google');
-      assert.equal(stream.response.headers.get('content-type'), 'application/pdf');
-      assert.deepEqual(stream.buffer, DRIVE_PDF,
-        'the student receives the exact document the admin picked from Drive');
-
-      // Nothing anywhere in the response points at Google or asks for access.
-      assert.doesNotMatch(stream.raw, /request access/i);
-      assert.doesNotMatch(stream.raw, /drive\.google\.com/i);
-      assert.equal(stream.response.headers.get('location'), null);
-    });
-
-    await t.test('the reader ticket path also serves the document', async () => {
-      const ticket = await call(baseUrl, 'GET', `/api/resources/${resourceId}/ticket`, { cookie: student.cookie });
-      assert.equal(ticket.response.status, 200, ticket.raw);
-      const viaTicket = await call(baseUrl, 'GET', ticket.data.url, {
-        cookie: student.cookie, manualRedirect: true
-      });
-      assert.equal(viaTicket.response.status, 200);
-      assert.deepEqual(viaTicket.buffer, DRIVE_PDF);
-    });
-
-    await t.test('the student never needs, and never receives, Google credentials', async () => {
-      const meta = await call(baseUrl, 'GET', `/api/resources/${resourceId}`, { cookie: student.cookie });
-      // The admin's OAuth token must never leak into a student-facing payload.
-      assert.doesNotMatch(meta.raw, /ya29\./, 'no OAuth access token is exposed');
-      assert.doesNotMatch(meta.raw, new RegExp(ADMIN_TOKEN));
-    });
-
-    await t.test('a legacy Drive-LINKED row reports honestly instead of bouncing to Google', async () => {
-      // Simulate a row published before the fix: provider google_drive and a
-      // Drive id sitting in stored_name.
-      const legacyId = `res-legacy-${uuidv4()}`;
+    // ── An OLD row: published from Drive BEFORE the storage changes ───────
+    // This is the exact record shape that produced the reported error.
+    const oldResourceId = `res-legacy-${uuidv4()}`;
+    {
       const now = new Date().toISOString();
       db.prepare(`
         INSERT INTO resources (id, title, category, resource_type, subject, course, course_id,
@@ -258,33 +347,129 @@ test('a Drive-published document is readable by a student who has no Drive acces
           is_premium, publish_status, uploaded_by, uploader_role, uploaded_at, created_at,
           updated_at, storage_provider, google_drive_file_id, google_drive_url)
         VALUES (@id, @title, 'document', 'Notes', @subject, @course, @course_id,
-          0, 'Foundations', 'Term 1', 'legacy.pdf', @stored_name, 1234, 'application/pdf',
+          0, 'Foundations', 'Term 1', 'Torts Past Paper 2019.pdf', @stored_name, NULL, 'application/pdf',
           0, 'published', NULL, 'content_admin', @now, @now, @now, 'google_drive',
           @drive_id, @drive_url)
       `).run({
-        id: legacyId, title: 'Legacy Drive Notes', subject: 'Law', course: 'LAW',
-        course_id: course.id, stored_name: DRIVE_FILE_ID, now,
-        drive_id: DRIVE_FILE_ID, drive_url: `https://drive.google.com/file/d/${DRIVE_FILE_ID}/view`
+        id: oldResourceId, title: 'Torts Past Paper 2019', subject: 'Law', course: 'LAW',
+        course_id: course.id, stored_name: OLD_FILE_ID, now,
+        drive_id: OLD_FILE_ID, drive_url: `https://drive.google.com/file/d/${OLD_FILE_ID}/view`
       });
       db.prepare('INSERT INTO resource_programs (resource_id, program_code) VALUES (?, ?)')
-        .run(legacyId, 'LAW');
+        .run(oldResourceId, 'LAW');
+    }
 
-      const stream = await call(baseUrl, 'GET', `/api/resources/${legacyId}/stream`, {
-        cookie: student.cookie, manualRedirect: true
+    // ── The student: a different person, no Google account involved ───────
+    const student = createStudent();
+
+    await t.test('NEW Drive document opens on desktop', async () => {
+      await assertOpensInViewer(baseUrl, {
+        resourceId: newResourceId, student, expected: NEW_PDF,
+        label: 'new/desktop', userAgent: DESKTOP_UA
       });
-      // It cannot be served (the bytes were never copied), but the student is
-      // NOT sent to Google to beg the admin for permission.
-      assert.equal(stream.response.status, 404);
-      assert.equal(stream.response.headers.get('location'), null);
-      assert.doesNotMatch(stream.raw, /request access/i);
-      assert.doesNotMatch(stream.raw, /drive\.google\.com/i);
-      assert.match(stream.data.message, /being moved into StudyCore/i);
     });
 
-    await t.test('the main admin dashboard cannot re-create the broken state', async () => {
-      // The main admin route has no Drive Picker and so no OAuth token: it
-      // could never fetch the bytes, only write a link. Left open, it was a
-      // second way to produce a row that sends students to Google.
+    await t.test('NEW Drive document opens on mobile', async () => {
+      await assertOpensInViewer(baseUrl, {
+        resourceId: newResourceId, student, expected: NEW_PDF,
+        label: 'new/mobile', userAgent: MOBILE_UA
+      });
+    });
+
+    await t.test('OLD Drive document (published before the storage changes) opens on desktop', async () => {
+      await assertOpensInViewer(baseUrl, {
+        resourceId: oldResourceId, student, expected: OLD_PDF,
+        label: 'old/desktop', userAgent: DESKTOP_UA
+      });
+    });
+
+    await t.test('OLD Drive document opens on mobile', async () => {
+      await assertOpensInViewer(baseUrl, {
+        resourceId: oldResourceId, student, expected: OLD_PDF,
+        label: 'old/mobile', userAgent: MOBILE_UA
+      });
+    });
+
+    await t.test('the "being moved into StudyCore" state is gone for good', async () => {
+      for (const id of [oldResourceId, newResourceId]) {
+        const stream = await call(baseUrl, 'GET', `/api/resources/${id}/stream`, {
+          cookie: student.cookie, manualRedirect: true
+        });
+        assert.equal(stream.response.status, 200);
+        assert.doesNotMatch(stream.raw, /being moved/i);
+        assert.doesNotMatch(stream.raw, /check back shortly/i);
+      }
+    });
+
+    await t.test('a HEAD request reports the true size from Drive', async () => {
+      const head = await call(baseUrl, 'HEAD', `/api/resources/${oldResourceId}/stream`, {
+        cookie: student.cookie, manualRedirect: true
+      });
+      assert.equal(head.response.status, 200);
+      // The legacy row stored NO file_size; it comes back from Drive.
+      assert.equal(head.response.headers.get('content-length'), String(OLD_PDF.length));
+      assert.equal(head.response.headers.get('accept-ranges'), 'bytes');
+    });
+
+    await t.test('the student never needs, and never receives, Google credentials', async () => {
+      for (const id of [oldResourceId, newResourceId]) {
+        const meta = await call(baseUrl, 'GET', `/api/resources/${id}`, { cookie: student.cookie });
+        assert.doesNotMatch(meta.raw, /ya29\./, 'no OAuth access token is exposed');
+        assert.doesNotMatch(meta.raw, new RegExp(ADMIN_TOKEN));
+      }
+    });
+
+    await t.test('StudyCore access control still gates every Drive document', async () => {
+      // A student in a different program must not read it, even though the
+      // bytes now come from Drive. 'SICT' is a real seeded program, so this
+      // exercises genuine program gating rather than an unknown code.
+      const outsider = createStudent();
+      db.prepare('UPDATE users SET program_code = ? WHERE id = ?').run('SICT', outsider.id);
+      const denied = await call(baseUrl, 'GET', `/api/resources/${oldResourceId}/stream`, {
+        cookie: outsider.cookie, manualRedirect: true
+      });
+      assert.equal(denied.response.status, 403, 'program gating is unchanged');
+      assert.notDeepEqual(denied.buffer, OLD_PDF);
+
+      // And an unauthenticated request gets nothing at all.
+      const anon = await call(baseUrl, 'GET', `/api/resources/${oldResourceId}/stream`, { manualRedirect: true });
+      assert.equal(anon.response.status, 401);
+    });
+
+    await t.test('a Drive file that really is gone reports an honest error', async () => {
+      const missingId = `res-missing-${uuidv4()}`;
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT INTO resources (id, title, category, resource_type, subject, course, course_id,
+          target_all, topic, semester, file_name, stored_name, file_size, mime_type,
+          is_premium, publish_status, uploaded_by, uploader_role, uploaded_at, created_at,
+          updated_at, storage_provider, google_drive_file_id, google_drive_url)
+        VALUES (@id, 'Deleted Drive Notes', 'document', 'Notes', 'Law', 'LAW', @course_id,
+          0, 'Foundations', 'Term 1', 'gone.pdf', @stored_name, NULL, 'application/pdf',
+          0, 'published', NULL, 'content_admin', @now, @now, @now, 'google_drive',
+          @drive_id, NULL)
+      `).run({
+        id: missingId, course_id: course.id, now,
+        stored_name: '1GoneGoneGoneGoneGoneGoneGone0000',
+        drive_id: '1GoneGoneGoneGoneGoneGoneGone0000'
+      });
+      db.prepare('INSERT INTO resource_programs (resource_id, program_code) VALUES (?, ?)')
+        .run(missingId, 'LAW');
+
+      const stream = await call(baseUrl, 'GET', `/api/resources/${missingId}/stream`, {
+        cookie: student.cookie, manualRedirect: true
+      });
+      assert.equal(stream.response.status, 404);
+      assert.equal(stream.response.headers.get('location'), null);
+      // Honest about Drive, and NOT the fictional migration message.
+      assert.match(stream.data.message, /Google Drive/i);
+      assert.doesNotMatch(stream.data.message, /being moved/i);
+      assert.doesNotMatch(stream.raw, /request access/i);
+    });
+
+    await t.test('the main admin dashboard cannot attach an unverified Drive file', async () => {
+      // That route has no Drive Picker and so no per-file OAuth token: it
+      // could not confirm StudyCore is able to read the file for students.
       const mainAdmin = {
         id: `admin-${uuidv4()}`,
         name: 'Main Admin',
@@ -307,23 +492,36 @@ test('a Drive-published document is readable by a student who has no Drive acces
       link.append('google_drive_file_id', '1ZzYyXxWwVvUuTtSsRrQqPpOoNnMmLlK');
       link.append('google_drive_url', 'https://drive.google.com/file/d/1ZzYyXxWwVvUuTtSsRrQqPpOoNnMmLlK/view');
 
-      const attempt = await call(baseUrl, 'PUT', `/api/admin/resources/${resourceId}`, {
+      const attempt = await call(baseUrl, 'PUT', `/api/admin/resources/${newResourceId}`, {
         cookie, body: link
       });
       assert.equal(attempt.response.status, 400, attempt.raw);
-      assert.match(attempt.data.message, /no longer be linked to Google Drive/i);
+      assert.match(attempt.data.message, /Drive Picker/i);
 
-      // And the already-imported resource is untouched: still readable.
-      const after = db.prepare('SELECT * FROM resources WHERE id = ?').get(resourceId);
-      assert.notEqual(after.storage_provider, 'google_drive');
-      const reread = await call(baseUrl, 'GET', `/api/resources/${resourceId}/stream`, {
+      // And the existing Drive document is untouched: still readable.
+      const after = db.prepare('SELECT * FROM resources WHERE id = ?').get(newResourceId);
+      assert.equal(after.storage_provider, 'google_drive');
+      assert.equal(after.google_drive_file_id, NEW_FILE_ID);
+      const reread = await call(baseUrl, 'GET', `/api/resources/${newResourceId}/stream`, {
         cookie: student.cookie, manualRedirect: true
       });
       assert.equal(reread.response.status, 200);
-      assert.ok(reread.buffer.equals(DRIVE_PDF));
+      assert.ok(reread.buffer.equals(NEW_PDF));
+    });
+
+    await t.test('deleting the StudyCore resource does not delete the Drive file', async () => {
+      const before = drive.calls.filter((c) => c.method === 'DELETE').length;
+      const removed = await call(baseUrl, 'DELETE', `/api/content-admin/resources/${newResourceId}`, {
+        cookie: adminCookie
+      });
+      assert.equal(removed.response.status, 200, removed.raw);
+      const after = drive.calls.filter((c) => c.method === 'DELETE').length;
+      assert.equal(after, before,
+        'the document belongs to its owner in Google Drive and must survive');
     });
   } finally {
-    restoreDrive();
+    drive.restore();
+    driveDocuments.forgetCaches();
     await new Promise((resolve) => server.close(resolve));
     db.close();
     fs.rmSync(testDataDir, { recursive: true, force: true });

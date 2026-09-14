@@ -287,12 +287,13 @@ test('reads and deletes dispatch by the OBJECT\'S recorded provider, never by wh
   await documentStorage.deleteObject(localWritten.key, localWritten.backend);
 });
 
-test("'google_drive_vault' is never confused with the legacy 'google_drive' link marker", () => {
-  // The pre-existing 'google_drive' value (no suffix) means "this resource
-  // row is a broken Drive LINK that was never imported" (see
-  // routes/resources.routes.js's driveLinkedLegacy check). The vault must
-  // use a different string so a real, working vault-stored document can
-  // never be mistaken for that broken legacy state.
+test("'google_drive_vault' is never confused with the 'google_drive' marker", () => {
+  // Both values are Drive-hosted and both work, but they mean different
+  // things: 'google_drive' is a file the admin picked from their OWN Drive
+  // (StudyCore only references it, and must never delete it), while
+  // 'google_drive_vault' is a file StudyCore itself uploaded into the
+  // connected vault account (which StudyCore does own and may delete).
+  // Keeping the strings distinct is what preserves that deletion boundary.
   assert.notEqual(documentStorage.backendName.toString(), undefined);
   assert.equal(vault.backendName ? vault.backendName() : 'google_drive_vault', 'google_drive_vault');
   assert.notEqual('google_drive_vault', 'google_drive');

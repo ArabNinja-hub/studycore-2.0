@@ -471,6 +471,27 @@
       if (retry) retry.addEventListener('click', () => { destroy(false); init(host, o); });
     }
 
+    // When the byte stream fails, the /stream endpoint has already worked out
+    // WHY in a JSON body (for example: the file can no longer be read from
+    // Google Drive, where it is stored). pdf.js only surfaces a status code,
+    // so fetch that explanation and show the student the real reason.
+    async function explainStreamFailure() {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 8000);
+        const res = await fetch(url, {
+          method: 'GET', credentials: 'include', cache: 'no-store',
+          headers: { Range: 'bytes=0-0' }, signal: ctrl.signal
+        });
+        clearTimeout(t);
+        if (res.ok || res.status === 206) return null; // transient; no better message
+        const data = await res.json().catch(() => null);
+        return data && data.message ? data.message : null;
+      } catch {
+        return null;
+      }
+    }
+
     /* ── Type detection ─────────────────────── */
     // Returns: 'pdf' | 'docx' | 'image' | 'text' | 'office-other' | 'unknown'
     // 'unknown' means the metadata says nothing useful (octet-stream, bare
@@ -976,9 +997,14 @@
         else if (name === 'InvalidPDFException') message = 'This file appears to be corrupted. Ask your admin to re-upload a PDF version.';
         else if (name === 'MissingPDFException') message = 'This document is missing from storage.';
         else if (name === 'UnexpectedResponseException') {
-          message = err.status === 401 ? 'Please log in again to open this document.'
+          // 404/502 here can mean the backing file could not be fetched from
+          // Google Drive (moved, renamed, deleted or access revoked there).
+          // Ask the server for its exact reason so the student is told what is
+          // actually wrong instead of a generic storage error.
+          const explained = await explainStreamFailure();
+          message = explained || (err.status === 401 ? 'Please log in again to open this document.'
             : err.status === 403 ? 'You do not have access to this document with your current plan.'
-              : 'The document server could not be reached. Please try again.';
+              : 'The document server could not be reached. Please try again.');
         } else if (err && err.message) message = err.message;
         console.error('[StudyCore reader] pdf open failed', err);
         showError(message);

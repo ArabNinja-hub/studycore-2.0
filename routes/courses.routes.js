@@ -127,7 +127,12 @@ function serializeResource(row, extra = {}) {
     semester: row.semester,
     term: row.semester,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-    hasFile: Boolean(row.stored_name || row.stream_uid),
+    // A Drive-hosted document has its file in Google Drive, so the Drive file
+    // id counts as "there is a file here" just as much as a local/R2 storage
+    // key does. Without google_drive_file_id, documents published from the
+    // Drive Picker look file-less in course listings and the Open button
+    // never appears — even though /api/resources/:id/stream serves them fine.
+    hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
     fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: mime,
