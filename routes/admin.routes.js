@@ -1,13 +1,15 @@
 const express = require('express');
 const asyncHandler = require('../lib/async-handler');
 const path = require('path');
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
 const resumableUploads = require('../lib/resumable-uploads');
-const storage = require('../lib/storage');
+const storage = require('../lib/document-storage');
+const googleDriveVault = require('../lib/google-drive-vault');
 const stream = require('../lib/stream');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
@@ -24,9 +26,23 @@ const {
 } = require('../lib/terms');
 
 const router = express.Router();
+
+// Short-lived CSRF state for the "Connect Google Drive" OAuth round trip.
+// Google's callback is a plain unauthenticated GET (the browser navigates
+// there directly), so the state token — not a session cookie — is what
+// proves the callback belongs to a connection this server actually started.
+const connectStates = new Map();
+
 // Main Admin only. Content Admin has its own scoped /api/content-admin routes
 // and is rejected here even if it manually requests an /api/admin URL.
-router.use(requireAuth, requireRole(ROLES.ADMIN));
+// The OAuth callback is the one exception: Google redirects the admin's
+// browser there directly and cannot attach an Authorization header or
+// forward the session cookie through the consent redirect chain reliably,
+// so it is authenticated by the one-time `state` token instead (see below).
+router.use((req, res, next) => {
+  if (req.path === '/google-drive/callback') return next();
+  return requireAuth(req, res, () => requireRole(ROLES.ADMIN)(req, res, next));
+});
 
 // Keeps the Video library genuinely video-only and the Document library
 // genuinely document-only - without this, nothing stops an admin from
@@ -165,17 +181,22 @@ function serializeResource(row) {
   };
 }
 
-function deleteFileIfExists(storedKey) {
+// `provider` is the object's OWN recorded storage_provider (resources.
+// storage_provider), so a Drive-vault-stored file is deleted from Drive and
+// an R2/local one from R2/local, regardless of which backend is active
+// today. Callers with no provider (e.g. a user's avatar_key, which never
+// goes through the vault) simply omit it and get the R2/local backend.
+function deleteFileIfExists(storedKey, provider) {
   if (!storedKey) return;
   // Fire-and-forget - a resource row being deleted shouldn't be blocked
   // because storage was briefly slow.
-  storage.deleteObject(storedKey).catch(() => {});
+  storage.deleteObject(storedKey, provider).catch(() => {});
 }
 
 function deleteIncomingFile(file) {
   if (!file) return;
   if (file.streamUid) stream.deleteVideo(file.streamUid).catch(() => {});
-  else if (file.key) storage.deleteObject(file.key).catch(() => {});
+  else if (file.key) storage.deleteObject(file.key, file.bucket).catch(() => {});
 }
 
 // Use the same live-user join for mutation responses as the management table.
@@ -575,7 +596,7 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   // Retire the previous object only after the database safely references the
   // successfully uploaded replacement.
   if (req.file) {
-    if (existing.stored_name) deleteFileIfExists(existing.stored_name);
+    if (existing.stored_name) deleteFileIfExists(existing.stored_name, existing.storage_provider);
     if (existing.stream_uid && existing.stream_uid !== req.file.streamUid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   }
 
@@ -586,7 +607,7 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
 router.delete('/resources/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
-  deleteFileIfExists(existing.stored_name);
+  deleteFileIfExists(existing.stored_name, existing.storage_provider);
   // Remove the matching Bunny Stream video too, so deleting a lesson
   // never leaves a paid-for Stream video orphaned in the account.
   if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
@@ -877,6 +898,58 @@ router.get('/analytics', (req, res) => {
     recentUploads,
     recentActivity
   });
+});
+
+// ---- Google Drive vault -----------------------------------------------------
+//
+// One Main Admin connects ONE real Google account here; from then on it is
+// the storage unit for every document (see lib/google-drive-vault.js for the
+// full design and why students never receive a Drive URL or token).
+
+router.get('/google-drive/status', (req, res) => {
+  res.json(googleDriveVault.status());
+});
+
+// Step 1: redirect the admin's browser to Google's consent screen.
+router.get('/google-drive/connect', (req, res) => {
+  // The state value round-trips through Google so the callback can confirm
+  // this really is a continuation of a request this server issued, not a
+  // forged callback hit directly by a third party.
+  const state = crypto.randomBytes(24).toString('hex');
+  connectStates.set(state, { userId: req.user.id, expiresAt: Date.now() + 10 * 60 * 1000 });
+  let url;
+  try {
+    url = googleDriveVault.getAuthUrl(req, state);
+  } catch (err) {
+    return res.status(err.statusCode || 500).json({ message: err.userSafe ? err.message : 'Could not start the Google Drive connection.' });
+  }
+  res.redirect(url);
+});
+
+// Step 2: Google redirects back here with an authorization code.
+router.get('/google-drive/callback', asyncHandler(async (req, res) => {
+  const { code, state, error } = req.query || {};
+  const record = state && connectStates.get(String(state));
+  if (record) connectStates.delete(String(state));
+
+  const redirectBack = (query) => res.redirect(`/admin.html?${query}#integrations`);
+
+  if (error) return redirectBack(`drive_error=${encodeURIComponent('Google Drive authorization was cancelled.')}`);
+  if (!code || !record || record.expiresAt < Date.now()) {
+    return redirectBack(`drive_error=${encodeURIComponent('That connection link expired. Please try again.')}`);
+  }
+
+  try {
+    await googleDriveVault.handleCallback({ code: String(code), req, userId: record.userId });
+  } catch (err) {
+    return redirectBack(`drive_error=${encodeURIComponent(err.userSafe ? err.message : 'Could not connect Google Drive.')}`);
+  }
+  return redirectBack('drive_connected=1');
+}));
+
+router.post('/google-drive/disconnect', (req, res) => {
+  googleDriveVault.disconnect();
+  res.json({ message: 'Google Drive disconnected. New uploads will use local/R2 storage until it is reconnected.' });
 });
 
 module.exports = router;

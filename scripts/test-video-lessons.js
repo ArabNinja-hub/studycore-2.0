@@ -258,7 +258,7 @@ test('video upload routes persist Bunny metadata and contain no dual-upload queu
   const uploadMiddleware = fs.readFileSync(path.join(__dirname, '..', 'middleware', 'upload.js'), 'utf8');
   assert.match(uploadMiddleware, /bunnyStream\.uploadFromStream/);
   assert.match(uploadMiddleware, /contentType: 'application\/octet-stream'/, 'Bunny receives raw binary uploads');
-  assert.ok(uploadMiddleware.indexOf('bunnyStream.uploadFromStream') < uploadMiddleware.indexOf('storage.putObject({', uploadMiddleware.indexOf('class ObjectStorage')), 'video branch must run before document object storage');
+  assert.ok(uploadMiddleware.indexOf('bunnyStream.uploadFromStream') < uploadMiddleware.indexOf('backend.putObject({', uploadMiddleware.indexOf('class ObjectStorage')), 'video branch must run before document object storage');
   for (const route of ['admin', 'content-admin']) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'routes', `${route}.routes.js`), 'utf8');
     assert.doesNotMatch(src, /queueOffload|stream-ingest/, `${route} route must not schedule a second provider upload`);

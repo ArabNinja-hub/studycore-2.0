@@ -134,10 +134,16 @@ GOOGLE_CLOUD_PROJECT_NUMBER=1076280995038
 git-ignored `.env`). They are never committed to this repository —
 `.env.example` intentionally ships them blank.
 
-**No OAuth client secret is used or required.** This is the browser-side
-Picker flow (GIS `initTokenClient`), and Google does not use client secrets
-for Web application clients in this flow. Do not add a
-`GOOGLE_CLIENT_SECRET` variable.
+**No OAuth client secret is used or required for THIS flow.** This is the
+browser-side Picker flow (GIS `initTokenClient`), and Google does not use
+client secrets for Web application clients in this flow.
+
+> **Note:** `GOOGLE_CLIENT_SECRET` *does* exist elsewhere in this codebase,
+> but it belongs to a completely separate feature — the Google Drive
+> **storage vault** (Admin Dashboard → Integrations → "Connect Google
+> Drive"), which is a server-side OAuth flow with offline access and does
+> need a secret. See `docs/google-drive-vault.md`. The Picker above still
+> needs no secret and `GOOGLE_CLIENT_SECRET` is never read by it.
 
 After the redeploy, confirm the server sees them:
 
