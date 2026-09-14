@@ -9,8 +9,8 @@
 //
 //     { key, size, contentHash, bucket, originalname, mimetype }
 //
-// Everything downstream — file-type validation, duplicate detection, Cloudflare
-// Stream offload, orphan cleanup on failure — therefore behaves identically
+// Everything downstream — file-type validation, duplicate detection, Bunny
+// metadata persistence, orphan cleanup on failure — therefore behaves identically
 // whether the bytes arrived as one multipart POST or as forty resumable chunks.
 //
 // The client signals this by sending an `uploadSessionId` form field instead of
@@ -46,12 +46,15 @@ function attachResumableUpload(req, res, next) {
   // response was lost (a very common mobile failure). Re-using the object it
   // already produced makes the retry idempotent instead of creating a
   // duplicate resource from a second copy of the same bytes.
-  if (session.status === 'claimed' && session.storage_key) {
+  if (session.status === 'claimed' && (session.storage_key || session.stream_uid)) {
     req.file = {
-      key: session.storage_key,
+      key: session.storage_key || null,
       size: session.file_size,
       contentHash: null,
-      bucket: null,
+      bucket: session.stream_uid ? 'bunny' : null,
+      streamUid: session.stream_uid || null,
+      streamStatus: session.stream_uid ? 'queued' : null,
+      streamDuration: null,
       originalname: session.file_name,
       mimetype: session.mime_type,
       resumable: true,
@@ -62,19 +65,25 @@ function attachResumableUpload(req, res, next) {
 
   Promise.resolve()
     .then(async () => {
-      if (session.status === 'complete' && session.storage_key) {
+      if (session.status === 'complete' && (session.storage_key || session.stream_uid)) {
         // Assembled by an earlier attempt whose response never arrived.
         return {
-          key: session.storage_key,
+          key: session.storage_key || null,
           size: session.file_size,
           contentHash: null,
-          bucket: null,
+          bucket: session.stream_uid ? 'bunny' : null,
+          streamUid: session.stream_uid || null,
+          streamStatus: session.stream_uid ? 'queued' : null,
+          streamDuration: null,
           originalname: session.file_name,
           mimetype: session.mime_type,
           resumable: true
         };
       }
-      return resumable.finalizeSession(session, { validateHead: matchesSignature });
+      return resumable.finalizeSession(session, {
+        validateHead: matchesSignature,
+        title: req.body && req.body.title
+      });
     })
     .then((file) => {
       req.file = file;

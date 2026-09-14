@@ -159,7 +159,7 @@ test('display-capture and picture-in-picture are blocked by the Permissions-Poli
   assert.match(security, /display-capture=\(\)/, 'no script in the page may record the tab');
   // PiP floats the video in an OS window no in-page guard can cover, and the
   // header (unlike the <video> attribute) also reaches the cross-origin
-  // Cloudflare Stream iframe's own PiP button.
+  // Bunny Stream iframe's own PiP button.
   assert.match(security, /picture-in-picture=\(\)/, 'PiP is a hole straight through the in-page guards');
   // Fullscreen must survive: fullscreen watching and fullscreen document
   // reading are core features.
@@ -237,7 +237,7 @@ test('there is no download route or download UI for protected resources', () => 
   const player = read('public/js/player.js');
   assert.match(player, /controlslist="nodownload noremoteplayback noplaybackrate"/);
   assert.match(player, /disablepictureinpicture disableremoteplayback/);
-  // ...and the Cloudflare Stream iframe must not be granted PiP either.
+  // ...and the Bunny Stream iframe must not be granted PiP either.
   assert.doesNotMatch(player, /allow="[^"]*picture-in-picture/, 'the Stream iframe must not be allowed PiP');
 });
 

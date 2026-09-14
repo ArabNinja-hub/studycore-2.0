@@ -41,14 +41,12 @@ test('upload creates a Bunny video then uploads bytes with AccessKey server-side
     assert.equal(calls.length, 2);
     assert.equal(calls[0].options.headers.AccessKey, config.BUNNY_API_KEY);
     assert.equal(calls[1].options.headers.AccessKey, config.BUNNY_API_KEY);
+    assert.equal(calls[1].options.headers['Content-Type'], 'application/octet-stream');
     assert.doesNotMatch(JSON.stringify(result), /server-secret-test-key/);
   } finally { global.fetch = originalFetch; }
 });
 
-test('upload rejects empty and oversized buffers without network access', async () => {
+test('upload rejects an empty buffer without network access', async () => {
   const stream = freshStream(config);
   await assert.rejects(() => stream.uploadFromBuffer(Buffer.alloc(0)), /empty/i);
-  const oversized = { length: stream.uploadBasicMaxBytes() + 1 };
-  Object.setPrototypeOf(oversized, Buffer.prototype);
-  await assert.rejects(() => stream.uploadFromBuffer(oversized), (err) => err.code === 'STREAM_TOO_LARGE');
 });

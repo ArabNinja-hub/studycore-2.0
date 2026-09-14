@@ -841,7 +841,7 @@
   StudyCoreAPI.completeResumableUpload = function (url, method, formData, sessionId) {
     formData.delete('file');
     formData.append('uploadSessionId', sessionId);
-    // Assembling chunks into the final object (and, on R2, re-uploading it)
+    // Assembling chunks and streaming a video to Bunny (or a document to R2)
     // happens inside this request, so it gets the generous finalize window
     // rather than the ordinary JSON timeout.
     return StudyCoreAPI.uploadWithProgress(url, method, formData, null, {

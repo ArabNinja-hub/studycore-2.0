@@ -2006,7 +2006,7 @@ body[data-theme='dark'] .resource-lock-overlay .lock-ring {
 .player-shell video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 .player-shell:fullscreen { border-radius: 0; }
 .player-shell:fullscreen video { height: 100vh; }
-/* Cloudflare Stream embed: its own player (with the adaptive quality
+/* Bunny Stream embed: its own player (with the adaptive quality
    selector) fills the 16:9 shell. The title chip sits above it. */
 .player-shell.stream-shell iframe {
   position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000;

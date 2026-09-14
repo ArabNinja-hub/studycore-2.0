@@ -79,7 +79,7 @@ dashboards are deliberately untouched, so publishers keep normal copy/paste.
 > capture-blocking needs hardware DRM.
 > Read **[`docs/content-protection.md`](docs/content-protection.md)** for the
 > full threat model, the known limits, and how to move the video path onto
-> Cloudflare Stream DRM.
+> Bunny Stream DRM.
 
 ## Payments
 
@@ -196,7 +196,8 @@ npm start
 | `MAX_UPLOAD_MB` | Max upload size in MB (default 200, hard cap 2048) |
 | `CORS_ALLOWED_ORIGINS` | Optional comma-separated extra trusted origins (defaults to `studycore.academy` + `www`) |
 | `DATA_DIR` | Persistent disk path for the SQLite file (Render etc.) |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 storage. **Required in production** - with `NODE_ENV=production` the app refuses to start if R2 is not configured. In local development uploads stream to `DATA_DIR/uploads` instead. |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 for documents/images/audio only. **Required in production**; videos never use it. |
+| `BUNNY_LIBRARY_ID` / `BUNNY_API_KEY` / `BUNNY_CDN_HOSTNAME` | **Required for video uploads.** Bunny Stream library, server-only API key, and playback CDN hostname. |
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP for the access-granted email sent when a payment is approved. Unset = email is logged to console instead of sent. |
 | `APP_URL` | Public base URL of this deployment, used for links inside emails |
@@ -213,8 +214,8 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
    survive on their own.
 2. **Real environment variables** - `JWT_SECRET` (32+ chars),
    `CONTENT_ADMIN_ACCESS_CODE`, `ADMIN_PASSWORD`, `NODE_ENV=production`,
-   the four `R2_*` variables. The app refuses to start in production
-   without all of them.
+   the four `R2_*` variables, and the three `BUNNY_*` variables. Bunny is the
+   only video provider; when it is absent video uploads fail without creating a database row.
 3. **No `Cross-Origin-Opener-Policy: same-origin` injected in front of the app.**
    StudyCore sends `Cross-Origin-Opener-Policy: same-origin-allow-popups`
    (see `middleware/security.js`), which is what the Google Picker's OAuth

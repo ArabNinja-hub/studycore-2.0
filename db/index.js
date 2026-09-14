@@ -301,12 +301,11 @@ try {
   // column already exists - fine
 }
 
-// Cloudflare Stream integration. When Stream is configured, uploaded video
-// files are transferred to Cloudflare Stream, which serves adaptive-bitrate
-// HLS/DASH (Auto / 1080p / 720p / …) with a built-in quality selector. The
-// original bytes may still live in R2 as a fallback, so these fields sit
-// ALONGSIDE stored_name rather than replacing it. `stream_uid` is the
-// Cloudflare video UID; `stream_status` tracks post-upload encoding
+// Bunny Stream integration. New uploaded videos are written only to Bunny,
+// which serves adaptive-bitrate HLS with a built-in quality selector. Legacy
+// stored_name remains nullable for old rows and documents; new Bunny videos
+// keep it NULL. `stream_uid` is the Bunny video GUID; `stream_status` tracks
+// post-upload encoding
 // ('pendingupload' | 'downloading' | 'queued' | 'inprogress' | 'ready' |
 // 'error'); `stream_duration` caches the encoded duration in seconds.
 try {
@@ -445,6 +444,12 @@ try {
 } catch {
   // already exists - fine
 }
+
+// Resumable video sessions keep temporary chunks on local disk and record the
+// Bunny video ID only after Bunny accepts the assembled upload. Documents keep
+// using the existing object-storage session path.
+try { db.exec('ALTER TABLE upload_sessions ADD COLUMN storage_provider TEXT'); } catch { /* already exists */ }
+try { db.exec('ALTER TABLE upload_sessions ADD COLUMN stream_uid TEXT'); } catch { /* already exists */ }
 
 // SQLite cannot alter a CHECK constraint in place. Older StudyCore databases
 // only allow ADMIN/STUDENT in users.role, or a previous lower()-based

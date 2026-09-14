@@ -20,7 +20,7 @@
 // where decoded frames never enter memory the OS compositor can read, so a
 // recording comes out black. That requires DRM-packaged media — see
 // docs/content-protection.md for how to switch StudyCore's video path onto
-// Cloudflare Stream DRM when the owner is ready to pay for it.
+// Bunny Stream DRM when the owner is ready to pay for it.
 //
 // So this file does the next best thing, which in practice stops the casual
 // 99%: it removes every in-browser copy route, it blanks printing and
@@ -63,14 +63,14 @@
      picture-in-picture) can recognise protected content without touching
      unrelated canvases or media anywhere else on the site.
 
-       .player-shell      is the video player (progressive + Cloudflare Stream)
+       .player-shell      is the video player (progressive + Bunny Stream)
        .doc-reader-stage  is the document reader, embedded and bare alike
 
      Note .doc-reader (the outer card in embedded/lesson mode) is NOT listed:
      it WRAPS .doc-reader-stage, so listing both would tag the lesson page
      twice. */
   const PROTECTED_SURFACES = [
-    '.player-shell',       // video player (progressive + Cloudflare Stream)
+    '.player-shell',       // video player (progressive + Bunny Stream)
     '.doc-reader-stage',   // document reader, embedded and bare alike
     '[data-sc-protect]'    // opt-in hook for anything added later
   ].join(',');

@@ -6,9 +6,9 @@ const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
+const resumableUploads = require('../lib/resumable-uploads');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
-const { queueOffload } = require('../lib/stream-ingest');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
@@ -103,7 +103,8 @@ function syncResourcePrograms(resourceId, targetAll, programCodes) {
 
 function validateFileMatchesCategory(category, file) {
   if (!file) return null;
-  const ext = path.extname(file.originalname).toLowerCase();
+  const originalExt = path.extname(file.originalname).toLowerCase();
+  const ext = originalExt || (String(file.mimetype || '').toLowerCase().startsWith('video/') ? '.mp4' : '');
   if (category === 'video' && !VIDEO_EXTENSIONS.has(ext)) {
     return `"${ext}" is not a video file. Videos must be uploaded under the Video Lesson category as an actual video file (.mp4, .m4v, .mov, .webm, .mkv, or .avi).`;
   }
@@ -132,7 +133,7 @@ function serializeResource(row) {
     fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: row.mime_type,
-    hasFile: Boolean(row.stored_name || row.google_drive_file_id),
+    hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
     // Legacy subject-only videos can remain in the database after the
     // program-course migration, but the current student Video Lessons route
     // cannot place them in a course. Tell Main Admin exactly why one appears
@@ -169,6 +170,12 @@ function deleteFileIfExists(storedKey) {
   // Fire-and-forget - a resource row being deleted shouldn't be blocked
   // because storage was briefly slow.
   storage.deleteObject(storedKey).catch(() => {});
+}
+
+function deleteIncomingFile(file) {
+  if (!file) return;
+  if (file.streamUid) stream.deleteVideo(file.streamUid).catch(() => {});
+  else if (file.key) storage.deleteObject(file.key).catch(() => {});
 }
 
 // Use the same live-user join for mutation responses as the management table.
@@ -241,15 +248,20 @@ function resourceUpload(req, res, next) {
 
 router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
   const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
+  const failUpload = (message, status = 400) => {
+    deleteIncomingFile(req.file);
+    if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
+    return res.status(status).json({ message });
+  };
 
-  if (!title || !title.trim()) return res.status(400).json({ message: 'Title is required.' });
-  if (!category) return res.status(400).json({ message: 'Category is required.' });
+  if (!title || !title.trim()) return failUpload('Title is required.');
+  if (!category) return failUpload('Category is required.');
 
   // Resolve a dynamic program course when one is supplied.
   let courseRow = null;
   if (courseId) {
     courseRow = resolveCourse(courseId);
-    if (!courseRow) return res.status(400).json({ message: 'The selected course could not be found.' });
+    if (!courseRow) return failUpload('The selected course could not be found.');
   }
   // Default the legacy subject label from the course so the content also
   // appears correctly anywhere the subject field is still used.
@@ -261,27 +273,23 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
   const normalizedTerm = termAppliesTo(category) ? normalizeTerm(semester) : null;
 
   const placementError = validateCoursePlacement(category, effectiveSubject, semester, courseRow ? courseRow.id : null);
-  if (placementError) return res.status(400).json({ message: placementError });
-  if (category === 'quiz' && !quizData) return res.status(400).json({ message: 'Quiz questions (JSON) are required for quizzes.' });
+  if (placementError) return failUpload(placementError);
+  if (category === 'quiz' && !quizData) return failUpload('Quiz questions (JSON) are required for quizzes.');
   if (category === 'video' && !req.file) {
     // Videos are watch-on-site only, uploaded and streamed like Netflix -
     // never a link out to YouTube or anywhere else, so a real file is
     // mandatory here rather than optional.
-    return res.status(400).json({ message: 'Please upload an actual video file - external video links are no longer supported.' });
+    return failUpload('Please upload an actual video file - external video links are no longer supported.');
   }
 
   const categoryMismatch = validateFileMatchesCategory(category, req.file);
   if (categoryMismatch) {
-    // Multer already streamed the file to R2 by this point - clean it up
-    // rather than leaving an orphaned object with no matching resource row.
-    if (req.file && req.file.key) {
-      storage.deleteObject(req.file.key).catch(() => {});
-    }
-    return res.status(400).json({ message: categoryMismatch });
+    // Remove provider bytes accepted before metadata validation.
+    return failUpload(categoryMismatch);
   }
 
   if (quizData) {
-    try { JSON.parse(quizData); } catch { return res.status(400).json({ message: 'Quiz questions must be valid JSON.' }); }
+    try { JSON.parse(quizData); } catch { return failUpload('Quiz questions must be valid JSON.'); }
   }
 
   const now = new Date().toISOString();
@@ -300,12 +308,11 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
 
   // Program targeting (one / multiple / all programs).
   const targeting = parseTargeting(req.body);
-  if (targeting.error) return res.status(400).json({ message: targeting.error });
+  if (targeting.error) return failUpload(targeting.error);
   if (category === 'lab_report') {
     const labError = validateLabReportPlacement(targeting.targetAll ? [] : targeting.programCodes, courseRow);
     if (labError) {
-      if (req.file && req.file.key) storage.deleteObject(req.file.key).catch(() => {});
-      return res.status(400).json({ message: labError });
+      return failUpload(labError);
     }
   }
 
@@ -324,7 +331,7 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
     tags: tags || null,
     pinned: pinned === 'true' || pinned === '1' ? 1 : 0,
     file_name: req.file ? req.file.originalname : null,
-    stored_name: req.file ? req.file.key : null,
+    stored_name: req.file ? (req.file.key || null) : null,
     file_size: req.file ? req.file.size : null,
     mime_type: req.file ? req.file.mimetype : null,
     content_hash: contentHash,
@@ -344,58 +351,58 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
     uploader_email: uploader ? uploader.email : null,
     uploaded_at: now,
     created_at: now,
-    updated_at: now
+    updated_at: now,
+    storage_provider: req.file ? (req.file.bucket || storage.backendName()) : null,
+    stream_uid: req.file ? (req.file.streamUid || null) : null,
+    stream_status: req.file ? (req.file.streamStatus || null) : null,
+    stream_duration: req.file ? (req.file.streamDuration || null) : null
   };
 
-  db.prepare(`
-    INSERT INTO resources (id, title, description, category, resource_type, subject, course, course_id, target_all, topic, year_level, semester, tags,
-      file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status,
-      uploaded_by, uploader_role, uploader_name, uploader_email, uploaded_at, created_at, updated_at)
-    VALUES (@id, @title, @description, @category, @resource_type, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @tags,
-      @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status,
-      @uploaded_by, @uploader_role, @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at)
-  `).run(row);
-
-  syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
-  // The assembled object now belongs to a committed resource row, so the
-  // resumable-session sweeper must never reclaim it.
-  claimResumableUpload(req);
-
-  // Offload videos to Bunny Stream for adaptive-bitrate playback with a
-  // real quality selector (Auto / 1080p / 720p / …). This is deliberately
-  // scheduled in the BACKGROUND rather than awaited: the upload itself is
-  // already complete and durable in R2 at this point, and making the admin
-  // wait while the server re-downloads the video from R2 and re-uploads it to
-  // Cloudflare doubled the wait and frequently tripped the client's
-  // "server did not confirm the upload in time" guard on a video that had
-  // uploaded fine. Until encoding lands, students watch it on the existing
-  // progressive player.
-  let streamNote = null;
-  if (category === 'video' && req.file && stream.isConfigured()) {
-    if ((Number(req.file.size) || 0) > stream.uploadBasicMaxBytes()) {
-      streamNote = 'This video is larger than the 200MB safe server-transfer limit, so it will play at its original quality without the HD quality selector.';
-    } else {
-      queueOffload(id);
-      streamNote = 'HD quality options are being prepared in the background — the video is already published and playable.';
-    }
+  try {
+    db.exec('BEGIN');
+    db.prepare(`
+      INSERT INTO resources (id, title, description, category, resource_type, subject, course, course_id, target_all, topic, year_level, semester, tags,
+        file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status,
+        uploaded_by, uploader_role, uploader_name, uploader_email, uploaded_at, created_at, updated_at, storage_provider, stream_uid, stream_status, stream_duration)
+      VALUES (@id, @title, @description, @category, @resource_type, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @tags,
+        @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status,
+        @uploaded_by, @uploader_role, @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at, @storage_provider, @stream_uid, @stream_status, @stream_duration)
+    `).run(row);
+    syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
+    db.exec('COMMIT');
+    claimResumableUpload(req);
+  } catch (err) {
+    try { db.exec('ROLLBACK'); } catch { /* no open transaction */ }
+    deleteIncomingFile(req.file);
+    if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
+    console.error('Admin resource create failed:', err.message);
+    return res.status(500).json({ message: 'Could not publish the resource. Please try again.' });
   }
+
+  // Bunny accepted the complete upload before the database row is published.
 
   const saved = resourceWithUploader(id);
   const response = { resource: serializeResource(saved) };
   if (duplicateOf) {
     response.warning = `This file appears to be identical to an existing resource: "${duplicateOf.title}". Both have been kept - delete the one you don't need from the resource table below.`;
   }
-  if (streamNote) {
-    response.warning = response.warning ? `${response.warning} ${streamNote}` : streamNote;
-  }
   res.status(201).json(response);
 }));
 
 router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
-  if (!existing) return res.status(404).json({ message: 'Resource not found.' });
+  if (!existing) {
+    deleteIncomingFile(req.file);
+    if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
+    return res.status(404).json({ message: 'Resource not found.' });
+  }
 
   const { title, description, category, subject, course, courseId, topic, yearLevel, semester, tags, externalUrl, quizData, dueDate, publishStatus, isPremium, pinned } = req.body;
+  const failUpload = (message, status = 400) => {
+    deleteIncomingFile(req.file);
+    if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
+    return res.status(status).json({ message });
+  };
 
   const effectiveCategory = category ?? existing.category;
 
@@ -405,7 +412,7 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   if (courseId !== undefined) {
     if (courseId) {
       courseRow = resolveCourse(courseId);
-      if (!courseRow) return res.status(400).json({ message: 'The selected course could not be found.' });
+      if (!courseRow) return failUpload('The selected course could not be found.');
       effectiveCourseId = courseRow.id;
     } else {
       effectiveCourseId = null;
@@ -430,18 +437,15 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   const placementError = placementChanged
     ? validateCoursePlacement(effectiveCategory, effectiveSubject, effectiveSemester, effectiveCourseId)
     : null;
-  if (placementError) return res.status(400).json({ message: placementError });
+  if (placementError) return failUpload(placementError);
 
   const categoryMismatch = validateFileMatchesCategory(effectiveCategory, req.file);
   if (categoryMismatch) {
-    if (req.file && req.file.key) {
-      storage.deleteObject(req.file.key).catch(() => {});
-    }
-    return res.status(400).json({ message: categoryMismatch });
+    return failUpload(categoryMismatch);
   }
 
   if (quizData) {
-    try { JSON.parse(quizData); } catch { return res.status(400).json({ message: 'Quiz questions must be valid JSON.' }); }
+    try { JSON.parse(quizData); } catch { return failUpload('Quiz questions must be valid JSON.'); }
   }
 
   let fileFields = {
@@ -457,20 +461,15 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   };
 
   if (req.file) {
-    deleteFileIfExists(existing.stored_name);
-    // The stored object is being replaced, so any Bunny Stream video
-    // encoded from the OLD bytes is now stale — remove it and clear the
-    // fields; a fresh offload happens after the row is updated below.
-    if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
     fileFields = {
       file_name: req.file.originalname,
-      stored_name: req.file.key,
+      stored_name: req.file.key || null,
       file_size: req.file.size,
       mime_type: req.file.mimetype,
       content_hash: req.file.contentHash,
-      stream_uid: null,
-      stream_status: null,
-      stream_duration: null
+      stream_uid: req.file.streamUid || null,
+      stream_status: req.file.streamStatus || null,
+      stream_duration: req.file.streamDuration || null
     };
   }
 
@@ -481,10 +480,10 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   const targeting = targetingChanged
     ? parseTargeting(req.body)
     : { targetAll: existingTargeting.targetAll, programCodes: existingTargeting.programs, error: null };
-  if (targeting.error) return res.status(400).json({ message: targeting.error });
+  if (targeting.error) return failUpload(targeting.error);
   if (effectiveCategory === 'lab_report') {
     const labError = validateLabReportPlacement(targeting.targetAll ? [] : targeting.programCodes, courseRow);
-    if (labError) return res.status(400).json({ message: labError });
+    if (labError) return failUpload(labError);
   }
   if (targetingChanged) {
     db.prepare('UPDATE resources SET target_all = ? WHERE id = ?').run(targeting.targetAll ? 1 : 0, existing.id);
@@ -519,8 +518,8 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
     storage_provider: req.file
-      // A replaced file lands on the object store; if it's a video, the
-      // offload below flips this to 'stream' on success.
+      // Replacements already carry their final provider: Bunny for video,
+      // object storage for documents/images/audio.
       ? (req.file.bucket || storage.backendName())
       : ((req.body.google_drive_file_id !== undefined)
         ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
@@ -534,25 +533,30 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     ...fileFields
   };
 
-  db.prepare(`
-    UPDATE resources SET title=@title, description=@description, category=@category, resource_type=@resource_type, subject=@subject, course=@course,
-      course_id=@course_id, topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url,
-      quiz_data=@quiz_data, due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status,
-      updated_at=@updated_at, file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type,
-      content_hash=@content_hash, storage_provider=@storage_provider,
-      stream_uid=@stream_uid, stream_status=@stream_status, stream_duration=@stream_duration,
-      google_drive_file_id=@google_drive_file_id, google_drive_url=@google_drive_url
-    WHERE id=@id
-  `).run(updated);
+  try {
+    db.prepare(`
+      UPDATE resources SET title=@title, description=@description, category=@category, resource_type=@resource_type, subject=@subject, course=@course,
+        course_id=@course_id, topic=@topic, year_level=@year_level, semester=@semester, tags=@tags, external_url=@external_url,
+        quiz_data=@quiz_data, due_date=@due_date, is_premium=@is_premium, pinned=@pinned, publish_status=@publish_status,
+        updated_at=@updated_at, file_name=@file_name, stored_name=@stored_name, file_size=@file_size, mime_type=@mime_type,
+        content_hash=@content_hash, storage_provider=@storage_provider,
+        stream_uid=@stream_uid, stream_status=@stream_status, stream_duration=@stream_duration,
+        google_drive_file_id=@google_drive_file_id, google_drive_url=@google_drive_url
+      WHERE id=@id
+    `).run(updated);
+    claimResumableUpload(req);
+  } catch (err) {
+    deleteIncomingFile(req.file);
+    if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
+    console.error('Admin resource update failed:', err.message);
+    return res.status(500).json({ message: 'Could not save the resource. Please try again.' });
+  }
 
-  claimResumableUpload(req);
-
-  // A newly-replaced video file gets re-encoded on Bunny Stream. No-op
-  // unless Stream is configured and the (new) file is a video. Queued rather
-  // than awaited so saving an edit returns as soon as the row is written —
-  // see lib/stream-ingest.js.
-  if (req.file && updated.category === 'video' && stream.isConfigured()) {
-    queueOffload(existing.id);
+  // Retire the previous object only after the database safely references the
+  // successfully uploaded replacement.
+  if (req.file) {
+    if (existing.stored_name) deleteFileIfExists(existing.stored_name);
+    if (existing.stream_uid && existing.stream_uid !== req.file.streamUid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   }
 
   const saved = resourceWithUploader(existing.id);
