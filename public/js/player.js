@@ -55,7 +55,7 @@
       return { destroy() {} };
     }
 
-    // Cloudflare Stream-backed lessons use Cloudflare's adaptive-bitrate
+    // Bunny Stream-backed lessons use Bunny's adaptive-bitrate
     // player, which ships a native quality selector (Auto / 1080p / 720p / …)
     // and picks the best rendition for the viewer automatically. StudyCore
     // still owns resume position, progress reporting and 90%-completion via
@@ -731,30 +731,28 @@
     };
   }
 
-  /* ── Cloudflare Stream player (adaptive HD + quality selector) ────────── */
+  /* ── Bunny Stream player (adaptive HD + quality selector) ─────────────── */
 
-  // Load the Cloudflare Stream Player SDK once, so we can drive play/seek and
-  // read time updates for resume + progress reporting. Resolves with the
-  // global `Stream` factory. If the script cannot load (offline / blocked),
-  // it rejects and the caller falls back to a plain iframe embed.
+  // Load Bunny's Player.js bridge once so StudyCore can keep resume/progress
+  // tracking while the video itself streams directly inside Bunny's iframe.
   let streamSdkPromise = null;
   function loadStreamSdk() {
-    if (global.Stream) return Promise.resolve(global.Stream);
+    if (global.playerjs && global.playerjs.Player) return Promise.resolve(global.playerjs.Player);
     if (streamSdkPromise) return streamSdkPromise;
     streamSdkPromise = new Promise((resolve, reject) => {
       const existing = document.querySelector('script[data-sc-stream-sdk]');
       if (existing) {
         existing.addEventListener('load', () => resolve(global.Stream));
         existing.addEventListener('error', reject);
-        if (global.Stream) resolve(global.Stream);
+        if (global.playerjs && global.playerjs.Player) resolve(global.playerjs.Player);
         return;
       }
       const s = document.createElement('script');
-      s.src = 'https://embed.cloudflarestream.com/embed/sdk.latest.js';
+      s.src = 'https://assets.mediadelivery.net/playerjs/playerjs-latest.min.js';
       s.async = true;
       s.setAttribute('data-sc-stream-sdk', 'true');
-      s.onload = () => resolve(global.Stream);
-      s.onerror = () => reject(new Error('Cloudflare Stream SDK failed to load'));
+      s.onload = () => resolve(global.playerjs && global.playerjs.Player);
+      s.onerror = () => reject(new Error('Bunny Stream player bridge failed to load'));
       document.head.appendChild(s);
     });
     return streamSdkPromise;
@@ -818,9 +816,17 @@
       }, 5000);
     }
 
-    loadStreamSdk().then((Stream) => {
-      if (destroyed || !Stream) return;
-      player = Stream(frame);
+    loadStreamSdk().then((BunnyPlayer) => {
+      if (destroyed || !BunnyPlayer) return;
+      const bunny = new BunnyPlayer(frame);
+      // Small compatibility adapter keeps the existing StudyCore progress
+      // logic while using Bunny Player.js callback methods/events.
+      player = {
+        addEventListener(event, handler) { bunny.on(event === 'loadedmetadata' ? 'ready' : event, handler); },
+        get currentTime() { return new Promise((resolve) => bunny.getCurrentTime(resolve)); },
+        set currentTime(value) { bunny.setCurrentTime(Number(value) || 0); },
+        get duration() { return new Promise((resolve) => bunny.getDuration(resolve)); }
+      };
 
       player.addEventListener('loadedmetadata', () => {
         resumeReady.then(() => {
@@ -858,8 +864,8 @@
         }
       });
     }).catch(() => {
-      // SDK blocked/offline: the iframe still plays with Cloudflare's own
-      // controls and quality selector; we just can't sync resume/progress.
+      // Bridge blocked/offline: Bunny's iframe still plays with its own controls
+      // and quality selector; only StudyCore resume/progress sync is skipped.
     });
 
     return {

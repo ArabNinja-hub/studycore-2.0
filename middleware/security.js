@@ -18,10 +18,8 @@
 //     back to its interpreter; its only eval() is behind a Node-only branch.
 //   * fonts: the site loads Google Fonts (style.css @import) - the only
 //     legitimate external origin in the frontend.
-//   * media: videos/documents stream from the session-gated
-//     /api/resources/:id/stream endpoint ('self'); R2 is never addressed
-//     directly by the browser. Cloudflare Stream (when adopted) will be
-//     authorized through the same server-side gate, not via public URLs.
+//   * media: documents use the session-gated same-origin endpoint. Videos
+//     play in Bunny's hosted iframe after StudyCore's server-side access gate.
 //   * workers: the PDF.js worker is a same-origin file.
 //   * Google Drive Picker (Content Admin dashboard): the official
 //     implementation requires three remote origins -
@@ -39,14 +37,14 @@ const CONTENT_SECURITY_POLICY = [
   "object-src 'none'",
   "frame-ancestors 'self'",
   "form-action 'self'",
-  "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://ajax.googleapis.com https://embed.cloudflarestream.com",
+  "script-src 'self' 'unsafe-inline' https://apis.google.com https://accounts.google.com https://ajax.googleapis.com https://assets.mediadelivery.net",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' data: https://fonts.gstatic.com",
-  "img-src 'self' data: blob: https://*.googleusercontent.com https://*.gstatic.com https://drive-thirdparty.googleusercontent.com https://ssl.gstatic.com https://*.cloudflarestream.com https://cloudflarestream.com https://videodelivery.net https://*.b-cdn.net",
-  "media-src 'self' blob: https://*.cloudflarestream.com https://videodelivery.net https://*.b-cdn.net",
+  "img-src 'self' data: blob: https://*.googleusercontent.com https://*.gstatic.com https://drive-thirdparty.googleusercontent.com https://ssl.gstatic.com https://*.b-cdn.net",
+  "media-src 'self' blob: https://*.b-cdn.net",
   "worker-src 'self' blob:",
-  "connect-src 'self' https://apis.google.com https://accounts.google.com https://content.googleapis.com https://www.googleapis.com https://oauth2.googleapis.com https://*.cloudflarestream.com https://cloudflarestream.com https://videodelivery.net",
-  "frame-src 'self' https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com https://*.cloudflarestream.com https://embed.cloudflarestream.com https://iframe.cloudflarestream.com",
+  "connect-src 'self' https://apis.google.com https://accounts.google.com https://content.googleapis.com https://www.googleapis.com https://oauth2.googleapis.com https://*.b-cdn.net",
+  "frame-src 'self' https://docs.google.com https://drive.google.com https://accounts.google.com https://content.googleapis.com https://iframe.mediadelivery.net",
   "manifest-src 'self'"
 ].join('; ');
 
@@ -102,7 +100,7 @@ function securityHeaders(req, res, next) {
   // document, where none of the in-page guards can reach it and the student
   // can keep the lesson on screen while switching to a recorder. Blocking it
   // in the header (rather than only on the <video> element) also covers the
-  // cross-origin Cloudflare Stream iframe, whose own player would otherwise
+  // cross-origin Bunny Stream iframe, whose own player would otherwise
   // offer its PiP button.
   //
   // `fullscreen=(self)` is unchanged and deliberately kept - fullscreen

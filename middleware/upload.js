@@ -4,6 +4,7 @@ const { Transform } = require('stream');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const storage = require('../lib/storage');
+const bunnyStream = require('../lib/stream');
 
 // NOTE: .svg / image/svg+xml are deliberately NOT in the allowlist.
 // StudyCore has no feature that requires user-uploaded SVG (icons are
@@ -12,6 +13,8 @@ const storage = require('../lib/storage');
 // execute as stored XSS the moment a resource or quiz image is rendered.
 // If a legitimate SVG requirement ever appears, it must be sanitized before
 // being stored or served.
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi']);
+
 const ALLOWED_EXTENSIONS = new Set([
   '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.txt', '.csv',
   '.zip', '.rar',
@@ -56,8 +59,7 @@ const MIME_TO_EXT = {
 // The limit is an operator-tunable value (MAX_UPLOAD_MB) but it is BOUNDED:
 // an invalid or missing value falls back to a safe document-sized default,
 // and no value can ever exceed the hard cap. This endpoint stores
-// documents, images and audio in R2 - large lecture videos are expected to
-// move to Cloudflare Stream, so the default stays document-sized and the
+// documents, images and audio in R2; videos stream to Bunny. The
 // cap prevents an accidental (or hostile) env value from turning the upload
 // path into an unbounded disk/memory sink.
 // ---------------------------------------------------------------------------
@@ -240,16 +242,55 @@ class ObjectStorage {
 
     file.stream.pipe(hashingPassThrough);
 
+    // Video bytes go from the authenticated backend request straight to the
+    // Bunny Stream library. They never pass through storage.putObject, which
+    // means Cloudflare R2 remains document/image storage only.
+    if (VIDEO_EXTENSIONS.has(ext)) {
+      if (!bunnyStream.isConfigured()) {
+        const err = new Error('Video uploads are temporarily unavailable because Bunny Stream is not configured.');
+        err.statusCode = 503;
+        err.userSafe = true;
+        hashingPassThrough.resume();
+        return cb(err);
+      }
+      return bunnyStream.uploadFromStream(hashingPassThrough, {
+        name: (req.body && req.body.title) || file.originalname,
+        fileName: file.originalname,
+        contentType: 'application/octet-stream'
+      }).then(async (video) => {
+        if (!matchesSignature(head.subarray(0, headLen), ext)) {
+          await bunnyStream.deleteVideo(video.uid).catch(() => {});
+          const err = new Error('The uploaded file does not match its file type. Please check the file and try again.');
+          err.statusCode = 400;
+          err.userSafe = true;
+          throw err;
+        }
+        cb(null, {
+          key: null,
+          size,
+          contentHash: hash.digest('hex'),
+          bucket: 'bunny',
+          streamUid: video.uid,
+          streamStatus: video.status || 'queued',
+          streamDuration: video.duration || null
+        });
+      }).catch((cause) => {
+        const err = cause;
+        if (!err.statusCode) err.statusCode = 502;
+        err.userSafe = true;
+        if (!/^Video upload failed/i.test(err.message)) {
+          err.message = 'Video upload failed. Bunny Stream did not accept the file; no video was published. Please try again.';
+        }
+        cb(err);
+      });
+    }
+
     storage.putObject({
       key,
       body: hashingPassThrough,
       contentType: file.mimetype
     })
       .then(() => {
-        // The extension and the MIME are not enough: verify the real file
-        // signature. On mismatch the object is deleted and the request
-        // fails, so a renamed .html/.svg/binary cannot masquerade as a
-        // document or image in the bucket.
         if (!matchesSignature(head.subarray(0, headLen), ext)) {
           return storage.deleteObject(key).then(() => {
             const err = new Error('The uploaded file does not match its file type. Please check the file and try again.');
@@ -269,6 +310,9 @@ class ObjectStorage {
   }
 
   _removeFile(req, file, cb) {
+    if (file.streamUid) {
+      return bunnyStream.deleteVideo(file.streamUid).then(() => cb(null)).catch((err) => cb(err));
+    }
     if (!file.key) return cb(null);
     storage.deleteObject(file.key)
       .then(() => cb(null))
@@ -311,4 +355,4 @@ const avatarUpload = multer({
 // matchesSignature is exported for tests: the magic-byte rules decide whether
 // a legitimate upload is kept or deleted, so they need to be verifiable
 // directly rather than only through a full multipart round trip.
-module.exports = { upload, avatarUpload, ALLOWED_EXTENSIONS, resolveMaxUploadMb, matchesSignature };
+module.exports = { upload, avatarUpload, ALLOWED_EXTENSIONS, VIDEO_EXTENSIONS, resolveMaxUploadMb, matchesSignature };

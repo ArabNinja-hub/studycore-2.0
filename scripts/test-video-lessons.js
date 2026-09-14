@@ -250,22 +250,18 @@ test('a disguised non-video is still rejected', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Upload: the Cloudflare Stream offload must not block the response
+// 4. Upload: Bunny is the only video provider
 // ---------------------------------------------------------------------------
 
-test('Stream offload is queued in the background, never awaited inside a request', () => {
+test('video upload routes persist Bunny metadata and contain no dual-upload queue', () => {
   const fs = require('node:fs');
-  const ingest = require('../lib/stream-ingest');
-  assert.equal(typeof ingest.queueOffload, 'function', 'a background queue is exposed');
-
+  const uploadMiddleware = fs.readFileSync(path.join(__dirname, '..', 'middleware', 'upload.js'), 'utf8');
+  assert.match(uploadMiddleware, /bunnyStream\.uploadFromStream/);
+  assert.match(uploadMiddleware, /contentType: 'application\/octet-stream'/, 'Bunny receives raw binary uploads');
+  assert.ok(uploadMiddleware.indexOf('bunnyStream.uploadFromStream') < uploadMiddleware.indexOf('storage.putObject({', uploadMiddleware.indexOf('class ObjectStorage')), 'video branch must run before document object storage');
   for (const route of ['admin', 'content-admin']) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'routes', `${route}.routes.js`), 'utf8');
-    assert.doesNotMatch(src, /await\s+offloadResourceToStream/,
-      `${route}.routes.js must not block the upload response on Cloudflare Stream`);
-    assert.match(src, /queueOffload\(/, `${route}.routes.js schedules the offload instead`);
+    assert.doesNotMatch(src, /queueOffload|stream-ingest/, `${route} route must not schedule a second provider upload`);
+    assert.match(src, /stream_uid/, `${route} route persists Bunny's video ID`);
   }
-
-  // Unconfigured Stream (as in tests) simply declines to queue anything.
-  assert.equal(ingest.queueOffload('res-does-not-exist'), false);
-  assert.equal(ingest.pendingOffloads(), 0);
 });

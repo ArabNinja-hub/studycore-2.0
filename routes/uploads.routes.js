@@ -24,6 +24,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { ROLES } = require('../lib/roles');
 const { ALLOWED_EXTENSIONS, resolveMaxUploadMb } = require('../middleware/upload');
 const resumable = require('../lib/resumable-uploads');
+const bunnyStream = require('../lib/stream');
 const path = require('path');
 
 const router = express.Router();
@@ -87,6 +88,12 @@ router.post('/session', asyncHandler(async (req, res) => {
   const ext = extensionFor(fileName, mimeType);
   if (!ext || !ALLOWED_EXTENSIONS.has(ext)) {
     return res.status(400).json({ message: `File type "${ext || 'unknown'}" is not supported.` });
+  }
+  const videoExtensions = new Set(['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi']);
+  if (videoExtensions.has(ext) && !bunnyStream.isConfigured()) {
+    return res.status(503).json({
+      message: 'Video uploads are temporarily unavailable because Bunny Stream is not configured.'
+    });
   }
 
   const session = resumable.createSession({

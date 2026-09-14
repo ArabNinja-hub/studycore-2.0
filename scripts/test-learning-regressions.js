@@ -232,9 +232,9 @@ test('a valid zero-percent quiz pass mark is not silently changed to fifty', asy
   assert.equal(result.data.passed, true);
 });
 
-test('videos serialize without Stream playback when Cloudflare Stream is unconfigured (progressive fallback intact)', async () => {
-  // The test harness runs with no CF_STREAM_* vars, so this asserts the
-  // safe default: a video still opens through the existing R2/local player
+test('videos serialize without Stream playback when Bunny Stream is unconfigured (progressive fallback intact)', async () => {
+  // The test harness runs with no BUNNY_* vars, so this asserts the
+  // safe default: a video still opens through the existing legacy local player
   // and never advertises a Stream quality selector it cannot deliver.
   const admin = createUser({ role: 'admin' });
   const video = createResource({
@@ -297,7 +297,7 @@ test('program lesson flow also piggybacks playback tickets but locked lessons do
 });
 
 test('a Stream-backed video advertises playback fields even without a stored progressive file', async () => {
-  // Simulate a resource that has been offloaded to Cloudflare Stream. Even
+  // Simulate a resource that has been offloaded to Bunny Stream. Even
   // though lib/stream is unconfigured in tests (so serializers guard on
   // isConfigured and would return null), we assert the DB carries the Stream
   // metadata so an operator with Stream enabled gets a populated payload.

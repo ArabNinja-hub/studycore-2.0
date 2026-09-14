@@ -102,7 +102,7 @@
       // progressive videos. Reusing it removes a ticket-mint round trip from
       // the player's critical startup path.
       streamUrl: lesson.protectedStreamUrl || null,
-      // When the lesson is backed by Cloudflare Stream, this carries the
+      // When the lesson is backed by Bunny Stream, this carries the
       // adaptive-bitrate iframe URL (with a native 1080p/720p/Auto quality
       // selector). Absent → the player uses the classic progressive stream.
       streamPlayback: lesson.streamPlayback || null,

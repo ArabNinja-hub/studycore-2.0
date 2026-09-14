@@ -15,9 +15,9 @@ const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
+const resumableUploads = require('../lib/resumable-uploads');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
-const { queueOffload } = require('../lib/stream-ingest');
 const { ROLES } = require('../lib/roles');
 const { resolveCourse, programIncludesCourse, programOwnsCourse } = require('../lib/program-access');
 const { validateLabReportPlacement } = require('../lib/lab-reports');
@@ -64,7 +64,11 @@ function cleanText(value, maxLength = 0) {
 }
 
 function cleanupIncomingFile(req) {
-  if (req && req.file && req.file.key) storage.deleteObject(req.file.key).catch(() => {});
+  const file = req && req.file;
+  if (!file) return;
+  if (file.streamUid) stream.deleteVideo(file.streamUid).catch(() => {});
+  else if (file.key) storage.deleteObject(file.key).catch(() => {});
+  if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
 }
 
 function uploadError(req, res, status, message) {
@@ -116,7 +120,7 @@ function serializeOwnResource(row) {
     fileName: row.file_name || '',
     fileSize: row.file_size || 0,
     mimeType: row.mime_type || '',
-    hasFile: Boolean(row.stored_name || row.google_drive_file_id),
+    hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
     storageProvider: row.storage_provider || 'local',
     googleDriveFileId: row.google_drive_file_id || null,
     googleDriveUrl: row.google_drive_url || null,
@@ -171,7 +175,7 @@ function validateFileForType(type, file) {
   // picker that supplies a UUID-only filename can still use its inferred
   // storage extension (for example, .mp4) during Content Admin validation.
   const storedExt = path.extname(String(file.stored_name || file.key || '')).toLowerCase();
-  const ext = originalExt || storedExt;
+  const ext = originalExt || storedExt || (String(file.mimetype || '').toLowerCase().startsWith('video/') ? '.mp4' : '');
   if (type.category === 'video' && !VIDEO_EXTENSIONS.has(ext)) {
     return 'Video resources must use a supported video file (.mp4, .m4v, .mov, .webm, .mkv, or .avi).';
   }
@@ -407,6 +411,9 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   if (!req.file && !isDriveFile) return uploadError(req, res, 400, 'Choose a file to upload or select from Google Drive.');
   const parsed = parseResourceInput(req.body);
   if (parsed.error) return uploadError(req, res, 400, parsed.error);
+  if (isDriveFile && parsed.value.type.category === 'video') {
+    return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
+  }
 
   const dummyFile = isDriveFile ? {
     originalname: req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document',
@@ -418,7 +425,7 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   const fileForValidation = req.file || dummyFile;
   const fileError = validateFileForType(parsed.value.type, fileForValidation);
   if (fileError) {
-    if (req.file && req.file.key) storage.deleteObject(req.file.key).catch(() => {});
+    cleanupIncomingFile(req);
     return uploadError(req, res, 400, fileError);
   }
 
@@ -426,12 +433,10 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   const uploader = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
   const id = `res-${uuidv4()}`;
   // When selecting from Google Drive, clean up any accidentally uploaded file.
-  if (isDriveFile && req.file && req.file.key) {
-    storage.deleteObject(req.file.key).catch(() => {});
-  }
+  if (isDriveFile && req.file) cleanupIncomingFile(req);
 
   const fileName = isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document') : req.file.originalname;
-  const storedName = isDriveFile ? (req.body.google_drive_file_id || null) : req.file.key;
+  const storedName = isDriveFile ? (req.body.google_drive_file_id || null) : (req.file.key || null);
   const fileSizeVal = isDriveFile ? (Number(req.body.file_size) || 0) : req.file.size;
   const mimeTypeVal = isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf') : req.file.mimetype;
   const contentHashVal = isDriveFile ? null : (req.file.contentHash || null);
@@ -470,7 +475,10 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     uploaded_at: now,
     created_at: now,
     updated_at: now,
-    storage_provider: isDriveFile ? 'google_drive' : 'local',
+    storage_provider: isDriveFile ? 'google_drive' : (req.file.bucket || storage.backendName()),
+    stream_uid: isDriveFile ? null : (req.file.streamUid || null),
+    stream_status: isDriveFile ? null : (req.file.streamStatus || null),
+    stream_duration: isDriveFile ? null : (req.file.streamDuration || null),
     google_drive_file_id: isDriveFile ? req.body.google_drive_file_id : null,
     google_drive_url: isDriveFile ? (req.body.google_drive_url || null) : null
   };
@@ -484,14 +492,14 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
         file_size, mime_type, content_hash, external_url, quiz_data, due_date,
         is_premium, pinned, publish_status, uploaded_by, uploader_role,
         uploader_name, uploader_email, uploaded_at, created_at, updated_at,
-        storage_provider, google_drive_file_id, google_drive_url
+        storage_provider, google_drive_file_id, google_drive_url, stream_uid, stream_status, stream_duration
       ) VALUES (
         @id, @title, @description, @category, @resource_type, @subject, @course, @course_id,
         @target_all, @topic, @year_level, @semester, @tags, @file_name, @stored_name,
         @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date,
         @is_premium, @pinned, @publish_status, @uploaded_by, @uploader_role,
         @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at,
-        @storage_provider, @google_drive_file_id, @google_drive_url
+        @storage_provider, @google_drive_file_id, @google_drive_url, @stream_uid, @stream_status, @stream_duration
       )
     `).run({ ...row, storage_provider: row.storage_provider, google_drive_file_id: row.google_drive_file_id, google_drive_url: row.google_drive_url });
     replaceSingleProgram(id, parsed.value.program.code);
@@ -506,13 +514,7 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     return res.status(500).json({ message: 'Could not publish the resource. Please try again.' });
   }
 
-  // Offload videos to Bunny Stream for adaptive HD playback + quality
-  // selector. No-op unless Stream is configured; failures keep the video on
-  // the R2 progressive player. Queued in the background so publishing returns
-  // as soon as the bytes are stored — see lib/stream-ingest.js.
-  if (!isDriveFile && parsed.value.type.category === 'video' && req.file && stream.isConfigured()) {
-    queueOffload(id);
-  }
+  // Bunny accepted the complete upload before this resource was committed.
 
   const saved = ownResourceById(id, req.user.id);
   return res.status(201).json({ resource: serializeOwnResource(saved) });
@@ -531,6 +533,9 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
   if (parsed.error) return uploadError(req, res, 400, parsed.error);
 
   const isDriveFile = Boolean(req.body && req.body.google_drive_file_id);
+  if (isDriveFile && parsed.value.type.category === 'video') {
+    return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
+  }
   const fileForValidation = req.file || (isDriveFile ? {
     originalname: req.body.file_name || req.body.google_drive_file_name || existing.file_name || 'Google Drive Document',
     stored_name: req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name,
@@ -567,16 +572,16 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     publish_status: parsed.value.publishStatus,
     updated_at: now,
     file_name: replacingFile ? req.file.originalname : (isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || existing.file_name) : existing.file_name),
-    stored_name: replacingFile ? req.file.key : (isDriveFile ? (req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name || null) : existing.stored_name),
+    stored_name: replacingFile ? (req.file.key || null) : (isDriveFile ? (req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name || null) : existing.stored_name),
     file_size: replacingFile ? req.file.size : (isDriveFile ? (Number(req.body.file_size) || existing.file_size || 0) : existing.file_size),
     mime_type: replacingFile ? req.file.mimetype : (isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type || 'application/pdf') : existing.mime_type),
     content_hash: replacingFile ? (req.file.contentHash || null) : (isDriveFile ? null : existing.content_hash),
     // Replacing the file invalidates any Stream video encoded from the old
     // bytes; clear the fields (and delete the old Stream video below) so a
     // fresh offload can run. Otherwise carry the existing Stream fields.
-    stream_uid: replacingFile ? null : (existing.stream_uid || null),
-    stream_status: replacingFile ? null : (existing.stream_status || null),
-    stream_duration: replacingFile ? null : (existing.stream_duration || null),
+    stream_uid: replacingFile ? (req.file.streamUid || null) : (existing.stream_uid || null),
+    stream_status: replacingFile ? (req.file.streamStatus || null) : (existing.stream_status || null),
+    stream_duration: replacingFile ? (req.file.streamDuration || null) : (existing.stream_duration || null),
     owner_id: req.user.id,
     storage_provider: replacingFile
       ? (req.file.bucket || storage.backendName())
@@ -629,11 +634,10 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
   if (replacingFile && existing.stored_name && existing.stored_name !== req.file.key) {
     storage.deleteObject(existing.stored_name).catch(() => {});
   }
-  // Remove the stale Stream video (encoded from the old file) and offload the
-  // newly-uploaded video for adaptive HD playback.
-  if (replacingFile && existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
-  if (replacingFile && parsed.value.type.category === 'video' && stream.isConfigured()) {
-    queueOffload(existing.id);
+  // The old Bunny video is removed only after the row safely references the
+  // replacement that Bunny accepted.
+  if (replacingFile && existing.stream_uid && existing.stream_uid !== req.file.streamUid) {
+    stream.deleteVideo(existing.stream_uid).catch(() => {});
   }
 
   const saved = ownResourceById(existing.id, req.user.id);

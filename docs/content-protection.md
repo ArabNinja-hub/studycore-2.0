@@ -96,7 +96,7 @@ the protection sitting uselessly behind it. It is blocked in three places,
 because each covers a case the others miss:
 
 * `Permissions-Policy: picture-in-picture=()` — the only one that reaches
-  *inside* the cross-origin Cloudflare Stream iframe, whose own player would
+  *inside* the cross-origin Bunny Stream iframe, whose own player would
   otherwise render a PiP button we cannot touch from this DOM;
 * `disablepictureinpicture` on the progressive `<video>`, and the removal of
   `picture-in-picture` from the Stream iframe's `allow` list;
@@ -129,7 +129,7 @@ Access control lives on the server, and it always has:
   request**, including every 128 KB range chunk of a PDF;
 * `/api/resources/:id/download` is an explicit `403`, so a saved link from
   before the download control was removed cannot quietly bypass the reader;
-* R2 and Cloudflare Stream credentials exist only in server environment
+* R2 and Bunny Stream credentials exist only in server environment
   variables. The browser never addresses object storage directly — CSP's
   `media-src`/`connect-src` would refuse it even if some code tried.
 
@@ -177,18 +177,17 @@ opening their lesson.
 
 ### No permanent public media URL is published
 
-The Cloudflare Stream `hls` manifest URL used to be included in every
+The Bunny Stream `hls` manifest URL used to be included in every
 course/lesson/resource JSON payload. **Nothing in the front-end ever played
-it** — the Cloudflare iframe player fetches its own manifest inside the frame
+it** — the Bunny iframe player fetches its own manifest inside the frame
 — so shipping it only published a permanent, directly-downloadable video
 address (exactly what `yt-dlp` wants) to every client. It has been removed
 from all three serializers. `stream.hlsUrl()` still exists for server-side
 use.
 
-For a further step up, `CF_STREAM_SIGNED=true` makes Cloudflare itself require
-signed playback tokens (`lib/stream.js` already applies `requireSignedURLs` at
-upload time when it is set) — enforcement on Cloudflare's side rather than
-ours.
+Bunny playback currently uses the library's hosted iframe. If token-authenticated
+playback is enabled later, its signing key must remain server-side and short-lived
+embed URLs should be minted only after the same StudyCore access gate.
 
 ## Known limits — please read before promising anything
 
@@ -233,8 +232,8 @@ hardware DRM via Encrypted Media Extensions — Widevine L1 (Chrome/Android),
 PlayReady SL3000 (Edge/Windows) or FairPlay (Safari). With those, decoded
 frames live in protected memory the OS compositor cannot read.
 
-StudyCore already streams video through Cloudflare Stream (`lib/stream.js`),
-and **Cloudflare Stream supports DRM-protected playback**. Switching the
+StudyCore already streams video through Bunny Stream (`lib/stream.js`),
+and **Bunny Stream supports DRM-protected playback**. Switching the
 video path onto signed DRM playback would give genuine capture-blocking for
 video on supported devices. Two caveats worth knowing up front: it is a paid
 feature, and it covers **video only** — PDFs and notes rendered to a canvas
@@ -268,7 +267,7 @@ behaviour.
 | `routes/resources.routes.js` | `/:id/ticket` mint + ticket verification on `/:id/stream` |
 | `public/js/api.js` | `StudyCoreAPI.protectedUrl` — mints/caches the ticketed URL |
 | `middleware/security.js` | `display-capture=()`, `picture-in-picture=()` in `Permissions-Policy` |
-| `lib/stream.js` | View-only Cloudflare Stream player options; `hlsUrl` no longer published |
+| `lib/stream.js` | View-only Bunny Stream player options; `hlsUrl` no longer published |
 | `scripts/test-privacy-guard.js` | Regression tests (scope, layering, no-breakage) |
 | `scripts/test-content-tickets.js` | Ticket signing, binding, expiry and tamper tests |
 | `scripts/live-protection-check.js` | End-to-end check against a running server (dev tool) |

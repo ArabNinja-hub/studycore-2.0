@@ -283,7 +283,7 @@ Scope: the 15 requested hardening changes (C1–C2, H3–H6, M7–M12, L13–L15
 5. **HSTS trusts `X-Forwarded-Proto`** via `trust proxy 1` — correct behind the deployment proxy, which terminates TLS and sets the header; keep it that way if the proxy changes.
 6. **R2 was not live-tested against a real bucket** (no credentials in this environment). The startup guard, local-fallback path, and upload/stream/delete flows were verified against the storage abstraction's local backend; run the upload E2E once against the real R2 bucket at deploy.
 7. **Legacy JWT migration window**: sessions issued before M9 (no iss/aud) are honored until their natural 7-day expiry — a deliberate trade-off against a forced global logout.
-8. **Large video uploads via R2 remain possible** up to the 2048 MB hard cap if `MAX_UPLOAD_MB` is raised (default 200 MB). The durable fix is the planned migration of lecture video to Cloudflare Stream; Stream API tokens remain server-side and no permanent public video URLs are exposed.
+8. **Video storage has since moved to Bunny Stream.** New video bytes do not enter R2; Bunny credentials remain server-side. The upload-size cap remains operator-configurable for abuse protection.
 9. **K50 payment flow is manual** (student submits, admin approves) — unchanged by design per scope constraints.
 
 ---

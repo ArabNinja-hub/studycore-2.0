@@ -24,6 +24,35 @@ process.env.R2_ACCOUNT_ID = '';
 process.env.R2_ACCESS_KEY_ID = '';
 process.env.R2_SECRET_ACCESS_KEY = '';
 process.env.R2_BUCKET_NAME = '';
+process.env.BUNNY_LIBRARY_ID = 'test-library';
+process.env.BUNNY_API_KEY = 'test-server-secret';
+process.env.BUNNY_CDN_HOSTNAME = 'test-video.b-cdn.net';
+
+// Bunny is mocked at the network boundary; ordinary requests still use the
+// real fetch implementation against the local Express server.
+const nativeFetch = global.fetch;
+const bunnyUploads = new Map();
+let bunnySequence = 0;
+global.fetch = async (url, options = {}) => {
+  const target = String(url);
+  if (!target.startsWith('https://video.bunnycdn.com/')) return nativeFetch(url, options);
+  if (options.method === 'POST') {
+    const guid = `bunny-test-${++bunnySequence}`;
+    return new Response(JSON.stringify({ guid, status: 0 }), { status: 200 });
+  }
+  const guid = target.split('/').pop();
+  if (options.method === 'PUT') {
+    const chunks = [];
+    for await (const chunk of options.body) chunks.push(Buffer.from(chunk));
+    bunnyUploads.set(guid, Buffer.concat(chunks));
+    return new Response(null, { status: 204 });
+  }
+  if (options.method === 'DELETE') {
+    bunnyUploads.delete(guid);
+    return new Response(null, { status: 204 });
+  }
+  return new Response(JSON.stringify({ guid, status: 3 }), { status: 200 });
+};
 
 const { randomUUID } = require('node:crypto');
 const bcrypt = require('bcryptjs');
@@ -159,8 +188,23 @@ test('an interrupted upload resumes instead of restarting', async () => {
     'the reassembled object must be byte-identical to the source file'
   );
 
-  const stored = await storage.readBytes(finalized.key, 0, file.length - 1);
-  assert.ok(stored.equals(file), 'stored object must match the original bytes');
+  assert.equal(finalized.bucket, 'bunny');
+  assert.equal(finalized.key, null, 'videos must not receive an R2/local storage key');
+  assert.ok(bunnyUploads.get(finalized.streamUid).equals(file), 'Bunny must receive the byte-identical video');
+});
+
+test('a video MIME type without a filename extension still bypasses R2', async () => {
+  const user = makeUser();
+  const created = await startSession(cookieFor(user), {
+    fileName: 'mobile-picker-file',
+    fileSize: resumable.MIN_CHUNK_SIZE,
+    mimeType: 'video/mp4',
+    chunkSize: resumable.MIN_CHUNK_SIZE
+  });
+  assert.equal(created.status, 201, created.raw);
+  const row = resumable.getSession(created.data.session.id, user.id);
+  assert.equal(row.storage_provider, 'bunny');
+  await resumable.discardSession(row.id);
 });
 
 test('re-sending a chunk that already landed is safe', async () => {
@@ -300,17 +344,18 @@ test('publishing a resource with a finished session stores the assembled file', 
   assert.equal(body.resource.fileName, 'full-lecture.mp4');
   assert.equal(body.resource.fileSize, file.length);
 
-  const row = db.prepare('SELECT stored_name FROM resources WHERE id = ?').get(body.resource.id);
-  const stored = await storage.readBytes(row.stored_name, 0, file.length - 1);
-  assert.ok(stored.equals(file), 'the published resource must hold the fully reassembled video');
+  const row = db.prepare('SELECT stored_name, storage_provider, stream_uid FROM resources WHERE id = ?').get(body.resource.id);
+  assert.equal(row.stored_name, null, 'published videos must not retain an object-storage key');
+  assert.equal(row.storage_provider, 'bunny');
+  assert.ok(row.stream_uid);
+  assert.ok(bunnyUploads.get(row.stream_uid).equals(file), 'the published Bunny video must contain the fully reassembled bytes');
 
   // The session is claimed, so the expiry sweeper must leave the live object
   // alone even once the session would otherwise have lapsed.
   db.prepare('UPDATE upload_sessions SET expires_at = ? WHERE id = ?')
     .run(new Date(Date.now() - 1000).toISOString(), session.id);
   await resumable.sweepExpiredSessions();
-  const survives = await storage.readBytes(row.stored_name, 0, 3);
-  assert.equal(survives.length, 4, 'a claimed upload must never be swept away');
+  assert.ok(bunnyUploads.has(row.stream_uid), 'a claimed Bunny upload must never be swept away');
 });
 
 test('expired, unclaimed sessions are swept along with their chunks', async () => {

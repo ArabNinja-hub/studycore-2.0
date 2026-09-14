@@ -183,14 +183,14 @@ if (googlePickerIssues.length) {
   console.log('StudyCore: Google Picker env OK (client ' + String(process.env.GOOGLE_CLIENT_ID).trim() + ', project ' + String(process.env.GOOGLE_CLOUD_PROJECT_NUMBER).trim() + ', key ' + String(process.env.GOOGLE_API_KEY).trim().slice(0, 6) + '…)');
 }
 
-// Bunny Stream is optional; when unset, videos retain the existing R2/local
-// progressive fallback. Never log configuration values (especially the API
+// Bunny Stream is the only provider for new video uploads. If configuration is
+// missing, video uploads fail safely instead of falling back to R2/local. Never log configuration values (especially the API
 // key), only whether the server-side integration is available.
 const videoStream = require('./lib/stream');
 if (videoStream.isConfigured()) {
   console.log('StudyCore: Bunny Stream is configured — new video uploads will use adaptive playback.');
 } else {
-  console.log('StudyCore: Bunny Stream is not configured — set BUNNY_LIBRARY_ID, BUNNY_API_KEY, and BUNNY_CDN_HOSTNAME in the server environment to enable it.');
+  console.log('StudyCore: Bunny Stream is not configured — video uploads are disabled. Set BUNNY_LIBRARY_ID, BUNNY_API_KEY, and BUNNY_CDN_HOSTNAME in the server environment.');
 }
 
 // Public site config. Official WhatsApp links live in .env so the owner can

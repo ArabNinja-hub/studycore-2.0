@@ -33,7 +33,7 @@ const path = require('node:path');
 const playerPath = path.join(__dirname, '..', 'public', 'js', 'player.js');
 const src = fs.readFileSync(playerPath, 'utf8');
 
-// The progressive player lives above the Cloudflare Stream player; slice it so
+// The progressive player lives above the Bunny Stream player; slice it so
 // assertions about `attachStream` cannot accidentally match Stream-only code.
 const progressive = src.slice(0, src.indexOf('function initStream('));
 
@@ -163,7 +163,7 @@ test('skip forward and seek bar guard against NaN duration and zero rect', () =>
     'player.js provides its own escapeHtml helper');
 });
 
-test('Cloudflare Stream player resolves duration asynchronously and calls onEnded', () => {
+test('Bunny Stream player resolves duration asynchronously and calls onEnded', () => {
   const streamCode = src.slice(src.indexOf('function initStream('));
   assert.match(streamCode, /Promise\.resolve\(player\.duration\)/,
     'initStream resolves player.duration as a Promise');
