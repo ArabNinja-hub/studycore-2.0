@@ -612,16 +612,34 @@ async function handleStream(req, res) {
     }
   }
 
-  if (!row.stored_name && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
-  if (row.external_url && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
-
-  // Google Drive-backed resources: redirect to the secure preview link instead
-  // of streaming bytes. This avoids exposing admin OAuth tokens and avoids
-  // downloading the document onto Render permanently.
-  if (row.google_drive_file_id) {
-    const previewUrl = `https://docs.google.com/gview?embedded=1&url=https://drive.google.com/uc?export=view&id=${encodeURIComponent(row.google_drive_file_id)}`;
-    return res.redirect(previewUrl);
+  // Legacy Drive-LINKED rows kept the Drive file id in stored_name, which is
+  // not a storage key. They are identified by their storage_provider.
+  const driveLinkedLegacy = (row.storage_provider || 'local') === 'google_drive';
+  if (driveLinkedLegacy) {
+    // Nothing in the product notifies an admin on its own, so record the hit
+    // where operators actually look. This names the resource and the uploader
+    // who has to re-save it (see scripts/list-drive-linked-resources.js).
+    console.warn(
+      `[StudyCore][DriveLegacy] resource ${row.id} ("${row.title}") is still Drive-linked and cannot be served. ` +
+      `Uploader: ${row.uploader_email || row.uploaded_by || 'unknown'}. ` +
+      'Fix: the uploader re-saves it in Content Admin (Edit -> Select from Google Drive -> same file -> Save).'
+    );
   }
+  if (!row.stored_name || driveLinkedLegacy) {
+    return res.status(404).json({
+      message: driveLinkedLegacy
+        ? 'This document is being moved into StudyCore and cannot be opened yet. Please check back shortly.'
+        : 'This resource has no previewable file.'
+    });
+  }
+  if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
+
+  // NOTE: this endpoint no longer redirects Drive-backed resources to
+  // docs.google.com/gview. That redirect handed the student to GOOGLE's
+  // permission check, so anyone not shared on the uploader's private Drive
+  // file got "Request access" instead of the document. Drive files are now
+  // copied into StudyCore storage when they are published (lib/google-drive.js)
+  // and stream from here like any other document.
 
   await streamStoredObject(req, res, row.stored_name, {
     filename: row.file_name || row.stored_name,

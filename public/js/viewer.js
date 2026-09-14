@@ -137,6 +137,23 @@
     bindBackButtons();
   }
 
+  // A resource published back when Drive files were LINKED rather than copied
+  // into StudyCore. Its bytes never left the uploader's Drive, so there is
+  // nothing here to render. The old behaviour embedded Google's preview,
+  // which asked the student to request access from the admin — a request they
+  // could not action themselves and which StudyCore could not honour. Telling
+  // them to re-open it later is honest; the admin fixes it by re-saving the
+  // resource from the Content Admin dashboard, which imports the file.
+  function driveNotMigrated() {
+    renderState({
+      icon: 'refresh',
+      title: 'This document is being moved into StudyCore',
+      body: 'It was published from Google Drive before StudyCore started storing documents itself, so it cannot be opened here yet. Opening it has been logged for your admin — please check back shortly, and tell them if it stays unavailable.',
+      secondary: `<button class="btn btn-outline" type="button" data-viewer-back>${SC.icon('arrow-left', { size: 16 })} Go back</button>`
+    });
+    bindBackButtons();
+  }
+
   /* ── Header / meta ───────────────────────── */
   function renderHeader() {
     $('#viewerTitleIcon').innerHTML = SC.icon(SC.courseCategoryIcon(resource.category), { size: 18 });
@@ -190,19 +207,10 @@
       });
   }
 
-  // Google's embedded /preview frame is cross-origin: page navigation, zoom,
-  // fit and search act on StudyCore's own PDF engine, not on Google's
-  // viewer, so none of them apply to a Drive-hosted document. Fullscreen is
-  // the one control that does — keep the toolbar up with just that button.
-  function showDriveToolbar() {
-    const tools = $('#viewerTools');
-    if (!tools) return;
-    tools.hidden = false;
-    ['#viewerPrev', '#viewerNext', '#viewerZoomOut', '#viewerZoomIn', '#viewerFit',
-     '#viewerSearchBtn', '#viewerPageLabel', '#viewerZoomLabel']
-      .forEach((sel) => { const el = $(sel); if (el) el.hidden = true; });
-    tools.querySelectorAll('.viewer-tool-sep').forEach((el) => { el.hidden = true; });
-  }
+  // (showDriveToolbar lived here.) It configured the toolbar for the embedded
+  // Google Drive /preview frame, which no longer exists: imported Drive files
+  // render in StudyCore's own PDF engine and therefore use the full toolbar —
+  // page navigation, zoom, fit and in-document search all work on them now.
 
   function updateState(s) {
     const paged = Boolean(s.numPages && s.numPages > 0);
@@ -361,44 +369,28 @@
 
     renderHeader();
 
-    if (resource.googleDriveFileId) {
-      const isWorkspaceFile = resource.mimeType && resource.mimeType.startsWith('application/vnd.google-apps.');
-      const fileUrl = resource.googleDriveUrl || `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/view`;
+    // NOTE: there is deliberately NO Google Drive branch here any more.
+    //
+    // Drive-sourced documents used to be shown in an embedded
+    // drive.google.com/.../preview iframe. Google authorizes that frame
+    // against the FILE's own Drive sharing list — not against the StudyCore
+    // session — so every student who was not individually shared on the
+    // uploader's private file was shown Google's "You need access / Request
+    // access" screen instead of the document.
+    //
+    // Drive files are now copied into StudyCore's own storage at publish time
+    // (lib/google-drive.js), so they are ordinary stored resources and fall
+    // through to the protected reader below like every other document. No
+    // Google account, no Drive sharing, no access request.
+    //
+    // `googleDriveFileId` survives only as provenance on imported rows and is
+    // intentionally not consulted when deciding how to render.
 
-      if (isWorkspaceFile) {
-        // Nothing is embedded for native Docs/Sheets/Slides — a plain
-        // "open in Drive" card — so no toolbar applies at all.
-        $('#viewerTools').hidden = true;
-        $('#viewerHost').innerHTML = `
-          <div style="padding: 60px 20px; text-align: center; max-width: 600px; margin: 0 auto;">
-            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px; box-shadow: var(--shadow-sm);">
-              <div style="margin-bottom: 20px;">
-                ${window.SC ? SC.icon('file-text', { size: 48, color: 'var(--primary)' }) : ''}
-              </div>
-              <h2 style="margin: 0 0 10px; font-size: 1.25rem;">Google Workspace Document</h2>
-              <p style="color: var(--muted); margin: 0 0 24px; line-height: 1.5;">This file type cannot be previewed directly inside StudyCore. Please open it in Google Drive to view or edit.</p>
-              <a href="${fileUrl}" target="_blank" class="btn btn-primary">Open Document</a>
-            </div>
-          </div>
-        `;
-      } else {
-        // Google-hosted files render through Google's own /preview embed.
-        // That frame is cross-origin, so its toolbar — which carries the
-        // floating Share button — cannot be reached from this DOM. Instead
-        // .drive-preview-frame crops the top of the frame off (see the
-        // .drive-preview rules in viewer.css), and there is deliberately no
-        // floating "Open in Google Drive" button over the document.
-        // Fullscreen still applies to the reading surface; page nav, zoom,
-        // fit and search act on the built-in PDF engine only, so the
-        // toolbar keeps just the Fullscreen button.
-        const previewUrl = `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/preview`;
-        $('#viewerHost').innerHTML = `
-          <div class="drive-preview">
-            <iframe class="drive-preview-frame" src="${previewUrl}" title="Google Drive Preview" allow="fullscreen"></iframe>
-          </div>
-        `;
-        showDriveToolbar();
-      }
+    // Legacy rows: imported before the change, so the bytes are still only in
+    // Drive and there is nothing to stream. Say so plainly rather than
+    // bouncing the student to a Google permission wall they cannot clear.
+    if (resource.storageProvider === 'google_drive' || (resource.googleDriveFileId && !resource.hasFile)) {
+      driveNotMigrated();
       return;
     }
 
