@@ -516,7 +516,10 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
 // ---------------------------------------------------------------------------
 function driveDocumentKey(row) {
   if (!row) return null;
-  if ((row.storage_provider || 'local') !== 'google_drive') return null;
+  const isDriveProvider = (row.storage_provider || 'local') === 'google_drive';
+  const hasDriveId = Boolean(row.google_drive_file_id && driveDocuments.isValidFileId(row.google_drive_file_id));
+  const isLegacyDriveRow = !row.storage_provider || (hasDriveId && (!row.stored_name || row.stored_name === row.google_drive_file_id));
+  if (!isDriveProvider && !isLegacyDriveRow) return null;
   const candidates = [row.google_drive_file_id, row.stored_name];
   for (const candidate of candidates) {
     const value = String(candidate || '').trim();
