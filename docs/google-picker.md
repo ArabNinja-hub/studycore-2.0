@@ -84,8 +84,11 @@ without reloading the page.
    → access token → Picker built with
    `.setDeveloperKey(GOOGLE_API_KEY)`, `.setAppId(GOOGLE_CLOUD_PROJECT_NUMBER)`,
    `.setOAuthToken(accessToken)`, `.setOrigin(...)` → `picker.setVisible(true)`.
-6. `PICKED` → the Drive file ID/URL/name/mimeType/size are written into the
-   hidden inputs and posted to `/api/content-admin` on submit.
+6. `PICKED` → the Drive file ID/URL/name/mimeType/size and the short-lived
+   Picker access token are kept in the Content Admin form state and posted on
+   submit. The backend uses that token once to import the selected bytes into
+   StudyCore document storage, then drops it. Students never receive a Drive
+   URL or token.
 
 ## Status states
 

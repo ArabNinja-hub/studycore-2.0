@@ -288,12 +288,12 @@ test('reads and deletes dispatch by the OBJECT\'S recorded provider, never by wh
 });
 
 test("'google_drive_vault' is never confused with the 'google_drive' marker", () => {
-  // Both values are Drive-hosted and both work, but they mean different
-  // things: 'google_drive' is a file the admin picked from their OWN Drive
-  // (StudyCore only references it, and must never delete it), while
-  // 'google_drive_vault' is a file StudyCore itself uploaded into the
-  // connected vault account (which StudyCore does own and may delete).
-  // Keeping the strings distinct is what preserves that deletion boundary.
+  // Both values involve Drive, but they mean different things:
+  // 'google_drive_vault' is a file StudyCore itself uploaded into the connected
+  // vault account (which StudyCore owns and may delete), while 'google_drive'
+  // is a legacy reference to the uploader's original Drive file (which
+  // StudyCore must never delete). New Picker imports should use the vault/R2
+  // backend, not the legacy marker.
   assert.notEqual(documentStorage.backendName.toString(), undefined);
   assert.equal(vault.backendName ? vault.backendName() : 'google_drive_vault', 'google_drive_vault');
   assert.notEqual('google_drive_vault', 'google_drive');

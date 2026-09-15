@@ -188,9 +188,9 @@ function serializeResource(row) {
 // goes through the vault) simply omit it and get the R2/local backend.
 function deleteFileIfExists(storedKey, provider) {
   if (!storedKey) return;
-  // A Drive-hosted document LIVES in Google Drive and belongs to its owner
-  // there. Deleting the StudyCore resource drops StudyCore's reference to it
-  // and must never remove the file from Google Drive.
+  // Legacy Drive-linked rows used the Drive file id as stored_name; that is
+  // not a StudyCore storage key. Imported Drive files record their real backend
+  // ('google_drive_vault', 'r2' or 'local') and are deleted normally.
   if (provider === 'google_drive') return;
   // Fire-and-forget - a resource row being deleted shouldn't be blocked
   // because storage was briefly slow.
@@ -431,18 +431,16 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
 
   const effectiveCategory = category ?? existing.category;
 
-  // Google Drive IS the document storage, but a Drive reference may only be
-  // attached through the Drive Picker. The Picker returns a per-file OAuth
-  // token, which is what lets the server confirm StudyCore can actually read
-  // the file (and grant itself private read access when it cannot) before
-  // students are pointed at it. This dashboard has no Picker and therefore no
-  // token, so a raw file id typed in here could not be verified and would
-  // produce a document nobody can open. Point the admin at the route that can.
+  // Linking a document to a file that stays in Google Drive is not supported:
+  // students who are not individually shared on that file can hit Google's
+  // "Request access" wall. This dashboard has no Drive Picker (and therefore
+  // no short-lived OAuth token), so it cannot import the bytes either — point
+  // the admin at the route that can.
   const linkingNewDriveFile = Boolean(req.body.google_drive_file_id) &&
     req.body.google_drive_file_id !== existing.google_drive_file_id;
   if (linkingNewDriveFile) {
     return failUpload(
-      'A Google Drive document can only be attached with the Drive Picker, which lets StudyCore verify it can read the file for students. Publish it from the Content Admin dashboard with "Select from Google Drive", or upload the file directly here.'
+      'Documents can no longer be linked to Google Drive from this dashboard, because students who are not shared on the file may be asked to request access. Publish it from the Content Admin dashboard with the Drive Picker ("Select from Google Drive"), which imports the file into StudyCore storage, or upload the file directly here.'
     );
   }
 
@@ -557,19 +555,18 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     ),
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
-    // An existing Drive-hosted row KEEPS storage_provider = 'google_drive'
-    // when this edit does not replace the file, so it keeps being read from
-    // Google Drive. Uploading a replacement here moves it to the uploaded
-    // file's own backend, which is the intended effect of replacing it.
+    // This route never creates a new Drive-linked row. If an old row already
+    // has storage_provider = 'google_drive' and the Main Admin edits metadata
+    // only, preserve that marker; uploading a replacement moves it to the
+    // uploaded file's real backend.
     storage_provider: req.file
       // Replacements already carry their final provider: Bunny for video,
       // object storage for documents/images/audio.
       ? (req.file.bucket || storage.backendName())
       : (existing.storage_provider || 'local'),
-    // Drive ids are preserved so an edit that touches other fields does not
-    // silently drop a Drive-hosted document's reference. Clearing is allowed;
-    // setting a NEW one is not, because this route has no Picker token and so
-    // cannot verify StudyCore can read the file it points at.
+    // Drive ids are provenance for imported files, and the fallback reference
+    // for old Drive-linked rows. Clearing is allowed; setting a NEW one is not,
+    // because this route has no Picker token and cannot import those bytes.
     google_drive_file_id: (req.body.google_drive_file_id !== undefined && !req.body.google_drive_file_id)
       ? null
       : (existing.google_drive_file_id || null),

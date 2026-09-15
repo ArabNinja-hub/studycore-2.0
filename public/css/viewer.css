@@ -137,9 +137,8 @@ body[data-page='viewer'] .viewer-main {
 }
 .viewer-tools::-webkit-scrollbar { display: none; }
 .viewer-tools[hidden] { display: none; }
-/* Individual controls can be hidden too (a Google Drive preview keeps only
-   the Fullscreen button). Author display rules outrank the UA [hidden]
-   default, so the suppression must be explicit — same pattern as the
+/* Individual controls can be hidden too. Author display rules outrank the UA
+   [hidden] default, so the suppression must be explicit — same pattern as the
    toolbar rule above. */
 .viewer-tool[hidden],
 .viewer-page-label[hidden],
@@ -267,9 +266,8 @@ body[data-page='viewer'] .viewer-main {
   max-height: none;
   padding: 18px 12px 26px;
 }
-/* A Google Drive preview fullscreens the reading surface itself (there is no
-   StudyCoreReader stage to promote on that path), so size it like the
-   .viewer-shell:fullscreen rule above. */
+/* If the bare reading surface itself is fullscreened before the reader is
+   ready, size it like the .viewer-shell:fullscreen rule above. */
 .viewer-stage:fullscreen,
 .viewer-stage:-webkit-full-screen {
   width: 100vw;

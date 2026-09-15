@@ -58,10 +58,10 @@ function serializeResource(row, user) {
     mimeType: (row.stored_name || row.google_drive_file_id) ? inferMime(row) : row.mime_type,
     hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
     externalUrl: row.external_url,
-    // Drive provenance for admin tooling. Never used by the student viewer to
-    // decide how to render — a Drive document is opened by the ordinary
-    // StudyCore reader against /stream, which fetches it from Drive
-    // server-side. The student's browser is never sent to Google.
+    // Drive provenance for admin tooling. For newly imported Drive files the
+    // student viewer ignores this and streams the stored StudyCore object.
+    // Legacy rows may still use it server-side as a compatibility fallback;
+    // the student's browser is never sent to Google either way.
     googleDriveFileId: row.google_drive_file_id || null,
     googleDriveUrl: row.google_drive_url || null,
     storageProvider: row.storage_provider || 'local',
@@ -193,9 +193,9 @@ const EXT_BY_MIME = {
 
 function inferMime(row) {
   const given = String(row.mime_type || '').trim().toLowerCase().split(';')[0].trim();
-  // A native Google Workspace file (Doc/Sheet/Slides) has no binary content:
-  // StudyCore reads it from Drive through Drive's export endpoint and serves
-  // the PDF, so that is what the reader must be told to expect.
+  // Legacy native Google Workspace rows (Doc/Sheet/Slides) have no binary
+  // content, so the Drive proxy exports them to PDF; new Picker imports already
+  // recorded application/pdf at publish time.
   if (given.startsWith('application/vnd.google-apps.')) {
     return driveDocuments.exportMimeFor(given) || 'application/pdf';
   }
@@ -203,7 +203,7 @@ function inferMime(row) {
   // latter repairs legacy mobile uploads whose original name was a bare UUID
   // but whose stored key received the extension inferred during upload.
   const originalExt = path.extname(String(row.file_name || '')).toLowerCase();
-  // A Drive-hosted row's `stored_name` is a Drive FILE ID, not a filename, so
+  // A legacy Drive row's `stored_name` is a Drive FILE ID, not a filename, so
   // it must never be mined for a file extension.
   const storedExt = (row.storage_provider || 'local') === 'google_drive'
     ? ''
@@ -355,8 +355,8 @@ function pipeBodyToResponse(body, res, req) {
 }
 
 function r2StreamError(err, res, storageProvider) {
-  // A Drive-hosted document says so plainly: the file lives in Google Drive,
-  // so "missing from storage" would point the admin at the wrong system.
+  // A legacy Drive-linked document says so plainly: the file still lives in
+  // Google Drive, so "missing from storage" would point the admin at the wrong system.
   const fromDrive = storageProvider === 'google_drive';
   if (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
     return res.status(404).json({
@@ -492,27 +492,22 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
 }
 
 // ---------------------------------------------------------------------------
-// GOOGLE DRIVE-HOSTED DOCUMENTS
+// LEGACY GOOGLE DRIVE-LINKED DOCUMENTS
 //
-// Google Drive is the storage for these: the bytes stay in Drive and the row
-// keeps only the reference. StudyCore's backend reads them through on demand
-// and serves them from the SAME /stream endpoint as every other document, so
-// the student stays inside the StudyCore viewer.
+// New Drive Picker publishes are imported into StudyCore storage at publish
+// time, so they reach this route as ordinary 'google_drive_vault', 'r2' or
+// 'local' rows. The `google_drive_file_id` on those rows is provenance only.
 //
-// Two generations of record exist and BOTH must work:
+// Some older rows may still be `storage_provider = 'google_drive'` or may have
+// defaulted to 'local' while `stored_name`/`google_drive_file_id` is really a
+// Drive file id. For compatibility we keep a server-side proxy for those rows:
+// StudyCore reads the original Drive file with its own credentials and serves
+// the bytes through this SAME /stream endpoint. The student is still never
+// redirected to Drive, which is what caused Google's "Request access" page.
 //
-//   older  — published from Drive before the storage changes. `stored_name`
-//            holds the Drive file id (it was never an object-storage key) and
-//            `storage_provider` is 'google_drive'.
-//   newer  — picked from the Drive Picker now. `google_drive_file_id` holds
-//            the id; `storage_provider` is 'google_drive'.
-//
-// Older rows sometimes carry a real Drive id in `google_drive_file_id` while
-// `stored_name` holds a copy of it, so both are consulted, most specific
-// first. A row whose provider is R2/local/vault is NOT Drive-hosted even if it
-// has a `google_drive_file_id` — for those the id is only provenance of where
-// the file originally came from, and its bytes really are in StudyCore
-// storage, so it must keep reading from there.
+// A row whose provider is R2/local/vault is NOT legacy Drive-linked even if it has a
+// `google_drive_file_id` — for those the id is only provenance and the bytes
+// really are in StudyCore storage, so it must keep reading from there.
 // ---------------------------------------------------------------------------
 function driveDocumentKey(row) {
   if (!row) return null;
@@ -528,15 +523,14 @@ function driveDocumentKey(row) {
   return null;
 }
 
-// Serves a Drive-hosted document through the ordinary document pipeline.
-// The Drive file id is the storage key; lib/document-storage.js dispatches it
-// to lib/drive-documents.js, which fetches from Drive with StudyCore's own
+// Serves a legacy Drive-linked document through the ordinary document pipeline.
+// The Drive file id is the compatibility key; lib/document-storage.js dispatches
+// it to lib/drive-documents.js, which fetches from Drive with StudyCore's own
 // credentials.
 async function streamDriveDocument(req, res, row, driveKey) {
-  // Drive knows the authoritative name/type/size. The database copy is used
-  // when present so a plain GET does not pay for a metadata round trip, but a
-  // Workspace export (a Google Doc read as PDF) has no meaningful stored size,
-  // so those always ask Drive.
+  // For old Drive-linked rows, Drive may know the authoritative name/type/size.
+  // The database copy is used when present so a plain GET does not pay for a
+  // metadata round trip, but missing size/type falls back to Drive metadata.
   const storedMime = String(row.mime_type || '').trim().toLowerCase().split(';')[0].trim();
   const knownSize = Number(row.file_size);
   const hasUsableSize = Number.isFinite(knownSize) && knownSize > 0;
@@ -564,10 +558,10 @@ async function streamDriveDocument(req, res, row, driveKey) {
   });
 }
 
-// The ONLY unavailable state for a Drive document: Drive itself cannot serve
-// the file (deleted, trashed, moved out of reach, or StudyCore's access to it
-// revoked). There is deliberately no "document is being migrated" case,
-// because documents are never copied or moved into StudyCore storage.
+// The unavailable state for a legacy Drive-linked document: Drive itself cannot
+// serve the original file (deleted, trashed, moved out of reach, or StudyCore's
+// access to it revoked). New Drive Picker publishes are imported into StudyCore
+// storage specifically so students do not depend on this path.
 function driveStreamError(err, res, row) {
   const notFound = err && (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.statusCode === 404);
   // Operators need to know WHICH document and WHOSE, since the fix is in
@@ -740,26 +734,14 @@ async function handleStream(req, res) {
     }
   }
 
-  // ── Google Drive is the document storage ────────────────────────────────
+  // ── Legacy Google Drive references ─────────────────────────────────────
   //
-  // A Drive-hosted row keeps its bytes in Google Drive; StudyCore stores only
-  // the reference. `driveDocumentKey` resolves that reference for BOTH
-  // generations of record, which is why one code path serves old and new
-  // Drive documents alike:
-  //
-  //   · rows published BEFORE the storage changes — Drive file id in
-  //     `google_drive_file_id` and/or mirrored into `stored_name`;
-  //   · rows published through the Picker today — same columns, same meaning.
-  //
-  // The bytes are read through from Drive with StudyCore's own server-side
-  // credentials (lib/drive-documents.js) and streamed to the student by the
-  // very same streamStoredObject() used for R2/local documents, so Range
-  // requests, content sniffing, headers and the viewer are unchanged. The
-  // student's browser never receives a Drive URL, id or token, and is never
-  // redirected to drive.google.com.
-  //
-  // Nothing is copied, migrated or duplicated into StudyCore storage — there
-  // is deliberately no "this document is being moved" state any more.
+  // New Drive Picker publishes are imported into StudyCore storage before a row
+  // is created, so they skip this branch and stream as ordinary stored objects.
+  // This branch exists only for older rows that still point at the original
+  // uploader's Drive file. When StudyCore's server-side credentials can read
+  // that original, the student still receives bytes through /stream — never a
+  // redirect to drive.google.com and never Google's "Request access" wall.
   const driveKey = driveDocumentKey(row);
   if (driveKey) {
     return streamDriveDocument(req, res, row, driveKey);
@@ -773,8 +755,8 @@ async function handleStream(req, res) {
   // NOTE: this endpoint never redirects a student to docs.google.com/gview or
   // drive.google.com. That redirect handed the student to GOOGLE's permission
   // check, so anyone not shared on the uploader's Drive file got "Request
-  // access" instead of the document. StudyCore fetches Drive documents
-  // server-side instead — see streamDriveDocument above.
+  // access" instead of the document. Imported Drive files are served from
+  // StudyCore storage; legacy Drive references are proxied server-side above.
 
   await streamStoredObject(req, res, row.stored_name, {
     filename: row.file_name || row.stored_name,
