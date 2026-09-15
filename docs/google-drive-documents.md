@@ -71,6 +71,34 @@ any bytes, then:
 * the bytes are piped straight through — Drive's name/type/size are re-read
   (briefly cached) so the served length always matches the live file.
 
+### Credential recovery on the read path
+
+The admin's publish and the student's read use the same connection, so the
+things that can break *only* the read are the things that change between them.
+Two are handled automatically, because both are invisible to the admin and
+would otherwise surface as "Document unavailable" for a healthy file:
+
+* **A revoked access token.** The vault caches a minted token in-process for
+  ~55 minutes, but Google can kill it sooner (password change, "sign out of
+  all devices", re-consent). Drive then answers `401 Invalid Credentials`.
+  The *refresh* token is unaffected, so `lib/drive-documents.js` drops the
+  dead token, mints a replacement and retries the request once. The recovered
+  token is cached, so a revocation costs one extra refresh, not one per chunk.
+  A `403` is **not** retried — that is a real permission problem, and the
+  token was never the issue.
+* **Google's abuse flag.** `files.get?alt=media` is refused with `403
+  cannotDownloadAbusiveFile` for files Google's scanner flagged — routine for
+  scanned past papers and large shared PDFs. Metadata reads are *not* refused,
+  which is why publish-time verification passes and only the student's byte
+  read fails. The reader retries once with `acknowledgeAbuse=true`; the admin
+  owns the file and selected it deliberately, so the flag is theirs to accept.
+
+The connection is also validated where the admin can still act on it: a
+consent that did not grant `drive.file` is refused at connect time rather than
+stored as a connection that can mint tokens but never read a file, and a
+refresh token that can no longer be decrypted (rotated `JWT_SECRET`) reports
+"reconnect Google Drive", not a Drive permission error.
+
 The student viewer must not contain a Google Drive iframe, a Google Viewer
 URL, an "Open in Google Drive" fallback, or any direct Drive URL. Students
 never receive a Drive URL, a Drive file id or an OAuth token, and are never
@@ -108,6 +136,10 @@ resource, the uploader and the exact reason. `scripts/list-drive-linked-resource
   authenticates to Drive with the **server's** token; desktop/mobile reads,
   range requests, Workspace exports, access gating, refusal of unreadable
   files, and no-Google-leak assertions.
+* `scripts/test-drive-viewer-retrieval.js` — the viewer-side retrieval path:
+  recovery from a revoked access token (including range reads and Workspace
+  exports), Google's abuse-flag refusal, connect-time scope validation, and
+  proof that genuine 403/404 failures are still reported honestly.
 * `scripts/test-google-drive-link.js` — the registration path and the
   server-side reference reader.
 * `scripts/test-google-drive-vault.js` — the connected account: encrypted
