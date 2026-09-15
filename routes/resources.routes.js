@@ -748,9 +748,69 @@ router.get('/:id/ticket', requireAuth, gate, (req, res) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// The stream endpoint serves the READER, not the browser's address bar.
+//
+// Removing the download control and 403-ing /:id/download closed the obvious
+// routes, but the stream URL itself was still a working file link: pasted
+// into a tab (or reached by "Open in new tab" / "Save link as" / a
+// right-click on the canvas area) it returned the complete PDF with its real
+// filename, which every browser hands to its BUILT-IN PDF viewer — toolbar,
+// Save button, Print button and all. That is a download, and it bypasses the
+// reader and every client-side guard in public/js/privacy-guard.js.
+//
+// Fetch Metadata tells the two apart with no guessing. The reader always
+// reads bytes with fetch()/XHR or an <img>/<video> element, which send
+// Sec-Fetch-Dest of empty/image/video/audio and Sec-Fetch-Mode cors|no-cors.
+// A top-level navigation sends Sec-Fetch-Dest: document with
+// Sec-Fetch-Mode: navigate — a combination the reader never produces.
+//
+// Requests with NO Sec-Fetch-* headers are allowed through: those are older
+// browsers and non-browser clients, and refusing them would break real
+// students to stop an attacker who can trivially set headers anyway. This is
+// deterrence against the casual save, exactly like the rest of the
+// content-protection layer — the access control is still requireAuth + the
+// program/Premium gates above it.
+function isTopLevelNavigation(req) {
+  const dest = String(req.get('Sec-Fetch-Dest') || '').toLowerCase();
+  const mode = String(req.get('Sec-Fetch-Mode') || '').toLowerCase();
+  if (!dest && !mode) return false; // header-less client: don't punish it
+  // `document` covers the address bar and target=_blank; `iframe`/`embed`/
+  // `object` cover handing the URL to a native plugin viewer, which offers
+  // the same Save button.
+  const navigationalDest = ['document', 'iframe', 'frame', 'embed', 'object'].includes(dest);
+  return navigationalDest || mode === 'navigate';
+}
+
+// A student who lands here has usually clicked a stale link rather than gone
+// looking for an exploit, so send them to the reader instead of a dead end.
+function refuseDirectFileAccess(req, res, resourceId) {
+  const viewerUrl = `/viewer/${encodeURIComponent(resourceId)}`;
+  // HTML for a navigation (the client is a browser window by definition).
+  if (String(req.get('Accept') || '').includes('text/html')) {
+    res.status(403);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.end(`<!doctype html><meta charset="utf-8">` +
+      `<meta name="robots" content="noindex,noarchive,nosnippet">` +
+      `<meta http-equiv="refresh" content="0; url=${viewerUrl}">` +
+      `<title>Opening in StudyCore…</title>` +
+      `<p>This document is view-only. <a href="${viewerUrl}">Open it in the StudyCore reader</a>.</p>`);
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  return res.status(403).json({
+    message: 'This document is view-only. Open it in the StudyCore reader.',
+    viewerUrl
+  });
+}
+
 async function handleStream(req, res) {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
+
+  // Refuse before any bytes are read — and before the Drive/storage round
+  // trip — so a saved link costs nothing to reject.
+  if (isTopLevelNavigation(req)) return refuseDirectFileAccess(req, res, row.id);
   // Program permission (Student → Program → Course → Resource) is checked
   // before any subscription gating — a Law student streaming a Mines
   // resource id is refused outright.

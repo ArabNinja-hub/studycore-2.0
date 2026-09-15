@@ -213,6 +213,12 @@ npm start
 
 Promote another admin later: `npm run make-admin -- someone@example.com "Full Name"`.
 
+Maintenance scripts open the same SQLite file as the running server, so they are
+safe to run against a live deployment: the database is opened in WAL mode with a
+5s `busy_timeout`, meaning a script that starts while the server is mid-write
+waits for the lock instead of failing with `database is locked`. Covered by
+`scripts/test-db-concurrency.js`.
+
 ## Deploying
 
 Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
