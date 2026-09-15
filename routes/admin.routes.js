@@ -11,6 +11,7 @@ const resumableUploads = require('../lib/resumable-uploads');
 const storage = require('../lib/document-storage');
 const googleDriveVault = require('../lib/google-drive-vault');
 const googleDrive = require('../lib/google-drive');
+const driveDocuments = require('../lib/drive-documents');
 const stream = require('../lib/stream');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
@@ -983,6 +984,54 @@ router.get('/analytics', (req, res) => {
 router.get('/google-drive/status', (req, res) => {
   res.json(googleDriveVault.status());
 });
+
+// Temporary Main-Admin production probe for one Drive-backed resource. It
+// exercises the same stored id and server OAuth credential as the viewer, then
+// makes both files.get(metadata) and files.get(alt=media, Range 0-0). The
+// report contains booleans/statuses/scopes/account addresses only — never an
+// access token, refresh token, client secret, API key, authorization header,
+// or raw token response.
+router.post('/google-drive/diagnostics/:resourceId', asyncHandler(async (req, res) => {
+  const row = db.prepare(`
+    SELECT id, title, file_name, stored_name, mime_type, storage_provider,
+           google_drive_file_id, google_drive_url, uploaded_by, uploader_email
+    FROM resources WHERE id = ?
+  `).get(req.params.resourceId);
+  if (!row) return res.status(404).json({ message: 'Resource not found.' });
+
+  const viewerFileId = driveDocuments.fileIdForResource(row);
+  if (!viewerFileId) {
+    return res.status(400).json({
+      message: 'This resource is not a Google Drive-backed document.',
+      database: {
+        resourceId: row.id,
+        storageProvider: row.storage_provider || 'local',
+        storedDriveFileId: row.google_drive_file_id || null,
+        storedName: row.stored_name || null
+      },
+      viewer: { resolvedDriveFileId: null, passesStoredDriveFileId: false }
+    });
+  }
+
+  const google = await googleDriveVault.diagnoseFile(viewerFileId);
+  const report = {
+    database: {
+      resourceId: row.id,
+      resourceTitle: row.title,
+      storageProvider: row.storage_provider || 'local',
+      storedDriveFileId: row.google_drive_file_id || null,
+      storedName: row.stored_name || null
+    },
+    viewer: {
+      resolvedDriveFileId: viewerFileId,
+      passesStoredDriveFileId: viewerFileId === String(row.google_drive_file_id || '').trim()
+    },
+    google
+  };
+  console.info('[StudyCore][DriveDiagnostic] Main-Admin production probe:', JSON.stringify(report));
+  res.setHeader('Cache-Control', 'no-store, private');
+  return res.json({ diagnostic: report });
+}));
 
 // Step 1: redirect the admin's browser to Google's consent screen.
 router.get('/google-drive/connect', (req, res) => {

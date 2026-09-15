@@ -693,6 +693,7 @@
           <td data-label="Actions">
             <div class="table-actions">
               ${['announcement', 'quiz'].includes(r.category) ? '' : `<button class="btn btn-outline btn-sm" data-edit="${r.id}">${SC.icon('edit', { size: 13 })} Edit</button>`}
+              ${r.storageProvider === 'google_drive' || r.googleDriveFileId ? `<button class="btn btn-outline btn-sm" data-diagnose-drive="${r.id}">${SC.icon('search', { size: 13 })} Diagnose Drive</button>` : ''}
               ${r.category === 'announcement' ? `<button class="btn btn-ghost btn-sm" data-edit-ann="${r.id}">${SC.icon('bell', { size: 13 })}</button>` : ''}
               <button class="btn btn-ghost btn-sm" data-delete="${r.id}" style="color:var(--red-600);">${SC.icon('trash', { size: 13 })}</button>
             </div>
@@ -702,6 +703,7 @@
 
       tbody.querySelectorAll('[data-toggle-publish]').forEach((btn) => btn.addEventListener('click', () => togglePublish(btn)));
       tbody.querySelectorAll('[data-edit]').forEach((btn) => btn.addEventListener('click', () => editResource(resources.find((r) => r.id === btn.getAttribute('data-edit')))));
+      tbody.querySelectorAll('[data-diagnose-drive]').forEach((btn) => btn.addEventListener('click', () => diagnoseDriveResource(btn)));
       tbody.querySelectorAll('[data-edit-ann]').forEach((btn) => btn.addEventListener('click', () => editAnnouncement(resources.find((r) => r.id === btn.getAttribute('data-edit-ann')))));
       tbody.querySelectorAll('[data-delete]').forEach((btn) => btn.addEventListener('click', () => deleteResource(btn.getAttribute('data-delete'))));
     } catch (err) {
@@ -722,6 +724,82 @@
   }
 
   /* ── Google Drive (Integrations) ─────────── */
+  function diagnosticValue(value) {
+    if (value === null || value === undefined || value === '') return 'NOT REPORTED';
+    if (value === true) return 'YES';
+    if (value === false) return 'NO';
+    return String(value);
+  }
+
+  function formatDriveDiagnostic(report) {
+    const database = report.database || {};
+    const viewer = report.viewer || {};
+    const google = report.google || {};
+    const connection = google.connection || {};
+    const token = google.tokenInspection || {};
+    const refresh = google.tokenRefresh || {};
+    const metadata = google.metadataFilesGet || {};
+    const media = google.mediaFilesGet || {};
+    const ownership = google.ownership || {};
+    const decisive = media.ok === false ? media : (metadata.ok === false ? metadata : media);
+    const scopes = Array.isArray(token.scopes) ? token.scopes.join(' ') : '';
+
+    return [
+      'Google Drive production diagnostic (Main Admin only)',
+      '',
+      `HTTP STATUS: ${diagnosticValue(decisive && decisive.httpStatus)}`,
+      `ERROR CODE: ${diagnosticValue(decisive && (decisive.errorReason || decisive.errorStatus || decisive.errorCode))}`,
+      `ERROR MESSAGE: ${diagnosticValue(decisive && decisive.errorMessage)}`,
+      `FILE ID: ${diagnosticValue(viewer.resolvedDriveFileId)}`,
+      `AUTH ACCOUNT: ${diagnosticValue(token.authAccount || (google.accountInspection && google.accountInspection.authAccount) || connection.configuredAccount)}`,
+      `TOKEN REFRESH: ${diagnosticValue(refresh.status)}`,
+      '',
+      `DATABASE FILE ID: ${diagnosticValue(database.storedDriveFileId)}`,
+      `VIEWER PASSES DATABASE ID: ${diagnosticValue(viewer.passesStoredDriveFileId)}`,
+      `STORAGE PROVIDER: ${diagnosticValue(database.storageProvider)}`,
+      `ACCESS TOKEN VALID: ${diagnosticValue(token.valid)}`,
+      `REFRESH TOKEN EXISTS: ${diagnosticValue(connection.refreshToken && connection.refreshToken.exists)}`,
+      `REFRESH TOKEN SOURCE: ${diagnosticValue(connection.refreshToken && connection.refreshToken.selectedSource)}`,
+      `REFRESH TOKEN DECRYPTABLE: ${diagnosticValue(connection.refreshToken && connection.refreshToken.databaseTokenDecryptable)}`,
+      `REFRESH TOKEN PERSISTS AFTER RESTART: ${diagnosticValue(connection.persistence && connection.persistence.refreshTokenAvailableAfterProcessRestart)}`,
+      `OAUTH SCOPE PERMITS DRIVE READ: ${diagnosticValue(token.scopePermitsDriveRead)}`,
+      `OAUTH SCOPES: ${diagnosticValue(scopes)}`,
+      `FILE OWNED BY AUTH ACCOUNT: ${diagnosticValue(ownership.ownedByAuthAccount)}`,
+      `AUTH ACCOUNT CAN DOWNLOAD: ${diagnosticValue(ownership.downloadableByAuthAccount)}`,
+      `METADATA files.get STATUS: ${diagnosticValue(metadata.httpStatus)}`,
+      `MEDIA files.get STATUS: ${diagnosticValue(media.httpStatus)}`,
+      `BACKEND USED PICKER TOKEN: ${diagnosticValue(connection.pickerTokenUsedByBackend)}`,
+      `GOOGLE_CLIENT_ID SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_CLIENT_ID)}`,
+      `GOOGLE_CLIENT_SECRET SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_CLIENT_SECRET)}`,
+      `GOOGLE_API_KEY SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_API_KEY)}`,
+      `GOOGLE_CLOUD_PROJECT_NUMBER SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_CLOUD_PROJECT_NUMBER)}`,
+      `DATA_DIR SET: ${diagnosticValue(connection.persistence && connection.persistence.DATA_DIRConfigured)}`,
+      '',
+      'Full credential-safe report:',
+      JSON.stringify(report, null, 2)
+    ].join('\n');
+  }
+
+  async function diagnoseDriveResource(button) {
+    const resourceId = button.getAttribute('data-diagnose-drive');
+    const output = document.getElementById('driveDiagnosticOutput');
+    if (!resourceId || !output) return;
+    const oldLabel = button.innerHTML;
+    button.disabled = true;
+    output.hidden = false;
+    output.textContent = 'Running the real server OAuth refresh, files.get metadata, and files.get media request…';
+    document.getElementById('integrations').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    try {
+      const data = await StudyCoreAPI.adminGoogleDriveDiagnose(resourceId);
+      output.textContent = formatDriveDiagnostic(data.diagnostic || {});
+    } catch (err) {
+      output.textContent = `Google Drive diagnostic could not run:\n${err.message || 'Unknown error'}`;
+    } finally {
+      button.disabled = false;
+      button.innerHTML = oldLabel;
+    }
+  }
+
   // This is the SAME Google OAuth client the "Select from Google Drive"
   // Picker uses. Connecting an account here simply lets the StudyCore server
   // talk to Drive on its own (server-to-server), which is what keeps older

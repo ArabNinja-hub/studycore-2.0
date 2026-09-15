@@ -405,6 +405,13 @@ test('a genuinely inaccessible file is still reported as an access failure, not 
       (err) => {
         assert.equal(err.statusCode, 403);
         assert.equal(err.code, 'DriveAccessDenied');
+        assert.equal(err.googleDriveError.httpStatus, 403);
+        assert.equal(err.googleDriveError.errorCode, 403);
+        assert.equal(err.googleDriveError.errorReason, 'insufficientFilePermissions');
+        assert.equal(err.googleDriveError.errorMessage, 'The user does not have sufficient permissions for this file.');
+        assert.equal(err.googleDriveError.fileId, FILE_ID);
+        assert.equal(err.googleDriveError.authMethod, 'server_oauth');
+        assert.equal(err.googleDriveError.authAccount, 'e@example.com');
         return true;
       },
       'a real permission problem is reported as an access failure'

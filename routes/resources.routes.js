@@ -7,6 +7,7 @@ const db = require('../db');
 const { requireAuth, attachUser } = require('../middleware/auth');
 const storage = require('../lib/document-storage');
 const driveDocuments = require('../lib/drive-documents');
+const googleDriveVault = require('../lib/google-drive-vault');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
 const { isAdmin, isStudent } = require('../lib/roles');
 const accessPolicy = require('../lib/access-policy');
@@ -508,7 +509,13 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
   } catch (err) {
     if (typeof onMissing === 'function' && storageObjectIsMissing(err)) return onMissing(err);
     if (storageProvider === 'google_drive') {
-      return driveStreamError(err, res, { id: resourceId, title: filename, uploader_email: null });
+      return driveStreamError(err, res, {
+        id: resourceId,
+        title: filename,
+        uploader_email: null,
+        storage_provider: 'google_drive',
+        google_drive_file_id: key
+      }, req);
     }
     return r2StreamError(err, res, storageProvider);
   }
@@ -547,24 +554,11 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
 // source if the stored object was lost), so they keep reading from storage.
 // ---------------------------------------------------------------------------
 function googleDriveSourceKey(row) {
-  if (!row) return null;
-  // A Picker-imported document keeps this id as provenance. It is never sent
-  // to students, but gives the server a recovery source if the imported R2
-  // object was lost during an old storage migration.
-  for (const candidate of [row.google_drive_file_id, row.stored_name]) {
-    const value = String(candidate || '').trim();
-    if (value && driveDocuments.isValidFileId(value)) return value;
-  }
-  return null;
+  return driveDocuments.sourceFileIdForResource(row);
 }
 
 function driveDocumentKey(row) {
-  if (!row) return null;
-  const isDriveProvider = (row.storage_provider || 'local') === 'google_drive';
-  const hasDriveId = Boolean(row.google_drive_file_id && driveDocuments.isValidFileId(row.google_drive_file_id));
-  const isLegacyDriveRow = !row.storage_provider || (hasDriveId && (!row.stored_name || row.stored_name === row.google_drive_file_id));
-  if (!isDriveProvider && !isLegacyDriveRow) return null;
-  return googleDriveSourceKey(row);
+  return driveDocuments.fileIdForResource(row);
 }
 
 // Serves a Drive-backed document through the ordinary document pipeline.
@@ -581,7 +575,7 @@ async function streamDriveDocument(req, res, row, driveKey) {
   try {
     meta = await driveDocuments.headObject(driveKey);
   } catch (err) {
-    return driveStreamError(err, res, row);
+    return driveStreamError(err, res, row, req);
   }
 
   return streamStoredObject(req, res, driveKey, {
@@ -590,7 +584,7 @@ async function streamDriveDocument(req, res, row, driveKey) {
     fileSize: Number(meta.contentLength) || 0,
     storageProvider: 'google_drive',
     resourceId: row.id,
-    onMissing: (err) => driveStreamError(err, res, row)
+    onMissing: (err) => driveStreamError(err, res, row, req)
   });
 }
 
@@ -599,33 +593,58 @@ async function streamDriveDocument(req, res, row, driveKey) {
 // the library), or Drive refused StudyCore's credentials (connection
 // revoked, or the connected account cannot read this file). Students get an
 // honest, non-technical message either way; operators get the detail below.
-function driveStreamError(err, res, row) {
+function driveStreamError(err, res, row, req) {
   const accessDenied = err && (err.code === 'DriveAccessDenied' || err.name === 'DriveAccessDenied' || err.statusCode === 403);
   const notFound = err && (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.statusCode === 404);
+  const connection = googleDriveVault.connectionDiagnosticSnapshot();
+  // Only documented, credential-safe fields are copied. Never serialize the
+  // Error/Response itself: those objects may retain request headers or URLs.
+  const detail = {
+    operation: err && err.googleDriveError && err.googleDriveError.operation || 'drive.viewer.request',
+    fileId: err && err.googleDriveError && err.googleDriveError.fileId || driveDocuments.sourceFileIdForResource(row),
+    httpStatus: err && err.googleDriveError && err.googleDriveError.httpStatus || null,
+    errorCode: err && err.googleDriveError && err.googleDriveError.errorCode || err && err.code || null,
+    errorStatus: err && err.googleDriveError && err.googleDriveError.errorStatus || null,
+    errorReason: err && err.googleDriveError && err.googleDriveError.errorReason || null,
+    errorMessage: err && err.googleDriveError && err.googleDriveError.errorMessage || err && err.message || null,
+    authMethod: err && err.googleDriveError && err.googleDriveError.authMethod || 'server_oauth',
+    authAccount: err && err.googleDriveError && err.googleDriveError.authAccount || connection.configuredAccount || null,
+    tokenRefresh: err && err.googleDriveError && err.googleDriveError.tokenRefresh || null
+  };
   // Operators need to know WHICH document and WHOSE, since the fix is either
-  // in Google Drive or in Admin → Integrations, not in StudyCore itself
-  // (see scripts/list-drive-linked-resources.js).
-  console.error(
-    `[StudyCore][Drive] resource ${row.id} ("${row.title}") could not be read from Google Drive: ${err.message}. ` +
-    `Uploader: ${row.uploader_email || row.uploaded_by || 'unknown'}.`
-  );
+  // in Google Drive or in Admin → Integrations, not in StudyCore itself. This
+  // is the real Google status/reason/message, not the old generic wrapper.
+  console.error('[StudyCore][Drive] Google Drive API error:', JSON.stringify({
+    ...detail,
+    resourceId: row.id,
+    resourceTitle: row.title,
+    uploader: row.uploader_email || row.uploaded_by || 'unknown'
+  }));
+
+  // The existing student-facing message remains unchanged. Exact Google detail
+  // is temporarily included only when the caller is a Main Admin; the route's
+  // requireAuth + gate checks have already loaded the current database role.
+  const adminDiagnostic = req && isAdmin(req.user) ? { googleDriveError: detail } : {};
   if (accessDenied) {
     return res.status(502).json({
       message: 'This document is in Google Drive, but StudyCore can no longer read it with its Google Drive connection — please tell your admin.',
-      driveUnavailable: true
+      driveUnavailable: true,
+      ...adminDiagnostic
     });
   }
   if (notFound) {
     return res.status(404).json({
       message: 'This document could not be opened from Google Drive. It may have been moved or deleted there — please tell your admin.',
-      driveUnavailable: true
+      driveUnavailable: true,
+      ...adminDiagnostic
     });
   }
   return res.status(err && err.statusCode === 503 ? 503 : 502).json({
     message: err && err.userSafe
       ? err.message
       : 'Google Drive could not be reached right now. Please try again shortly.',
-    driveUnavailable: true
+    driveUnavailable: true,
+    ...adminDiagnostic
   });
 }
 

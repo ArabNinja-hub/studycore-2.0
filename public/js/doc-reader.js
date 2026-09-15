@@ -465,16 +465,35 @@
       statusBox.innerHTML = `
         ${icon('alert-triangle', 34)}
         <h3>Document unavailable</h3>
-        <p>${esc(message)}</p>
+        <p style="white-space:pre-wrap;">${esc(message)}</p>
         ${canRetry === false ? '' : `<button class="btn btn-teal btn-sm" type="button" id="scDocRetry">${icon('refresh', 15)} Try again</button>`}`;
       const retry = statusBox.querySelector('#scDocRetry');
       if (retry) retry.addEventListener('click', () => { destroy(false); init(host, o); });
     }
 
+    function adminDriveFailureText(data) {
+      const detail = data && data.googleDriveError;
+      if (!detail) return data && data.message ? data.message : null;
+      const value = (v) => (v === null || v === undefined || v === '' ? 'NOT REPORTED' : String(v));
+      return [
+        data.message || 'This Google Drive document could not be opened.',
+        '',
+        'Google Drive API error:',
+        `HTTP STATUS: ${value(detail.httpStatus)}`,
+        `ERROR CODE: ${value(detail.errorReason || detail.errorStatus || detail.errorCode)}`,
+        `ERROR MESSAGE: ${value(detail.errorMessage)}`,
+        `FILE ID: ${value(detail.fileId)}`,
+        `AUTH ACCOUNT: ${value(detail.authAccount)}`,
+        `TOKEN REFRESH: ${value(detail.tokenRefresh)}`
+      ].join('\n');
+    }
+
     // When the byte stream fails, the /stream endpoint has already worked out
     // WHY in a JSON body (for example: the file can no longer be read from
     // Google Drive, where it is stored). pdf.js only surfaces a status code,
-    // so fetch that explanation and show the student the real reason.
+    // so fetch that explanation and show the student the real reason. The
+    // technical block exists only when the server authenticated a Main Admin;
+    // students continue to receive the existing non-technical message.
     async function explainStreamFailure() {
       try {
         const ctrl = new AbortController();
@@ -486,7 +505,7 @@
         clearTimeout(t);
         if (res.ok || res.status === 206) return null; // transient; no better message
         const data = await res.json().catch(() => null);
-        return data && data.message ? data.message : null;
+        return adminDriveFailureText(data);
       } catch {
         return null;
       }
