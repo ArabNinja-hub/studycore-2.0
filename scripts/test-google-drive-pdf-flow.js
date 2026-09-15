@@ -50,6 +50,17 @@ let tokenRefreshCount = 0;
 function installMockGoogleDrive() {
   const realFetch = global.fetch;
   const calls = [];
+  let mediaFailure = null;
+  const jsonResponse = (payload, status = 200) => {
+    const make = () => ({
+      ok: status >= 200 && status < 300,
+      status,
+      headers: { get: () => null },
+      json: async () => payload,
+      clone: make
+    });
+    return make();
+  };
 
   global.fetch = async (url, options = {}) => {
     const target = String(url);
@@ -77,6 +88,24 @@ function installMockGoogleDrive() {
       return { ok: true, status: 200, json: async () => ({ email: 'instructor@university.edu' }) };
     }
 
+    if (target.startsWith('https://oauth2.googleapis.com/tokeninfo')) {
+      return jsonResponse({
+        email: 'instructor@university.edu',
+        expires_in: '3599',
+        scope: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file'
+      });
+    }
+
+    if (target.includes('/drive/v3/about?')) {
+      return jsonResponse({
+        user: {
+          displayName: 'Instructor',
+          emailAddress: 'instructor@university.edu',
+          permissionId: 'permission-id'
+        }
+      });
+    }
+
     if (target.includes('/files?q=')) {
       return { ok: true, status: 200, json: async () => ({ files: [{ id: 'folder-studycore' }] }) };
     }
@@ -96,22 +125,31 @@ function installMockGoogleDrive() {
 
     // Drive Metadata
     if (target.includes(`files/${SAMPLE_FILE_ID}`) && target.includes('fields=')) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          id: SAMPLE_FILE_ID,
-          name: 'BT 101 Lecture 1.pdf',
-          mimeType: 'application/pdf',
-          size: String(SAMPLE_PDF.length),
-          modifiedTime: '2026-09-01T10:00:00.000Z',
-          trashed: false
-        })
-      };
+      return jsonResponse({
+        id: SAMPLE_FILE_ID,
+        name: 'BT 101 Lecture 1.pdf',
+        mimeType: 'application/pdf',
+        size: String(SAMPLE_PDF.length),
+        modifiedTime: '2026-09-01T10:00:00.000Z',
+        trashed: false,
+        ownedByMe: true,
+        owners: [{ displayName: 'Instructor', emailAddress: 'instructor@university.edu', me: true }],
+        capabilities: { canDownload: true }
+      });
     }
 
     // Drive Alt=Media Content (with byte range support)
     if (target.includes(`files/${SAMPLE_FILE_ID}`) && target.includes('alt=media')) {
+      if (mediaFailure) {
+        return jsonResponse({
+          error: {
+            code: mediaFailure.status,
+            message: mediaFailure.message,
+            status: mediaFailure.errorStatus,
+            errors: [{ reason: mediaFailure.reason, message: mediaFailure.message }]
+          }
+        }, mediaFailure.status);
+      }
       const requestedRange = (options.headers && options.headers.Range) || null;
       let bytes = SAMPLE_PDF;
       let status = 200;
@@ -150,6 +188,7 @@ function installMockGoogleDrive() {
 
   return {
     calls,
+    failMedia(failure) { mediaFailure = failure || null; },
     restore() { global.fetch = realFetch; }
   };
 }
@@ -241,6 +280,31 @@ test('End-to-end flow: Google Picker → save resource → student stream → PD
     assert.equal(row.stored_name, null);
     assert.equal(row.mime_type, 'application/pdf');
 
+    // The production diagnostic is Main-Admin only. The Content Admin who
+    // picked the file must not receive account/scope/persistence detail.
+    const forbiddenDiagnostic = await httpRequest(
+      baseUrl,
+      'POST',
+      `/api/admin/google-drive/diagnostics/${resourceId}`,
+      { cookie: adminCookie }
+    );
+    assert.equal(forbiddenDiagnostic.response.status, 403);
+
+    const mainAdminUser = {
+      id: `admin-${uuidv4()}`,
+      name: 'Main Admin',
+      email: 'main.admin@studycore.academy',
+      password: bcrypt.hashSync('AdminPass123!', 4),
+      role: ROLES.ADMIN,
+      subscription: 'premium',
+      created_at: new Date().toISOString()
+    };
+    db.prepare(`
+      INSERT INTO users (id, name, email, password, role, subscription, created_at)
+      VALUES (@id, @name, @email, @password, @role, @subscription, @created_at)
+    `).run(mainAdminUser);
+    const mainAdminCookie = `${COOKIE_NAME}=${createToken(mainAdminUser)}`;
+
     // 5. Create student
     const studentUser = {
       id: `student-${uuidv4()}`,
@@ -309,7 +373,86 @@ test('End-to-end flow: Google Picker → save resource → student stream → PD
     assert.equal(streamRecoveryRes.response.status, 200);
     assert.deepEqual(streamRecoveryRes.buffer, SAMPLE_PDF);
 
-    // 11. Test GOOGLE_REFRESH_TOKEN environment variable fallback
+    // 11. Main Admin runs the real credential-safe production probe against
+    // the exact resource row and viewer id.
+    const diagnosticRes = await httpRequest(
+      baseUrl,
+      'POST',
+      `/api/admin/google-drive/diagnostics/${resourceId}`,
+      { cookie: mainAdminCookie }
+    );
+    assert.equal(diagnosticRes.response.status, 200, diagnosticRes.raw);
+    const diagnostic = diagnosticRes.data.diagnostic;
+    assert.equal(diagnostic.database.storedDriveFileId, SAMPLE_FILE_ID);
+    assert.equal(diagnostic.viewer.resolvedDriveFileId, SAMPLE_FILE_ID);
+    assert.equal(diagnostic.viewer.passesStoredDriveFileId, true);
+    assert.equal(diagnostic.google.connection.pickerTokenUsedByBackend, false);
+    assert.equal(diagnostic.google.connection.refreshToken.exists, true);
+    assert.equal(diagnostic.google.connection.refreshToken.databaseTokenDecryptable, true);
+    assert.equal(diagnostic.google.tokenRefresh.status, 'SUCCESS');
+    assert.equal(diagnostic.google.tokenInspection.valid, true);
+    assert.equal(diagnostic.google.tokenInspection.authAccount, 'instructor@university.edu');
+    assert.equal(diagnostic.google.tokenInspection.scopePermitsDriveRead, true);
+    assert.equal(diagnostic.google.metadataFilesGet.httpStatus, 200);
+    assert.equal(diagnostic.google.metadataFilesGet.returnedFileId, SAMPLE_FILE_ID);
+    assert.equal(diagnostic.google.mediaFilesGet.httpStatus, 206);
+    assert.equal(diagnostic.google.mediaFilesGet.ok, true);
+    assert.equal(diagnostic.google.ownership.ownedByAuthAccount, true);
+    assert.equal(diagnostic.google.ownership.downloadableByAuthAccount, true);
+    // No OAuth credential value can cross the admin API boundary or enter its
+    // credential-safe log payload.
+    assert.ok(!diagnosticRes.raw.includes(VAULT_REFRESH_TOKEN));
+    assert.ok(!diagnosticRes.raw.includes('test-client-secret'));
+    assert.ok(!diagnosticRes.raw.includes('ya29.picker-short-lived-token'));
+    assert.ok(!diagnosticRes.raw.includes(activeAccessToken));
+
+    // Google's real error envelope is preserved for production diagnosis, but
+    // remains hidden from student responses.
+    mockGoogle.failMedia({
+      status: 403,
+      errorStatus: 'PERMISSION_DENIED',
+      reason: 'insufficientFilePermissions',
+      message: 'The user does not have sufficient permissions for this file.'
+    });
+    const failedDiagnosticRes = await httpRequest(
+      baseUrl,
+      'POST',
+      `/api/admin/google-drive/diagnostics/${resourceId}`,
+      { cookie: mainAdminCookie }
+    );
+    assert.equal(failedDiagnosticRes.response.status, 200, failedDiagnosticRes.raw);
+    const failedMedia = failedDiagnosticRes.data.diagnostic.google.mediaFilesGet;
+    assert.equal(failedMedia.httpStatus, 403);
+    assert.equal(failedMedia.errorCode, 403);
+    assert.equal(failedMedia.errorStatus, 'PERMISSION_DENIED');
+    assert.equal(failedMedia.errorReason, 'insufficientFilePermissions');
+    assert.equal(failedMedia.errorMessage, 'The user does not have sufficient permissions for this file.');
+
+    driveDocuments.forgetCaches();
+    const studentFailure = await httpRequest(baseUrl, 'GET', streamUrl, { cookie: studentCookie });
+    assert.equal(studentFailure.response.status, 502);
+    assert.equal(studentFailure.data.googleDriveError, undefined,
+      'students must never receive the admin OAuth diagnostic');
+    assert.ok(!studentFailure.raw.includes(SAMPLE_FILE_ID));
+    assert.ok(!studentFailure.raw.includes('insufficientFilePermissions'));
+
+    driveDocuments.forgetCaches();
+    const adminFailure = await httpRequest(
+      baseUrl,
+      'GET',
+      `/api/resources/${resourceId}/stream`,
+      { cookie: mainAdminCookie }
+    );
+    assert.equal(adminFailure.response.status, 502);
+    assert.equal(adminFailure.data.googleDriveError.httpStatus, 403);
+    assert.equal(adminFailure.data.googleDriveError.errorReason, 'insufficientFilePermissions');
+    assert.equal(adminFailure.data.googleDriveError.fileId, SAMPLE_FILE_ID);
+    assert.equal(adminFailure.data.googleDriveError.authAccount, 'instructor@university.edu');
+    assert.ok(!adminFailure.raw.includes(activeAccessToken));
+    mockGoogle.failMedia(null);
+    driveDocuments.forgetCaches();
+
+    // 12. Test GOOGLE_REFRESH_TOKEN environment variable fallback
     db.prepare('DELETE FROM google_drive_accounts').run();
     vault.invalidateAccessToken();
     driveDocuments.forgetCaches();
