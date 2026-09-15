@@ -537,7 +537,7 @@
     $('#caUploadSubmitBtn').textContent = 'Save Changes';
     $('#caCancelEditBtn').hidden = false;
     $('#caFileDropTitle').innerHTML = 'Replace resource file <span style="font-weight:400;color:var(--muted);">(optional)</span>';
-    // Restore Drive-backed file info when editing an existing resource.
+    // Restore Drive-source provenance when editing an existing resource.
     const hasDriveFile = Boolean(resource.googleDriveFileId);
     // No token when merely editing: the file was already imported, so saving
     // must not trigger another Drive download.
@@ -622,7 +622,7 @@
       const file = fileInput.files && fileInput.files[0];
       if (file) {
         // If selecting a regular file upload, clear any previous Drive selection
-        // so the server does not treat this as a Drive-backed resource.
+        // so the server imports/uploads exactly one source.
         $('#caGoogleDriveFileId').value = '';
         $('#caGoogleDriveUrl').value = '';
         $('#caGoogleDriveFileName').value = '';

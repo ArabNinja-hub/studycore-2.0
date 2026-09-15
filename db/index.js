@@ -315,16 +315,14 @@ try {
 }
 
 // -----------------------------------------------------------------------
-// Google Drive VAULT (documents are now stored IN Google Drive, not just
-// picked from it). One Main Admin connects one real Google account with
-// offline access; StudyCore keeps the resulting refresh token here,
-// encrypted at rest with a key derived from JWT_SECRET (see
-// lib/google-drive-vault.js). Every document upload (multipart, resumable,
-// or "Select from Google Drive") is written into a dedicated StudyCore
-// folder inside that account, and every student read is proxied through
-// the normal session/subscription-gated /stream endpoint - students and
-// their browsers never talk to Google directly, so Drive's own sharing
-// permissions are never in the access path.
+// Google Drive VAULT (optional StudyCore-owned document storage). One Main
+// Admin connects one real Google account with offline access; StudyCore keeps
+// the resulting refresh token here, encrypted at rest with a key derived from
+// JWT_SECRET (see lib/google-drive-vault.js). Every document upload can then be
+// written into a dedicated StudyCore folder inside that account. Files selected
+// from an uploader's Google Drive are imported into this vault (or R2/local),
+// not left linked to the uploader's private sharing list. Every student read is
+// proxied through the normal session/subscription-gated /stream endpoint.
 //
 // Only one row is ever expected (single connected vault account), but the
 // table is not literally singleton-constrained so a re-connect can insert

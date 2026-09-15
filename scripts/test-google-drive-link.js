@@ -1,20 +1,19 @@
 'use strict';
 
-// Regression tests for GOOGLE DRIVE AS THE DOCUMENT STORAGE.
+// Regression tests for the Google Drive Picker IMPORT path and the remaining
+// legacy Drive-reference fallback.
 //
-// THE ARCHITECTURE THESE PIN
+// THE BUG THIS PINS
 //
-//     Google Drive -> StudyCore backend -> StudyCore document viewer
+// Drive-picked resources used to be stored as a LINK (just the Drive file id)
+// and students were shown an embedded drive.google.com preview. Google checks
+// the file's own sharing list, not the StudyCore session, so students who were
+// not individually shared on the uploader's private file saw "Request access".
 //
-// NOT:
-//
-//     Google Drive -> StudyCore storage -> StudyCore viewer
-//
-// Publishing a Drive file records a REFERENCE to it (lib/google-drive.js).
-// The bytes are never copied, duplicated or migrated into StudyCore storage.
-// Reading one fetches it back out of Drive server-side (lib/drive-documents.js)
-// and serves it through StudyCore's own protected viewer, so students never
-// touch Google's permission system and are never redirected to Drive.
+// The fixed publish path imports the bytes into StudyCore document storage at
+// publish time. Legacy rows that already contain storage_provider='google_drive'
+// are still proxied server-side when possible, but new publishes must not
+// create that fragile state.
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -27,13 +26,14 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studycore-drive-'));
 process.env.DATA_DIR = dataDir;
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-only-studycore-jwt-secret-0123456789';
-// Keep R2 unconfigured: if anything ever tried to copy bytes into StudyCore
-// storage, it would land in the local object store, which these tests inspect.
+// Keep R2 unconfigured so imports land in the local object store, which these
+// tests can inspect byte-for-byte. If a Drive vault is configured in another
+// environment, document-storage will still return the correct recorded backend.
 process.env.R2_ACCOUNT_ID = '';
 process.env.R2_ACCESS_KEY_ID = '';
 process.env.R2_SECRET_ACCESS_KEY = '';
 process.env.R2_BUCKET_NAME = '';
-// StudyCore's own server-side Drive credential for read-through.
+// Server-side credential used only by the legacy google_drive fallback tests.
 process.env.GOOGLE_API_KEY = 'AIzaTestServerSideKey0000000000000000000';
 
 const storage = require('../lib/storage');
@@ -70,7 +70,7 @@ function webStreamOf(buffer) {
 
 // Stands in for Google Drive. Records every request so the tests can assert
 // which endpoint was called and with which credential.
-function installFakeDrive({ metadata, body = PDF_BYTES, failDownload = null, failPermissions = false } = {}) {
+function installFakeDrive({ metadata, body = PDF_BYTES, failDownload = null } = {}) {
   const calls = [];
   const original = global.fetch;
   global.fetch = async (url, options = {}) => {
@@ -78,16 +78,13 @@ function installFakeDrive({ metadata, body = PDF_BYTES, failDownload = null, fai
     const method = (options && options.method) || 'GET';
     calls.push({ url: target, method, headers: (options && options.headers) || {} });
 
-    if (target.includes('/permissions')) {
-      if (failPermissions) return { ok: false, status: 403, json: async () => ({}) };
-      return { ok: true, status: 200, json: async () => ({ id: 'perm-1' }) };
-    }
     if (target.includes('fields=')) {
       return { ok: true, status: 200, json: async () => metadata };
     }
     if (failDownload) {
       return { ok: false, status: failDownload, json: async () => ({}) };
     }
+
     const requested = (options.headers && options.headers.Range) || null;
     let bytes = body;
     const headers = new Map([['Content-Type', metadata.mimeType || 'application/pdf']]);
@@ -118,12 +115,12 @@ test.after(() => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
-test('a picked Drive PDF is REFERENCED, never copied into StudyCore storage', async () => {
+test('a picked Drive PDF is copied into StudyCore storage, not linked', async () => {
   const drive = installFakeDrive({
     metadata: { id: DRIVE_ID, name: 'Contract Law Notes.pdf', mimeType: 'application/pdf', size: String(PDF_BYTES.length) }
   });
   try {
-    const file = await googleDrive.linkDriveFile({
+    const file = await googleDrive.importToStorage({
       fileId: DRIVE_ID,
       accessToken: 'ya29.picker-token',
       fileName: 'Contract Law Notes.pdf',
@@ -131,54 +128,56 @@ test('a picked Drive PDF is REFERENCED, never copied into StudyCore storage', as
     });
 
     // The returned shape matches what multer produces, so the publish routes
-    // cannot tell a Drive reference from an ordinary upload...
+    // cannot tell a Drive import from an ordinary upload.
+    assert.ok(file.key, 'import produces a storage key');
+    assert.match(file.key, /\.pdf$/, 'the stored object keeps a .pdf extension');
+    assert.notEqual(file.key, DRIVE_ID, 'the storage key must NOT be the Drive file id');
+    assert.equal(file.bucket, storage.backendName(), 'with no vault configured, imports use normal storage');
     assert.equal(file.originalname, 'Contract Law Notes.pdf');
     assert.equal(file.mimetype, 'application/pdf');
     assert.equal(file.size, PDF_BYTES.length);
+    assert.ok(file.contentHash, 'a content hash is computed for duplicate detection');
 
-    // ...but the "storage key" IS the Drive file id and the provider says the
-    // bytes live in Google Drive.
-    assert.equal(file.key, DRIVE_ID, 'the Drive file id is the storage key');
-    assert.equal(file.bucket, 'google_drive');
-    assert.equal(file.driveHosted, true);
+    // The bytes really are in StudyCore storage now.
+    const stored = await documentStorage.readBytes(file.key, 0, PDF_BYTES.length - 1, file.bucket);
+    assert.deepEqual(Buffer.from(stored), PDF_BYTES, 'stored object matches the Drive file byte-for-byte');
 
-    // THE DECISIVE ASSERTION: nothing was written into StudyCore storage.
-    const uploadsDir = path.join(dataDir, 'uploads');
-    const written = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
-    assert.equal(written.length, 0, 'no bytes may be copied into StudyCore storage');
-
-    // No upload/export request was made — only metadata + a validation read.
-    assert.equal(drive.calls.filter((c) => c.url.includes('/upload/')).length, 0);
+    // The OAuth token was presented to Google, and the binary download endpoint
+    // (alt=media) was used only by the server at publish time.
+    const download = drive.calls.find((c) => c.url.includes('alt=media'));
+    assert.ok(download, 'the file was downloaded with alt=media');
+    assert.equal(download.headers.Authorization, 'Bearer ya29.picker-token');
   } finally {
     drive.restore();
   }
 });
 
-test('a referenced Drive document is read back FROM Drive, with Range support', async () => {
+test('a legacy Drive reference can still be read server-side with Range support', async () => {
   const drive = installFakeDrive({
     metadata: { id: DRIVE_ID, name: 'notes.pdf', mimeType: 'application/pdf', size: String(PDF_BYTES.length) }
   });
   try {
-    // Exactly how the stream route reads it: provider 'google_drive', key = id.
+    // Exactly how the stream route handles old rows: provider 'google_drive',
+    // key = original Drive id. This is a compatibility fallback only.
     const head = await documentStorage.headObject(DRIVE_ID, 'google_drive');
     assert.equal(head.contentLength, PDF_BYTES.length);
     assert.equal(head.contentType, 'application/pdf');
 
     const full = await documentStorage.readBytes(DRIVE_ID, 0, PDF_BYTES.length - 1, 'google_drive');
-    assert.deepEqual(full, PDF_BYTES, 'the student receives the exact bytes held in Drive');
+    assert.deepEqual(full, PDF_BYTES, 'the legacy proxy receives the exact Drive bytes');
 
     // pdf.js pages a PDF in 128KB ranges — those must reach Drive as ranges.
     const ranged = await documentStorage.readBytes(DRIVE_ID, 4, 8, 'google_drive');
     assert.deepEqual(ranged, PDF_BYTES.subarray(4, 9), 'Range reads are honored end-to-end');
     const rangedCall = drive.calls.find((c) => c.headers && c.headers.Range === 'bytes=4-8');
     assert.ok(rangedCall, 'the Range header is forwarded to Google Drive');
-    assert.ok(rangedCall.url.includes('alt=media'), 'bytes come from the Drive media endpoint');
+    assert.ok(rangedCall.url.includes('alt=media'), 'legacy bytes come from the Drive media endpoint');
   } finally {
     drive.restore();
   }
 });
 
-test('deleting a StudyCore resource never deletes the file from Google Drive', async () => {
+test('deleting a legacy Drive reference never deletes the original Drive file', async () => {
   const drive = installFakeDrive({
     metadata: { id: DRIVE_ID, name: 'notes.pdf', mimeType: 'application/pdf', size: String(PDF_BYTES.length) }
   });
@@ -186,47 +185,43 @@ test('deleting a StudyCore resource never deletes the file from Google Drive', a
     await documentStorage.deleteObject(DRIVE_ID, 'google_drive');
     const deletes = drive.calls.filter((c) => c.method === 'DELETE');
     assert.equal(deletes.length, 0,
-      'Drive is the source of truth — the document belongs to its owner there');
+      'a legacy source document belongs to its owner in Google Drive');
   } finally {
     drive.restore();
   }
 });
 
-test('a native Google Doc is exported to PDF ON READ, still without copying it', async () => {
+test('a native Google Doc is exported to PDF during import', async () => {
   const drive = installFakeDrive({
     metadata: { id: DOC_ID, name: 'Lecture 3', mimeType: 'application/vnd.google-apps.document', size: '0' }
   });
   try {
-    const file = await googleDrive.linkDriveFile({ fileId: DOC_ID, accessToken: 'ya29.picker-token' });
+    const file = await googleDrive.importToStorage({ fileId: DOC_ID, accessToken: 'ya29.picker-token' });
     assert.equal(file.mimetype, 'application/pdf');
     assert.equal(file.originalname, 'Lecture 3.pdf', 'a .pdf extension is recorded for the reader');
-    assert.equal(file.key, DOC_ID, 'still just a reference to the Drive file');
-    assert.equal(file.bucket, 'google_drive');
+    assert.notEqual(file.key, DOC_ID, 'Workspace imports still produce a StudyCore storage key');
 
-    // The export happens at READ time, against Drive.
     const exportCall = drive.calls.find((c) => c.url.includes('/export'));
-    assert.ok(exportCall, 'Workspace files are read through the Drive export endpoint');
+    assert.ok(exportCall, 'Workspace files are imported through the Drive export endpoint');
     assert.match(exportCall.url, /mimeType=application%2Fpdf/);
 
-    // And nothing landed in StudyCore storage.
-    const uploadsDir = path.join(dataDir, 'uploads');
-    const written = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
-    assert.equal(written.length, 0);
+    const stored = await documentStorage.readBytes(file.key, 0, file.size - 1, file.bucket);
+    assert.deepEqual(Buffer.from(stored), PDF_BYTES);
   } finally {
     drive.restore();
   }
 });
 
-test('Drive documents are validated exactly like an ordinary upload', async () => {
-  // Claims to be a PDF but the bytes are not — the magic-byte check must
-  // reject it at publish time, same as the multipart upload path.
+test('Drive imports are validated exactly like an ordinary upload', async () => {
+  // Claims to be a PDF but the bytes are not — the magic-byte check must reject
+  // it at publish time, same as the multipart upload path.
   const drive = installFakeDrive({
     metadata: { id: BAD_ID, name: 'fake.pdf', mimeType: 'application/pdf', size: '20' },
     body: Buffer.from('this is definitely not a pdf at all', 'utf8')
   });
   try {
     await assert.rejects(
-      () => googleDrive.linkDriveFile({ fileId: BAD_ID, accessToken: 'tok' }),
+      () => googleDrive.importToStorage({ fileId: BAD_ID, accessToken: 'tok' }),
       /does not match its file type/i
     );
   } finally {
@@ -239,7 +234,7 @@ test('Drive documents are validated exactly like an ordinary upload', async () =
   });
   try {
     await assert.rejects(
-      () => googleDrive.linkDriveFile({ fileId: EXE_ID, accessToken: 'tok' }),
+      () => googleDrive.importToStorage({ fileId: EXE_ID, accessToken: 'tok' }),
       /not supported/i
     );
   } finally {
@@ -253,7 +248,7 @@ test('Drive videos are refused so they cannot bypass Bunny Stream', async () => 
   });
   try {
     await assert.rejects(
-      () => googleDrive.linkDriveFile({ fileId: VID_ID, accessToken: 'tok' }),
+      () => googleDrive.importToStorage({ fileId: VID_ID, accessToken: 'tok' }),
       /Bunny Stream/i
     );
   } finally {
@@ -261,93 +256,38 @@ test('Drive videos are refused so they cannot bypass Bunny Stream', async () => 
   }
 });
 
-test('publishing fails loudly when StudyCore cannot read the file, rather than publishing a dead document', async () => {
-  // Metadata resolves for the uploader's Picker token, but StudyCore's own
-  // read is refused and the sharing grant also fails.
-  const original = global.fetch;
-  global.fetch = async (url, options = {}) => {
-    const target = String(url);
-    const auth = (options.headers && options.headers.Authorization) || '';
-    if (target.includes('/permissions')) return { ok: false, status: 403, json: async () => ({}) };
-    if (auth.startsWith('Bearer ya29.picker')) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ id: DRIVE_ID, name: 'private.pdf', mimeType: 'application/pdf', size: '10' })
-      };
-    }
-    // StudyCore's own credential (API key) cannot see it.
-    return { ok: false, status: 404, json: async () => ({}) };
-  };
+test('Google permission failures are reported to the admin, never to the student', async () => {
+  const denied = installFakeDrive({
+    metadata: { id: DRIVE_ID, name: 'notes.pdf', mimeType: 'application/pdf', size: '10' },
+    failDownload: 403
+  });
   try {
     await assert.rejects(
-      () => googleDrive.linkDriveFile({ fileId: DRIVE_ID, accessToken: 'ya29.picker-token' }),
+      () => googleDrive.importToStorage({ fileId: DRIVE_ID, accessToken: 'tok' }),
       (err) => {
-        // The admin is told how to fix it in Drive; nobody is told to
-        // "request access", and no student-facing state is created.
+        assert.equal(err.statusCode, 403);
+        // The uploader is told to re-pick the file; nothing instructs anyone to
+        // "request access", which is the student-facing failure mode being removed.
+        assert.match(err.message, /Select from Google Drive/i);
         assert.doesNotMatch(err.message, /request access/i);
-        assert.doesNotMatch(err.message, /being moved/i);
         return true;
       }
     );
   } finally {
-    global.fetch = original;
+    denied.restore();
   }
-});
 
-test('granting StudyCore access never makes the document public', async () => {
-  // StudyCore cannot read it at first; a private reader grant is created.
-  let readable = false;
-  const requests = [];
-  const original = global.fetch;
-  global.fetch = async (url, options = {}) => {
-    const target = String(url);
-    requests.push({ url: target, method: (options && options.method) || 'GET', body: options && options.body });
-    if (target.includes('/permissions')) {
-      readable = true;
-      return { ok: true, status: 200, json: async () => ({ id: 'perm-1' }) };
-    }
-    const auth = (options.headers && options.headers.Authorization) || '';
-    const isPicker = auth.startsWith('Bearer ya29.picker');
-    if (!isPicker && !readable) return { ok: false, status: 404, json: async () => ({}) };
-    if (target.includes('fields=')) {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ id: DRIVE_ID, name: 'shared.pdf', mimeType: 'application/pdf', size: String(PDF_BYTES.length) })
-      };
-    }
-    return {
-      ok: true,
-      status: 200,
-      headers: { get: (h) => (h === 'Content-Length' ? String(PDF_BYTES.length) : 'application/pdf') },
-      body: webStreamOf(PDF_BYTES)
-    };
-  };
+  const expired = installFakeDrive({
+    metadata: { id: DRIVE_ID, name: 'notes.pdf', mimeType: 'application/pdf', size: '10' },
+    failDownload: 401
+  });
   try {
-    // A connected vault account is what StudyCore grants access TO.
-    const vault = require('../lib/google-drive-vault');
-    const realStatus = vault.status;
-    const realConfigured = vault.isConfigured;
-    vault.status = () => ({ connected: true, email: 'studycore-drive@example.com' });
-    vault.isConfigured = () => false; // force the API-key read path
-    try {
-      await googleDrive.ensureServerAccess({ fileId: DRIVE_ID, accessToken: 'ya29.picker-token' });
-    } finally {
-      vault.status = realStatus;
-      vault.isConfigured = realConfigured;
-    }
-
-    const grant = requests.find((r) => r.url.includes('/permissions'));
-    assert.ok(grant, 'a permission was created');
-    const payload = JSON.parse(grant.body);
-    assert.equal(payload.role, 'reader', 'read-only');
-    assert.equal(payload.type, 'user', 'a single named account');
-    assert.equal(payload.emailAddress, 'studycore-drive@example.com');
-    assert.notEqual(payload.type, 'anyone', 'the document must never be made public');
-    assert.match(grant.url, /sendNotificationEmail=false/);
+    await assert.rejects(
+      () => googleDrive.importToStorage({ fileId: DRIVE_ID, accessToken: 'tok' }),
+      /authorization expired/i
+    );
   } finally {
-    global.fetch = original;
+    expired.restore();
   }
 });
 
@@ -355,7 +295,7 @@ test('a malformed Drive file id is rejected before any request is made', async (
   const drive = installFakeDrive({ metadata: {} });
   try {
     await assert.rejects(
-      () => googleDrive.linkDriveFile({ fileId: 'not a valid id!!', accessToken: 'tok' }),
+      () => googleDrive.importToStorage({ fileId: 'not a valid id!!', accessToken: 'tok' }),
       /not valid/i
     );
     assert.equal(drive.calls.length, 0, 'no request is issued for a malformed id');
@@ -375,11 +315,9 @@ function codeOnly(source) {
     .join('\n');
 }
 
-test('the student viewer never embeds Google Drive, and has no "being moved" state', () => {
+test('the student viewer never embeds Google Drive or offers an access-request path', () => {
   const viewerJs = codeOnly(read('public/js/viewer.js'));
 
-  // The access wall came from these URLs. None may be constructed in the
-  // student's reader again.
   assert.doesNotMatch(viewerJs, /drive\.google\.com/,
     'the viewer must not embed or link a drive.google.com URL');
   assert.doesNotMatch(viewerJs, /docs\.google\.com/,
@@ -389,20 +327,12 @@ test('the student viewer never embeds Google Drive, and has no "being moved" sta
   assert.doesNotMatch(viewerJs, /Open in Google Drive|Open Document/,
     'no "open it in Drive" escape hatch is offered to students');
 
-  // The incorrect migration state is gone from the viewer entirely.
-  const viewerRaw = read('public/js/viewer.js');
-  assert.doesNotMatch(viewerRaw, /being moved into StudyCore/,
-    'documents are never moved into StudyCore, so that state must not exist');
-  assert.doesNotMatch(viewerJs, /driveNotMigrated/);
-  assert.doesNotMatch(viewerJs, /storageProvider === 'google_drive'/,
-    'a Drive-hosted document renders in the normal reader, not a special state');
-
-  // Drive-hosted documents flow through the ordinary protected reader.
+  // All documents flow through the ordinary protected reader.
   assert.match(viewerJs, /StudyCoreReader\.init/);
   assert.match(viewerJs, /protectedUrl/);
 });
 
-test('the stream endpoint serves Drive documents itself and never redirects to Google', () => {
+test('the stream endpoint serves students itself and never redirects to Google', () => {
   const resourceRoutes = codeOnly(read('routes/resources.routes.js'));
 
   assert.doesNotMatch(resourceRoutes, /docs\.google\.com/,
@@ -410,35 +340,35 @@ test('the stream endpoint serves Drive documents itself and never redirects to G
   assert.doesNotMatch(resourceRoutes, /drive\.google\.com/);
   assert.doesNotMatch(resourceRoutes, /res\.redirect\(/,
     'a student must never be redirected off StudyCore to read a document');
-  assert.doesNotMatch(read('routes/resources.routes.js'), /being moved into StudyCore/,
-    'the incorrect migration message must be gone');
 
-  // Drive-hosted rows are resolved and streamed from Drive.
+  // New imports use ordinary storage; legacy google_drive rows are proxied.
   assert.match(resourceRoutes, /driveDocumentKey/);
   assert.match(resourceRoutes, /streamDriveDocument/);
 });
 
-test('publishing a Drive file stores a reference, and never copies it into StudyCore', () => {
+test('publishing a Drive file imports it rather than storing a link', () => {
   const routes = read('routes/content-admin.routes.js');
 
-  assert.match(routes, /googleDrive\.linkDriveFile/,
-    'the publish route references the Drive file');
-  assert.doesNotMatch(routes, /importToStorage/,
-    'nothing may copy Drive bytes into StudyCore storage');
+  assert.match(routes, /googleDrive\.importToStorage/,
+    'the publish/edit routes import the Drive file');
+  assert.doesNotMatch(routes, /googleDrive\.linkDriveFile/,
+    'new code must not leave the source Drive file as the student storage');
+  assert.doesNotMatch(routes, /storage_provider:\s*isDriveFile\s*\?\s*'google_drive'/,
+    'imported Drive files record their real storage backend');
 
   const lib = read('lib/google-drive.js');
-  assert.doesNotMatch(codeOnly(lib), /documentStorage\.putObject/,
-    'the Drive publish path must not write to StudyCore object storage');
+  assert.match(codeOnly(lib), /documentStorage\.putObject/,
+    'the Drive publish path writes imported bytes to StudyCore document storage');
 });
 
-test('the Picker hands its access token to the dashboard for the reference check', () => {
+test('the Picker hands its access token to the dashboard for the import', () => {
   const pickerJs = read('public/js/google-picker.js');
   const dashboardJs = read('public/js/content-admin.js');
 
   assert.match(pickerJs, /onGoogleDriveFilePicked\(doc,\s*\{\s*accessToken/,
     'the picker passes the OAuth token with the picked file');
   assert.match(dashboardJs, /google_drive_access_token/,
-    'the dashboard forwards the token so the server can verify its own access');
+    'the dashboard forwards the token so the server can import the file');
   // The token is a credential: memory only, cleared between publishes.
   assert.match(dashboardJs, /state\.driveAccessToken = null/);
   assert.doesNotMatch(dashboardJs, /localStorage\.setItem\([^)]*[Tt]oken/);

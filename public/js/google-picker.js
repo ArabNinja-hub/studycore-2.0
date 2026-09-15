@@ -429,7 +429,7 @@
       console.info('[StudyCore][GooglePicker] building Picker with origin=' + window.location.origin +
         ' appId=' + state.config.appId +
         ' developerKey=' + state.config.apiKey.slice(0, 6) + '…' +
-        ' token=' + String(accessToken || '').slice(0, 10) + '…');
+        ' token=present');
       const picker = builder.build();
       picker.setVisible(true);
       console.info('[StudyCore][GooglePicker] Picker visible — waiting for a Drive file to be picked');

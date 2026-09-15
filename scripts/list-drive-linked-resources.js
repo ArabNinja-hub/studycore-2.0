@@ -1,24 +1,23 @@
 // =============================================================================
-// StudyCore — report the documents that are STORED IN Google Drive
+// StudyCore — report legacy documents that are still LINKED to Google Drive
 // -----------------------------------------------------------------------------
-// Google Drive is the document storage: these rows keep their bytes in Drive
-// and StudyCore reads them through on demand at view time. This script lists
-// them, and can optionally ask Google Drive whether each one is still readable
-// with StudyCore's own credentials — which is exactly what a student's request
-// does.
+// New Drive Picker publishes are imported into StudyCore document storage so
+// students do not depend on the uploader's private Drive sharing list. This
+// script lists older rows that still carry `storage_provider = 'google_drive'`
+// (or the equivalent legacy shape) and can optionally ask Google Drive whether
+// StudyCore's server-side credentials can still read each original file.
 //
-// It only READS. Nothing is modified, re-published, copied or deleted, and no
-// document is ever moved into StudyCore storage.
+// It only READS. Nothing is modified, copied or deleted.
 //
 //   Usage:
 //     node scripts/list-drive-linked-resources.js            # list only
 //     node scripts/list-drive-linked-resources.js --verify   # also check Drive
 //
 // With --verify, any document reported as UNREADABLE is one a student cannot
-// open. The fix lives in Google Drive, not in StudyCore: restore the file, or
-// share it with the connected StudyCore account (the script prints which one),
-// or have the uploader re-select it in Content Admin → Edit → "Select from
-// Google Drive", which re-establishes access.
+// open through the legacy proxy. The durable fix is to have the uploader edit
+// the resource, click "Select from Google Drive", pick the same file, and save;
+// that re-imports the bytes into StudyCore storage so no student is sent to
+// Google's "Request access" wall.
 // =============================================================================
 
 'use strict';
@@ -35,12 +34,13 @@ const rows = db.prepare(`
   FROM resources r
   LEFT JOIN users u ON u.id = r.uploaded_by
   WHERE r.storage_provider = 'google_drive'
-     OR (r.google_drive_file_id IS NOT NULL AND r.storage_provider IS NULL)
+     OR (r.google_drive_file_id IS NOT NULL AND (r.storage_provider IS NULL OR r.storage_provider = 'local')
+         AND (r.stored_name IS NULL OR r.stored_name = r.google_drive_file_id))
   ORDER BY COALESCE(r.uploaded_at, r.created_at) DESC
 `).all();
 
 if (!rows.length) {
-  console.log('No Google Drive-hosted documents found.');
+  console.log('No legacy Google Drive-linked documents found.');
   process.exit(0);
 }
 
@@ -57,8 +57,8 @@ function driveKeyFor(row) {
 const published = rows.filter((r) => r.publish_status === 'published');
 
 console.log('');
-console.log(`${rows.length} document(s) are stored in Google Drive (${published.length} published).`);
-console.log('StudyCore reads these from Drive on demand and serves them through its own viewer.');
+console.log(`${rows.length} legacy Google Drive-linked document(s) found (${published.length} published).`);
+console.log('New Drive Picker publishes are imported into StudyCore storage; these old rows should be re-imported when possible.');
 console.log('');
 
 async function main() {
@@ -115,15 +115,15 @@ async function main() {
   if (verify && unreadable.length) {
     console.log('---');
     console.log(`${unreadable.length} document(s) cannot be read from Google Drive right now.`);
-    console.log('Students opening these see an "unavailable" message. To fix, in Google Drive:');
+    console.log('To fix, in Google Drive:');
     const account = driveDocuments && driveDocuments.serviceAccountEmail();
-    console.log(`  · restore the file if it was deleted or trashed, and/or`);
+    console.log('  · restore the file if it was deleted or trashed, and/or');
     console.log(`  · share it with ${account || 'the connected StudyCore account'} (Viewer is enough), or`);
     console.log('  · have the uploader re-select it in Content Admin → Edit → "Select from Google Drive".');
     console.log('');
-    console.log('Nothing needs to be copied into StudyCore — Drive stays the storage.');
+    console.log('Once re-selected, StudyCore imports a stored copy so students stop seeing Drive access prompts.');
   } else if (verify) {
-    console.log('All Google Drive-hosted documents are readable by StudyCore.');
+    console.log('All legacy Google Drive-linked documents are readable by StudyCore right now. Re-import them when convenient to remove the Drive dependency.');
   }
 }
 

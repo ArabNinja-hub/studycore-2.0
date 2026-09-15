@@ -1,30 +1,27 @@
 'use strict';
 
-// END-TO-END proof that Google Drive is the document storage and that both
-// generations of Drive document open in the StudyCore viewer.
+// END-TO-END proof that Google Drive Picker documents are readable by students
+// without Google's "Request access" wall.
 //
 // THE REPORTED BUG
 //
-//   "This document is being moved into StudyCore. It was published from
-//    Google Drive before StudyCore started storing documents itself…"
-//
-// That message described a migration StudyCore does not perform. The correct
-// architecture is:
-//
-//     Google Drive -> StudyCore backend -> StudyCore document viewer
+// Drive-picked resources used to be left as links to the uploader's private
+// Drive file. Some students were then sent to Google's own permission screen
+// and told to request access. The reliable behaviour is to import the selected
+// bytes into StudyCore document storage at publish time.
 //
 // This suite runs the real server and walks the whole path for BOTH:
 //
-//   · an OLD resource, published from Google Drive BEFORE the storage changes
-//     (storage_provider='google_drive', Drive id in stored_name), and
-//   · a NEW resource, published right now through the Google Drive Picker,
+//   · a NEW resource, published right now through the Google Drive Picker and
+//     imported into StudyCore storage, and
+//   · an OLD legacy resource whose row still points at a Drive file id
+//     (storage_provider='google_drive'), which StudyCore proxies server-side
+//     as a compatibility fallback when it can still read the original.
 //
-// each opened by a student who has NO relationship whatsoever with the
-// uploader's Google account, using DESKTOP and MOBILE request patterns.
-//
-// The student must receive the document's actual bytes from StudyCore. Any
-// redirect to Google, any "request access" text, any "being moved" state, and
-// any copy of the bytes into StudyCore storage is a failure.
+// Each is opened by a student who has NO relationship with the uploader's
+// Google account, using DESKTOP and MOBILE request patterns. The student must
+// receive bytes from StudyCore with no Google redirect, no "request access"
+// text, and no "being moved" state.
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -42,8 +39,9 @@ process.env.R2_ACCOUNT_ID = '';
 process.env.R2_ACCESS_KEY_ID = '';
 process.env.R2_SECRET_ACCESS_KEY = '';
 process.env.R2_BUCKET_NAME = '';
-// StudyCore's OWN server-side Drive credential. This — not the student, and
-// not the uploader's browser — is what reads the document out of Drive.
+// StudyCore's own server-side Drive credential, used by the legacy
+// storage_provider='google_drive' compatibility proxy. New Picker publishes use
+// the uploader's short-lived Picker token once, then read from StudyCore storage.
 process.env.GOOGLE_API_KEY = 'AIzaTestServerSideKey0000000000000000000';
 
 const { v4: uuidv4 } = require('uuid');
@@ -52,10 +50,12 @@ const db = require('../db');
 const { createToken, COOKIE_NAME } = require('../middleware/auth');
 const { ROLES } = require('../lib/roles');
 const driveDocuments = require('../lib/drive-documents');
+const documentStorage = require('../lib/document-storage');
 const app = require('../server');
 
-// The documents that live in Google Drive. Students must end up holding
-// exactly these bytes — fetched from Drive, not from a StudyCore copy.
+// The source documents in Google Drive. For the newly published resource these
+// bytes are imported into StudyCore storage; for the legacy row they are read
+// through the server-side Drive proxy.
 function pdfOf(text) {
   return Buffer.concat([
     Buffer.from('%PDF-1.4\n', 'latin1'),
@@ -231,7 +231,7 @@ async function assertOpensInViewer(baseUrl, { resourceId, student, expected, lab
     `${label}: served directly by StudyCore, never redirected to Google`);
   assert.equal(full.response.headers.get('content-type'), 'application/pdf');
   assert.equal(full.response.headers.get('location'), null, `${label}: no redirect`);
-  assert.deepEqual(full.buffer, expected, `${label}: the exact bytes stored in Google Drive`);
+  assert.deepEqual(full.buffer, expected, `${label}: the exact document bytes`);
   assert.doesNotMatch(full.raw, /request access/i, `${label}: no Google access wall`);
   assert.doesNotMatch(full.raw, /drive\.google\.com/i, `${label}: no Drive URL leaks`);
   assert.doesNotMatch(full.raw, /being moved/i, `${label}: no migration message`);
@@ -321,19 +321,17 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
     assert.equal(publish.response.status, 201, publish.raw);
     const newResourceId = publish.data.resource.id;
 
-    await t.test('publishing REFERENCES the Drive file and copies nothing', () => {
+    await t.test('publishing imports the Drive file into StudyCore storage', async () => {
       const row = db.prepare('SELECT * FROM resources WHERE id = ?').get(newResourceId);
-      // Google Drive remains the storage.
-      assert.equal(row.storage_provider, 'google_drive',
-        'the bytes stay in Google Drive; StudyCore records the reference');
-      assert.equal(row.google_drive_file_id, NEW_FILE_ID);
-      assert.equal(row.stored_name, NEW_FILE_ID,
-        'the storage key IS the Drive file id');
+      assert.notEqual(row.storage_provider, 'google_drive',
+        'new publishes must not leave the source Drive file as student storage');
+      assert.equal(row.google_drive_file_id, NEW_FILE_ID, 'the original Drive id is kept only as provenance');
+      assert.ok(row.stored_name, 'a real StudyCore storage key is recorded');
+      assert.notEqual(row.stored_name, NEW_FILE_ID, 'the storage key is not the source Drive file id');
+      assert.equal(row.file_size, NEW_PDF.length);
 
-      // Nothing was copied into StudyCore's object store.
-      const uploadsDir = path.join(testDataDir, 'uploads');
-      const written = fs.existsSync(uploadsDir) ? fs.readdirSync(uploadsDir) : [];
-      assert.equal(written.length, 0, 'no document bytes may be copied into StudyCore');
+      const stored = await documentStorage.readBytes(row.stored_name, 0, NEW_PDF.length - 1, row.storage_provider);
+      assert.deepEqual(Buffer.from(stored), NEW_PDF, 'the imported object matches the Drive file byte-for-byte');
     });
 
     // ── An OLD row: published from Drive BEFORE the storage changes ───────
@@ -420,9 +418,9 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
     });
 
     await t.test('StudyCore access control still gates every Drive document', async () => {
-      // A student in a different program must not read it, even though the
-      // bytes now come from Drive. 'SICT' is a real seeded program, so this
-      // exercises genuine program gating rather than an unknown code.
+      // A student in a different program must not read it. 'SICT' is a real
+      // seeded program, so this exercises genuine program gating rather than
+      // an unknown code.
       const outsider = createStudent();
       db.prepare('UPDATE users SET program_code = ? WHERE id = ?').run('SICT', outsider.id);
       const denied = await call(baseUrl, 'GET', `/api/resources/${oldResourceId}/stream`, {
@@ -498,10 +496,12 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
       assert.equal(attempt.response.status, 400, attempt.raw);
       assert.match(attempt.data.message, /Drive Picker/i);
 
-      // And the existing Drive document is untouched: still readable.
+      // And the existing imported document is untouched: still readable and
+      // still stored in StudyCore, not relinked to the source Drive file.
       const after = db.prepare('SELECT * FROM resources WHERE id = ?').get(newResourceId);
-      assert.equal(after.storage_provider, 'google_drive');
+      assert.notEqual(after.storage_provider, 'google_drive');
       assert.equal(after.google_drive_file_id, NEW_FILE_ID);
+      assert.notEqual(after.stored_name, NEW_FILE_ID);
       const reread = await call(baseUrl, 'GET', `/api/resources/${newResourceId}/stream`, {
         cookie: student.cookie, manualRedirect: true
       });
@@ -509,7 +509,7 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
       assert.ok(reread.buffer.equals(NEW_PDF));
     });
 
-    await t.test('deleting the StudyCore resource does not delete the Drive file', async () => {
+    await t.test('deleting the StudyCore resource does not delete the original Drive file', async () => {
       const before = drive.calls.filter((c) => c.method === 'DELETE').length;
       const removed = await call(baseUrl, 'DELETE', `/api/content-admin/resources/${newResourceId}`, {
         cookie: adminCookie
@@ -517,7 +517,7 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
       assert.equal(removed.response.status, 200, removed.raw);
       const after = drive.calls.filter((c) => c.method === 'DELETE').length;
       assert.equal(after, before,
-        'the document belongs to its owner in Google Drive and must survive');
+        'the original source document belongs to its owner in Google Drive and must survive');
     });
   } finally {
     drive.restore();

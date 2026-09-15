@@ -149,13 +149,11 @@
     bindBackButtons();
   }
 
-  // (driveNotMigrated lived here.) It announced a migration of the document
-  // into StudyCore's own storage — something that does not happen. Google
-  // Drive IS the document storage: the backend reads the file out of Drive and
-  // streams it into this same viewer, so a document published from Drive years
-  // ago and one picked from Drive a minute ago both open normally. The ONLY
-  // Drive failure a student can now see is the genuine one below: Google Drive
-  // itself cannot serve the file.
+  // The old Drive-specific viewer states lived here. New files selected from
+  // Google Drive are imported into StudyCore storage before publishing, and
+  // legacy Drive-linked rows are proxied by the backend when possible. Either
+  // way the browser stays in the same StudyCore reader and is never sent to a
+  // Google preview that can show "Request access".
   function driveUnavailable(message) {
     renderState({
       icon: 'alert-triangle',
@@ -291,9 +289,8 @@
   // fullscreens just the reading surface. That hides all StudyCore chrome
   // (site nav + this header bar) for a clean, immersive full-screen read and
   // floats its own auto-hiding page/zoom/Exit controls. Esc also exits.
-  // When no reader exists (a Google Drive preview, or before the reader is
-  // ready), fullscreen the reading surface (#viewerHost) directly so the
-  // document still fills the screen.
+  // When no reader exists yet, fullscreen the reading surface (#viewerHost)
+  // directly so the document still fills the screen.
   function toggleFullscreen() {
     if (reader && typeof reader.toggleFullscreen === 'function') {
       reader.toggleFullscreen();
@@ -383,22 +380,20 @@
 
     // NOTE: there is deliberately NO Google Drive branch here.
     //
-    // Google Drive is the document STORAGE, not a destination the student is
-    // sent to. A Drive-hosted document is fetched from Drive by the StudyCore
-    // backend and served through the ordinary protected /stream endpoint, so
-    // it renders in this same reader as any other document — on desktop and
-    // mobile alike. Rows published from Drive BEFORE the storage changes and
-    // rows picked from Drive today are identical here.
+    // New files selected from Drive have already been imported into StudyCore
+    // storage before publishing; older Drive-linked rows are fetched/proxied by
+    // the backend when its server-side credentials can still read them. In both
+    // cases the student loads the ordinary protected /stream URL and renders in
+    // this same reader on desktop and mobile.
     //
     // What must never come back:
     //   · embedding drive.google.com/.../preview — Google authorizes that
     //     frame against the FILE's own sharing list, not the StudyCore
     //     session, so unshared students got "Request access";
-    //   · a "document is being migrated into StudyCore" state — nothing is
-    //     ever copied or moved into StudyCore storage.
+    //   · an "Open in Google Drive" escape hatch.
     //
-    // `storageProvider` / `googleDriveFileId` are provenance for admin tooling
-    // and are intentionally not consulted when deciding how to render.
+    // `storageProvider` / `googleDriveFileId` are intentionally not consulted
+    // when deciding how to render.
 
     // Resources with no readable file at all (link-only rows).
     if (!resource.hasFile) {
