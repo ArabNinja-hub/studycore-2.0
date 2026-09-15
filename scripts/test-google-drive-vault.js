@@ -1,24 +1,23 @@
 'use strict';
 
-// Tests for lib/google-drive-vault.js (the connected-account storage vault)
-// and lib/document-storage.js (the dispatcher seam in front of it).
+// Tests for lib/google-drive-vault.js (the connected Google account) and
+// lib/document-storage.js (the dispatcher seam in front of storage).
 //
 // WHAT IS BEING PROTECTED
 //
-//   * WRITES only ever go to Drive once a real account is connected
-//     (isConfigured() checks BOTH the OAuth env vars AND a row in
-//     google_drive_accounts) — a fresh checkout with none of that keeps
-//     writing to the pre-existing R2/local backend, unchanged.
-//   * READS/DELETES dispatch by the object's OWN recorded storage_provider,
-//     not by whatever backend is active today — so disconnecting Drive (or
-//     connecting it) never breaks a document that was already stored under
-//     the other backend.
+//   * Google Drive is NEVER a storage destination. Connecting a Google
+//     account must not change where a single byte is written: every upload,
+//     and every file imported from the Drive Picker, goes to StudyCore's own
+//     R2/local storage. This is the guarantee that keeps "Upload Document"
+//     a plain StudyCore upload that is never saved into anybody's Drive.
+//   * READS/DELETES still dispatch by the object's OWN recorded
+//     storage_provider, so rows written by an older build that DID use the
+//     connected account as a vault ('google_drive_vault') keep opening.
 //   * The refresh token is encrypted at rest and never appears in plaintext
 //     in the database or in any object this module returns.
 //   * No Drive URL, Drive id, sharing state or OAuth token is ever needed by
-//     (or exposed to) a student — the vault's key space ('google_drive_vault')
-//     is kept distinct from the legacy 'google_drive' marker that means "this
-//     row is a broken, unreadable Drive LINK" (see routes/resources.routes.js).
+//     (or exposed to) a student — 'google_drive_vault' stays distinct from the
+//     legacy 'google_drive' marker (see routes/resources.routes.js).
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
@@ -170,7 +169,7 @@ test('isConfigured() is false with no connected account, even with OAuth env var
   assert.equal(documentStorage.backendName(), storage.backendName());
 });
 
-test('connecting stores an encrypted refresh token and flips the vault on', async () => {
+test('connecting stores an encrypted refresh token, but does NOT make Drive the storage backend', async () => {
   clearVaultAccounts();
   const google = installFakeGoogle();
   try {
@@ -190,7 +189,12 @@ test('connecting stores an encrypted refresh token and flips the vault on', asyn
 
     assert.equal(vault.isConfigured(), true);
     assert.equal(documentStorage.isVaultActive(), true);
-    assert.equal(documentStorage.backendName(), 'google_drive_vault');
+    // The connection exists so the SERVER can read Drive (legacy rows, and
+    // verifying a picked file). It must never redirect writes into Drive:
+    // StudyCore's own storage stays the destination for every upload.
+    assert.equal(documentStorage.backendName(), storage.backendName(),
+      'connecting a Google account must not change the write backend');
+    assert.notEqual(documentStorage.backendName(), 'google_drive_vault');
 
     const status = vault.status();
     assert.equal(status.connected, true);
@@ -200,33 +204,37 @@ test('connecting stores an encrypted refresh token and flips the vault on', asyn
   }
 });
 
-test('document-storage writes to the vault when connected, and the object round-trips (incl. Range)', async () => {
+test('a connected account does NOT capture uploads — they stay in StudyCore storage', async () => {
   clearVaultAccounts();
   const google = installFakeGoogle();
   try {
     await vault.handleCallback({ code: 'auth-code-456', req: { protocol: 'https', get: () => 'studycore.example' } });
 
-    const payload = Buffer.from('%PDF-1.4 vault round trip test content 0123456789', 'utf8');
+    const payload = Buffer.from('%PDF-1.4 upload round trip test content 0123456789', 'utf8');
     const written = await documentStorage.putObject({
-      key: 'ignored-for-drive',
+      key: 'studycore-object-key.pdf',
       body: Readable.from([payload]),
       contentType: 'application/pdf',
-      fileName: 'Vault Test.pdf'
+      fileName: 'Upload Test.pdf'
     });
-    assert.equal(written.backend, 'google_drive_vault');
-    assert.ok(written.key, 'Drive assigns its own file id');
+    // THE core assertion of this whole change: even with Google Drive
+    // connected, an ordinary document upload lands in StudyCore storage and
+    // nothing is pushed into the admin's Drive.
+    assert.notEqual(written.backend, 'google_drive_vault',
+      'an upload must never be written into Google Drive');
+    assert.equal(written.backend, storage.backendName());
+    assert.equal(written.key, 'studycore-object-key.pdf',
+      "StudyCore's own object key is kept, not replaced by a Drive file id");
 
     const head = await documentStorage.headObject(written.key, written.backend);
     assert.equal(head.contentLength, payload.length);
-    assert.equal(head.contentType, 'application/pdf');
 
     const full = await documentStorage.getObject(written.key, undefined, written.backend);
-    const fullBytes = await streamToBuffer(full.body);
-    assert.deepEqual(fullBytes, payload, 'full read matches the written bytes exactly');
+    assert.deepEqual(await streamToBuffer(full.body), payload);
 
     const ranged = await documentStorage.getObject(written.key, { start: 5, end: 12 }, written.backend);
-    const rangedBytes = await streamToBuffer(ranged.body);
-    assert.deepEqual(rangedBytes, payload.subarray(5, 13), 'Range reads are honored end-to-end');
+    assert.deepEqual(await streamToBuffer(ranged.body), payload.subarray(5, 13),
+      'Range reads are honored end-to-end');
 
     await documentStorage.deleteObject(written.key, written.backend);
     await assert.rejects(() => documentStorage.headObject(written.key, written.backend), /Not found|NoSuchKey/);
@@ -235,10 +243,38 @@ test('document-storage writes to the vault when connected, and the object round-
   }
 });
 
-test('reads and deletes dispatch by the OBJECT\'S recorded provider, never by what is active now', async () => {
+test('historical google_drive_vault rows still read back through the connected account', async () => {
+  // Rows published by an older build that used the connected account as a
+  // storage vault must keep opening for students. Reads dispatch on the
+  // row's OWN recorded provider, so they still resolve to Drive even though
+  // nothing new is ever written there.
+  clearVaultAccounts();
+  const google = installFakeGoogle();
+  try {
+    await vault.handleCallback({ code: 'auth-code-legacy', req: { protocol: 'https', get: () => 'studycore.example' } });
+
+    const payload = Buffer.from('%PDF-1.4 legacy vault-stored document', 'utf8');
+    // Simulate the historical row by writing through the vault module
+    // directly — the path lib/document-storage.js no longer takes.
+    const written = await vault.putObject({
+      body: Readable.from([payload]),
+      contentType: 'application/pdf',
+      fileName: 'Legacy.pdf'
+    });
+    assert.equal(written.backend, 'google_drive_vault');
+
+    const bytes = await documentStorage.readBytes(written.key, 0, payload.length - 1, 'google_drive_vault');
+    assert.deepEqual(Buffer.from(bytes), payload,
+      'a legacy vault-stored document is still readable through the dispatcher');
+  } finally {
+    google.restore();
+  }
+});
+
+test("reads and deletes dispatch by the OBJECT'S recorded provider, never by what is active now", async () => {
   clearVaultAccounts();
 
-  // Write one object while the vault is OFF (goes to local/R2 fallback).
+  // An object written with no Google account connected.
   const localPayload = Buffer.from('local-backend-object', 'utf8');
   const localWritten = await documentStorage.putObject({
     key: 'local-test-key.txt',
@@ -248,52 +284,62 @@ test('reads and deletes dispatch by the OBJECT\'S recorded provider, never by wh
   });
   assert.notEqual(localWritten.backend, 'google_drive_vault');
 
-  // Now connect the vault and write a second object — it must go to Drive.
   const google = installFakeGoogle();
-  let driveWritten;
+  let legacyVaultKey;
   try {
     await vault.handleCallback({ code: 'auth-code-789', req: { protocol: 'https', get: () => 'studycore.example' } });
+
+    // Connecting Drive changes nothing about where new objects go.
+    const secondPayload = Buffer.from('still-local-after-connect', 'utf8');
+    const secondWritten = await documentStorage.putObject({
+      key: 'second-test-key.txt',
+      body: Readable.from([secondPayload]),
+      contentType: 'text/plain',
+      fileName: 'second.txt'
+    });
+    assert.notEqual(secondWritten.backend, 'google_drive_vault',
+      'connecting Google Drive must not redirect new writes into Drive');
+
+    // A historical vault object, written the old way, still reads from Drive
+    // because its own recorded provider says so.
     const drivePayload = Buffer.from('drive-backend-object', 'utf8');
-    driveWritten = await documentStorage.putObject({
-      key: 'ignored',
+    const driveWritten = await vault.putObject({
       body: Readable.from([drivePayload]),
       contentType: 'text/plain',
       fileName: 'drive.txt'
     });
-    assert.equal(driveWritten.backend, 'google_drive_vault');
+    legacyVaultKey = driveWritten.key;
 
-    // The OLD object (recorded provider = local/r2) must still read back
-    // correctly even though the vault is now the active backend.
     const oldBytes = await documentStorage.readBytes(localWritten.key, 0, localPayload.length - 1, localWritten.backend);
     assert.deepEqual(Buffer.from(oldBytes), localPayload,
-      'a pre-vault object keeps reading from its original backend after Drive is connected');
+      'a StudyCore-stored object keeps reading from its original backend');
 
-    // The NEW object reads from Drive.
-    const newBytes = await documentStorage.readBytes(driveWritten.key, 0, drivePayload.length - 1, driveWritten.backend);
-    assert.deepEqual(Buffer.from(newBytes), drivePayload);
+    const vaultBytes = await documentStorage.readBytes(legacyVaultKey, 0, drivePayload.length - 1, 'google_drive_vault');
+    assert.deepEqual(Buffer.from(vaultBytes), drivePayload);
 
-    // Disconnect the vault — the Drive-stored object's provider tag is
-    // unchanged, so a delete-by-provider must still reach Drive, not local.
     vault.disconnect();
     assert.equal(vault.isConfigured(), false);
     assert.equal(documentStorage.isVaultActive(), false);
+    assert.equal(documentStorage.backendName(), storage.backendName());
+
+    await documentStorage.deleteObject('second-test-key.txt', secondWritten.backend);
   } finally {
     google.restore();
   }
 
-  // With the vault disconnected, deleting the old local object must not
+  // With Drive disconnected, deleting the StudyCore-stored object must not
   // touch Drive at all (no live fetch is installed here — a Drive call
-  // would throw ENOTFOUND/fetch failed, proving no request would be made).
+  // would throw, proving no request is made).
   await documentStorage.deleteObject(localWritten.key, localWritten.backend);
 });
 
 test("'google_drive_vault' is never confused with the 'google_drive' marker", () => {
   // Both values involve Drive, but they mean different things:
-  // 'google_drive_vault' is a file StudyCore itself uploaded into the connected
-  // vault account (which StudyCore owns and may delete), while 'google_drive'
-  // is a legacy reference to the uploader's original Drive file (which
-  // StudyCore must never delete). New Picker imports should use the vault/R2
-  // backend, not the legacy marker.
+  // 'google_drive_vault' is a file an older build uploaded into the connected
+  // account (which StudyCore owns and may delete), while 'google_drive' is a
+  // legacy reference to the uploader's ORIGINAL Drive file, which StudyCore
+  // must never delete. Neither is produced by a new publish: Picker imports
+  // are written to StudyCore's own R2/local storage.
   assert.notEqual(documentStorage.backendName.toString(), undefined);
   assert.equal(vault.backendName ? vault.backendName() : 'google_drive_vault', 'google_drive_vault');
   assert.notEqual('google_drive_vault', 'google_drive');

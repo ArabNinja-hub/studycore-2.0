@@ -28,12 +28,15 @@ Google Drive Picker  →  store only a Drive link/id  →  student opens Google 
    reader renders PDFs reliably in-app.
 4. The bytes are streamed through the same checks as an ordinary upload:
    extension allowlist, maximum size, SHA-256 hash, and magic-byte validation.
-5. The validated bytes are written into StudyCore document storage:
-   - `google_drive_vault` when the Main Admin has connected the StudyCore Drive
-     vault account;
-   - otherwise `r2` / `local`, the existing storage fallback.
+5. The validated bytes are written into StudyCore's own document storage
+   (`r2`, or `local` disk in development). Google Drive is the SOURCE, never a
+   destination: StudyCore never writes anything back into a Google account,
+   and this is true whether or not an account is connected in
+   Admin → Integrations.
 6. The resource row records the real storage key/backend. The original
    `google_drive_file_id` and `google_drive_url` are kept only as provenance.
+7. The admin's original Drive file is untouched — not moved, edited or
+   deleted. Deleting the StudyCore resource does not delete it either.
 
 The Picker token is used only for that one import. It is never stored, logged,
 or returned to a student.
@@ -42,7 +45,7 @@ or returned to a student.
 
 | Column | Meaning after this fix |
 | --- | --- |
-| `storage_provider` | The backend that actually holds the bytes students read. New Drive Picker publishes are `google_drive_vault`, `r2`, or `local` — not `google_drive`. |
+| `storage_provider` | The backend that actually holds the bytes students read. New Drive Picker publishes are always `r2` or `local` — never `google_drive` (a bare reference) and never `google_drive_vault` (an older build's storage experiment). |
 | `stored_name` | The StudyCore storage key for the imported copy. |
 | `google_drive_file_id` | Provenance: the original Drive file id selected by the uploader. Not used for normal student reads of newly imported files. |
 | `google_drive_url` | Provenance only. Never used by the student viewer. |
@@ -62,9 +65,10 @@ redirecting a student to Google.
 
 However, the durable repair is to import them into StudyCore storage:
 
-- Content Admins can edit the resource, click **Select from Google Drive**, pick
-  the same file, and save. The edit path re-imports even when the Drive file id
-  is unchanged if the old row is still marked `google_drive`.
+- Admins (Main Admin or Content Admin) can edit the resource, click
+  **Select from Google Drive**, pick the same file, and save. Both edit paths
+  re-import even when the Drive file id is unchanged, if the old row is still
+  marked `google_drive`.
 - Operators can run `node scripts/list-drive-linked-resources.js --verify` to
   find remaining legacy rows and see which original Drive files StudyCore can
   still read.

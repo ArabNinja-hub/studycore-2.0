@@ -1,16 +1,28 @@
-# Google Drive Picker — Content Admin Dashboard
+# Google Drive Picker — "Select from Google Drive"
 
-The Picker lives in the **existing** Content Admin Dashboard
-(`views/content-admin.html`, "Upload Resource" card). No new dashboard was
-created and the admin UI was not replaced.
+Google Drive is StudyCore's document **source library**. An admin organises
+their notes/tutorials/past papers/lab reports in their own Drive, picks one
+here, and StudyCore imports a copy and publishes it as a normal StudyCore
+resource. See `docs/google-drive-vault.md` for the full workflow and
+`docs/google-drive-documents.md` for the import path.
+
+The Picker lives in the **existing** dashboards — the Content Admin Dashboard
+(`views/content-admin.html`, "Upload Resource" card) and the Main Admin
+Dashboard (`views/admin.html`, "Upload a new resource" card). No new dashboard
+was created and neither admin UI was replaced.
+
+The ordinary **Upload** control on either dashboard is a plain StudyCore
+upload and is **never** saved into Google Drive.
 
 ## Files
 
 | File | Role |
 | --- | --- |
 | `public/js/google-picker.js` | Loads both Google libraries, verifies readiness, owns status/error states, builds the Picker. |
-| `public/js/content-admin.js` | Receives the picked file via `window.onGoogleDriveFilePicked(doc)` and fills the hidden Drive form fields. |
-| `views/content-admin.html` | Button `#caSelectDriveBtn` (starts disabled) + status line `#caDriveStatus`. |
+| `public/js/content-admin.js` | Content Admin: receives the picked file via `window.onGoogleDriveFilePicked(doc, auth)` and fills the hidden Drive form fields. |
+| `public/js/admin.js` | Main Admin: same `window.onGoogleDriveFilePicked(doc, auth)` hook, holding the pick in `selectedDriveFile` until publish. |
+| `views/content-admin.html` / `views/admin.html` | Button `#caSelectDriveBtn` (starts disabled) + status line `#caDriveStatus`. |
+| `lib/google-drive.js` | Server-side import: copies the picked file into StudyCore storage at publish time. |
 | `middleware/security.js` | CSP allowances for the Google origins. |
 | `server.js` → `GET /api/config` | Publishes `googlePicker.{apiKey, clientId, appId}` from env. |
 
