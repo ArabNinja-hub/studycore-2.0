@@ -212,20 +212,24 @@ test('a picked Drive PDF is REGISTERED as a reference — nothing is copied out 
     assert.equal(file.originalname, 'Contract Law Notes.pdf', 'Drive\'s own name wins');
     assert.equal(file.mimetype, 'application/pdf');
     assert.equal(file.size, PDF_BYTES.length, 'Drive\'s own size wins');
-    assert.equal(file.contentHash, null, 'no hash — the bytes were never read');
+    assert.equal(file.contentHash, null, 'no hash — the bytes were never copied');
 
-    // Registration is a METADATA read with the SERVER credential. The
-    // browser's Picker token may arrive but is not what students rely on.
+    // Registration uses the SERVER credential for both metadata and a
+    // one-byte media probe. The probe is deliberate: Drive can allow metadata
+    // access while refusing the later alt=media request, which used to let a
+    // broken resource publish and fail only when a student opened it.
     const metaCall = google.calls.find((c) => c.url.includes(`files/${DRIVE_ID}`) && c.url.includes('fields='));
     assert.ok(metaCall, 'the server verified the file with Drive metadata');
     assert.equal(metaCall.headers.Authorization, `Bearer ${VAULT_TOKEN}`,
       'verification uses the connected account, not the Picker token');
-
-    // No bytes were downloaded or exported at publish time.
-    assert.equal(google.calls.filter((c) => c.url.includes('alt=media')).length, 0,
-      'publishing must not download the file');
+    const mediaCalls = google.calls.filter((c) => c.url.includes(`files/${DRIVE_ID}`) && c.url.includes('alt=media'));
+    assert.equal(mediaCalls.length, 1, 'publishing performs one media-readability probe');
+    assert.match(mediaCalls[0].headers.Range || '', /^bytes=0-0$/,
+      'the publish probe reads only one byte');
+    assert.equal(mediaCalls[0].headers.Authorization, `Bearer ${VAULT_TOKEN}`,
+      'the media probe uses the connected account, not the Picker token');
     assert.equal(google.calls.filter((c) => c.url.includes('/export')).length, 0,
-      'publishing must not export the file');
+      'binary files are not exported at publish time');
   } finally {
     google.restore();
   }
@@ -292,7 +296,7 @@ test('deleting a Drive reference never deletes the original Drive file', async (
   }
 });
 
-test('a native Google Doc is registered as its PDF export — but only exported when read', async () => {
+test('a native Google Doc is verified through its PDF export and cached for the first read', async () => {
   const google = installFakeGoogle();
   try {
     await connectVault(google);
@@ -300,16 +304,17 @@ test('a native Google Doc is registered as its PDF export — but only exported 
     assert.equal(file.mimetype, 'application/pdf', 'a Google Doc is served as its PDF export');
     assert.equal(file.originalname, 'Lecture 3', 'the Drive name is kept');
     assert.equal(file.size, null, 'an export has no size until it is produced');
-    assert.equal(google.calls.filter((c) => c.url.includes('/export')).length, 0,
-      'no export happens at publish time');
-
-    // Reading it (what the student stream does) exports to PDF server-side.
+    // Workspace files have no alt=media endpoint, so publish verification
+    // must exercise the PDF export path. The result is cached and reused by
+    // the first student HEAD/read; no second export should be needed.
+    assert.equal(google.calls.filter((c) => c.url.includes('/export')).length, 1,
+      'the PDF export is verified once at publish time');
     const head = await documentStorage.headObject(DOC_ID, 'google_drive');
     assert.equal(head.contentType, 'application/pdf');
     assert.equal(head.contentLength, PDF_BYTES.length, 'the export is measured once and cached');
-    const exportCall = google.calls.find((c) => c.url.includes('/export'));
-    assert.ok(exportCall, 'the Workspace file is exported on read');
-    assert.match(exportCall.url, /mimeType=application%2Fpdf/);
+    const exportCalls = google.calls.filter((c) => c.url.includes('/export'));
+    assert.equal(exportCalls.length, 1, 'the Workspace export is reused on read');
+    assert.match(exportCalls[0].url, /mimeType=application%2Fpdf/);
   } finally {
     google.restore();
   }

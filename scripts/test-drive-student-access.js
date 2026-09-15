@@ -461,13 +461,16 @@ test('Google Drive-backed documents open in the StudyCore viewer', {
       assert.equal(row.file_size, NEW_PDF.length, 'Drive\'s own size is stored');
       assert.equal(row.content_hash, null, 'no content hash — the bytes were never read at publish');
 
-      // No byte ever left Drive at publish time: the only Drive calls were
-      // metadata reads with the SERVER's token.
+      // Publish validates the exact student-read path with a one-byte probe.
+      // It does not copy the document into StudyCore, but it does catch a
+      // metadata-allowed / media-denied Drive reference before it is listed.
       const publishWindow = google.calls.filter((c) => c.url.includes(NEW_FILE_ID));
       assert.ok(publishWindow.length >= 1, 'the server verified the file with Drive');
+      const mediaProbe = publishWindow.filter((c) => c.url.includes('alt=media'));
+      assert.equal(mediaProbe.length, 1, 'publish performs one media-readability probe');
+      assert.equal(mediaProbe[0].headers.Range, 'bytes=0-0', 'the probe reads only one byte');
       for (const c of publishWindow) {
-        assert.ok(!c.url.includes('alt=media'), 'no download happened at publish time');
-        assert.ok(!c.url.includes('/export'), 'no export happened at publish time');
+        assert.ok(!c.url.includes('/export'), 'binary files are not exported at publish time');
         assert.equal(c.headers.Authorization, `Bearer ${VAULT_TOKEN}`,
           'publish-time verification used the SERVER\'s Google credential');
       }
