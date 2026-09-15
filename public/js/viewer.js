@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const DOC_VIEWER_CATEGORIES = ['document', 'tutorial', 'past_paper', 'material'];
+  const DOC_VIEWER_CATEGORIES = ['document', 'tutorial', 'past_paper', 'lab_report', 'material'];
 
   const id = (function resolveId() {
     const m = location.pathname.match(/\/viewer\/([^/?#]+)/);
@@ -31,6 +31,18 @@
   const $ = (sel) => document.querySelector(sel);
 
   /* ── Small helpers ───────────────────────── */
+  function getCategoryLabel(category) {
+    if (typeof CATEGORY_LABELS !== 'undefined' && CATEGORY_LABELS[category]) return CATEGORY_LABELS[category];
+    if (window.SC && window.SC.CATEGORY_LABELS && window.SC.CATEGORY_LABELS[category]) return window.SC.CATEGORY_LABELS[category];
+    return 'Resource';
+  }
+
+  function getSubjectSlug(subject) {
+    if (typeof subjectSlug === 'function') return subjectSlug(subject);
+    if (window.SC && typeof window.SC.subjectSlug === 'function') return window.SC.subjectSlug(subject);
+    return '';
+  }
+
   function fillIcons() {
     document.querySelectorAll('[data-vicon]').forEach((el) => {
       el.innerHTML = SC.icon(el.getAttribute('data-vicon'), { size: 18 });
@@ -161,7 +173,7 @@
     document.title = `${resource.title} | StudyCore`;
 
     const meta = [
-      CATEGORY_LABELS[resource.category] || 'Resource',
+      getCategoryLabel(resource.category),
       resource.subject,
       resource.topic && resource.topic !== 'General' ? resource.topic : null,
       resource.yearLevel,
@@ -180,7 +192,7 @@
     if (resource && resource.courseId) {
       fallback = `/course/${encodeURIComponent(String(resource.courseId).replace(/^course-/i, ''))}`;
     } else if (resource && resource.subject) {
-      const slug = subjectSlug(resource.subject);
+      const slug = getSubjectSlug(resource.subject);
       if (slug) fallback = `/pages/subjects/${slug}.html`;
     }
     let referrerSameOrigin = false;

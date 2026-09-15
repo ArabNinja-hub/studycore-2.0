@@ -301,6 +301,19 @@ try {
   // column already exists - fine
 }
 
+// Backfill storage_provider for legacy Google Drive rows where storage_provider was defaulted to 'local'
+try {
+  db.exec(`
+    UPDATE resources
+    SET storage_provider = 'google_drive'
+    WHERE (storage_provider IS NULL OR storage_provider = 'local')
+      AND google_drive_file_id IS NOT NULL
+      AND (stored_name IS NULL OR stored_name = google_drive_file_id)
+  `);
+} catch {
+  // ignore
+}
+
 // -----------------------------------------------------------------------
 // Google Drive VAULT (documents are now stored IN Google Drive, not just
 // picked from it). One Main Admin connects one real Google account with
