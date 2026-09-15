@@ -507,6 +507,9 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
     object = await storage.getObject(key, range || undefined, storageProvider);
   } catch (err) {
     if (typeof onMissing === 'function' && storageObjectIsMissing(err)) return onMissing(err);
+    if (storageProvider === 'google_drive') {
+      return driveStreamError(err, res, { id: resourceId, title: filename, uploader_email: null });
+    }
     return r2StreamError(err, res, storageProvider);
   }
   reconcileStorageProvider(resourceId, storageProvider, object.backend);
@@ -586,7 +589,8 @@ async function streamDriveDocument(req, res, row, driveKey) {
     mimeType: meta.contentType,
     fileSize: Number(meta.contentLength) || 0,
     storageProvider: 'google_drive',
-    resourceId: row.id
+    resourceId: row.id,
+    onMissing: (err) => driveStreamError(err, res, row)
   });
 }
 
