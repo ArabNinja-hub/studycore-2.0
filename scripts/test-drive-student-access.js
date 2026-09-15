@@ -360,6 +360,23 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
     // ── The student: a different person, no Google account involved ───────
     const student = createStudent();
 
+    await t.test('a Drive-imported document remains readable when its old StudyCore copy is absent', async () => {
+      // This is the recovery path for an older R2/local storage move: the
+      // retained Picker provenance is used only by the server, after all
+      // StudyCore student access checks have passed. The browser still gets
+      // ordinary StudyCore bytes, never a Google URL or credential.
+      const before = db.prepare('SELECT * FROM resources WHERE id = ?').get(newResourceId);
+      await documentStorage.deleteObject(before.stored_name, before.storage_provider);
+
+      const recovered = await call(baseUrl, 'GET', `/api/resources/${newResourceId}/stream`, {
+        cookie: student.cookie, manualRedirect: true
+      });
+      assert.equal(recovered.response.status, 200, recovered.raw);
+      assert.ok(recovered.buffer.equals(NEW_PDF), 'the server falls back to the original Drive bytes');
+      assert.equal(recovered.response.headers.get('location'), null, 'students are never redirected to Google');
+      assert.doesNotMatch(recovered.raw, /request access/i);
+    });
+
     await t.test('NEW Drive document opens on desktop', async () => {
       await assertOpensInViewer(baseUrl, {
         resourceId: newResourceId, student, expected: NEW_PDF,
@@ -414,6 +431,8 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
         const meta = await call(baseUrl, 'GET', `/api/resources/${id}`, { cookie: student.cookie });
         assert.doesNotMatch(meta.raw, /ya29\./, 'no OAuth access token is exposed');
         assert.doesNotMatch(meta.raw, new RegExp(ADMIN_TOKEN));
+        assert.doesNotMatch(meta.raw, new RegExp(NEW_FILE_ID), 'the source Drive file id stays server-side');
+        assert.doesNotMatch(meta.raw, /drive\.google\.com/i, 'the source Drive URL stays server-side');
       }
     });
 

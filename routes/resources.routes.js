@@ -58,12 +58,11 @@ function serializeResource(row, user) {
     mimeType: (row.stored_name || row.google_drive_file_id) ? inferMime(row) : row.mime_type,
     hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
     externalUrl: row.external_url,
-    // Drive provenance for admin tooling. For newly imported Drive files the
-    // student viewer ignores this and streams the stored StudyCore object.
-    // Legacy rows may still use it server-side as a compatibility fallback;
-    // the student's browser is never sent to Google either way.
-    googleDriveFileId: row.google_drive_file_id || null,
-    googleDriveUrl: row.google_drive_url || null,
+    // Drive provenance is Main-Admin tooling only. It gives the server a
+    // recovery source when an old imported object is absent, but must never
+    // leak a source-file id or URL to a student browser.
+    googleDriveFileId: isAdmin(user) ? (row.google_drive_file_id || null) : null,
+    googleDriveUrl: isAdmin(user) ? (row.google_drive_url || null) : null,
     storageProvider: row.storage_provider || 'local',
     streamPlayback: streamPlaybackFor(row),
     // Generic list/detail/bookmark responses are not quiz authoring APIs.
@@ -354,11 +353,20 @@ function pipeBodyToResponse(body, res, req) {
   nodeStream.pipe(res);
 }
 
+function storageObjectIsMissing(err) {
+  return Boolean(err) && (
+    err.code === 'NoSuchKey' ||
+    err.name === 'NoSuchKey' ||
+    err.name === 'NotFound' ||
+    err.$metadata?.httpStatusCode === 404
+  );
+}
+
 function r2StreamError(err, res, storageProvider) {
   // A legacy Drive-linked document says so plainly: the file still lives in
   // Google Drive, so "missing from storage" would point the admin at the wrong system.
   const fromDrive = storageProvider === 'google_drive';
-  if (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+  if (storageObjectIsMissing(err)) {
     return res.status(404).json({
       message: fromDrive
         ? 'This document could not be opened from Google Drive. It may have been moved, renamed or deleted there — please tell your admin.'
@@ -404,7 +412,27 @@ function isSpecificMime(value) {
   return Boolean(type && type !== 'application/octet-stream' && type !== 'binary/octet-stream');
 }
 
-async function streamStoredObject(req, res, key, { filename, mimeType, fileSize, storageProvider }) {
+function reconcileStorageProvider(resourceId, recordedProvider, actualProvider) {
+  // A compatibility read may have found a legacy object on the other ordinary
+  // backend (local ↔ R2). Persist that discovery so the next document page
+  // does not have to probe a missing backend first. Never rewrite Drive or
+  // Bunny markers: those are distinct storage systems, not fallbacks.
+  if (!resourceId || !['local', 'r2'].includes(actualProvider) || actualProvider === recordedProvider) return;
+  try {
+    db.prepare(`
+      UPDATE resources
+      SET storage_provider = ?, updated_at = ?
+      WHERE id = ? AND (storage_provider IS NULL OR storage_provider != ?)
+    `).run(actualProvider, new Date().toISOString(), resourceId, actualProvider);
+    console.warn(`[StudyCore][Storage] Repaired resource ${resourceId} provider: ${recordedProvider || 'unknown'} → ${actualProvider}`);
+  } catch (err) {
+    // The document has already been found and can still be served. A failed
+    // bookkeeping update must never turn that recovery into another outage.
+    console.error(`[StudyCore][Storage] Could not persist recovered provider for ${resourceId}:`, err.message);
+  }
+}
+
+async function streamStoredObject(req, res, key, { filename, mimeType, fileSize, storageProvider, resourceId, onMissing }) {
   // The database already stores the exact upload size and normalized type.
   // Use those values for GET/range requests so every 128 KB PDF chunk maps to
   // one storage request rather than HEAD + signature probe + GET. Keep the
@@ -419,8 +447,10 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
     try {
       meta = await storage.headObject(key, storageProvider);
     } catch (err) {
+      if (typeof onMissing === 'function' && storageObjectIsMissing(err)) return onMissing(err);
       return r2StreamError(err, res, storageProvider);
     }
+    reconcileStorageProvider(resourceId, storageProvider, meta.backend);
     size = Number(meta.contentLength) || 0;
     storedType = meta.contentType;
   }
@@ -476,8 +506,10 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
   try {
     object = await storage.getObject(key, range || undefined, storageProvider);
   } catch (err) {
+    if (typeof onMissing === 'function' && storageObjectIsMissing(err)) return onMissing(err);
     return r2StreamError(err, res, storageProvider);
   }
+  reconcileStorageProvider(resourceId, storageProvider, object.backend);
 
   if (range) {
     res.status(206);
@@ -509,18 +541,25 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
 // `google_drive_file_id` — for those the id is only provenance and the bytes
 // really are in StudyCore storage, so it must keep reading from there.
 // ---------------------------------------------------------------------------
+function googleDriveSourceKey(row) {
+  if (!row) return null;
+  // A Picker-imported document keeps this id as provenance. It is never sent
+  // to students, but gives the server a recovery source if the imported R2
+  // object was lost during an old storage migration.
+  for (const candidate of [row.google_drive_file_id, row.stored_name]) {
+    const value = String(candidate || '').trim();
+    if (value && driveDocuments.isValidFileId(value)) return value;
+  }
+  return null;
+}
+
 function driveDocumentKey(row) {
   if (!row) return null;
   const isDriveProvider = (row.storage_provider || 'local') === 'google_drive';
   const hasDriveId = Boolean(row.google_drive_file_id && driveDocuments.isValidFileId(row.google_drive_file_id));
   const isLegacyDriveRow = !row.storage_provider || (hasDriveId && (!row.stored_name || row.stored_name === row.google_drive_file_id));
   if (!isDriveProvider && !isLegacyDriveRow) return null;
-  const candidates = [row.google_drive_file_id, row.stored_name];
-  for (const candidate of candidates) {
-    const value = String(candidate || '').trim();
-    if (value && driveDocuments.isValidFileId(value)) return value;
-  }
-  return null;
+  return googleDriveSourceKey(row);
 }
 
 // Serves a legacy Drive-linked document through the ordinary document pipeline.
@@ -554,7 +593,8 @@ async function streamDriveDocument(req, res, row, driveKey) {
     filename: filename || 'document',
     mimeType,
     fileSize,
-    storageProvider: 'google_drive'
+    storageProvider: 'google_drive',
+    resourceId: row.id
   });
 }
 
@@ -758,11 +798,21 @@ async function handleStream(req, res) {
   // access" instead of the document. Imported Drive files are served from
   // StudyCore storage; legacy Drive references are proxied server-side above.
 
+  // A Drive-picked document normally reads from its imported StudyCore copy
+  // (R2/local/vault). If that historical copy is absent, use the retained
+  // Drive provenance as a same-origin server-side recovery source. Students
+  // still never receive a Drive URL or credential; the normal session,
+  // program, subscription and ticket checks above have already passed.
+  const recoveryDriveKey = googleDriveSourceKey(row);
   await streamStoredObject(req, res, row.stored_name, {
     filename: row.file_name || row.stored_name,
     mimeType: inferMime(row),
     fileSize: row.file_size,
-    storageProvider: row.storage_provider
+    storageProvider: row.storage_provider,
+    resourceId: row.id,
+    onMissing: recoveryDriveKey && recoveryDriveKey !== row.stored_name
+      ? () => streamDriveDocument(req, res, row, recoveryDriveKey)
+      : undefined
   });
 }
 

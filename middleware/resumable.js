@@ -51,7 +51,12 @@ function attachResumableUpload(req, res, next) {
       key: session.storage_key || null,
       size: session.file_size,
       contentHash: null,
-      bucket: session.stream_uid ? 'bunny' : null,
+      // The object was already finalized on a previous attempt. Preserve the
+      // backend recorded on the session — falling back to whatever storage is
+      // active *now* can create a resource row that points at the wrong place
+      // after an R2/Drive storage change, which looks like a missing document
+      // to every student.
+      bucket: session.stream_uid ? 'bunny' : (session.storage_provider || null),
       streamUid: session.stream_uid || null,
       streamStatus: session.stream_uid ? 'queued' : null,
       streamDuration: null,
@@ -71,7 +76,9 @@ function attachResumableUpload(req, res, next) {
           key: session.storage_key || null,
           size: session.file_size,
           contentHash: null,
-          bucket: session.stream_uid ? 'bunny' : null,
+          // The finalized session is the source of truth for this object's
+          // backend; do not substitute the current default storage provider.
+          bucket: session.stream_uid ? 'bunny' : (session.storage_provider || null),
           streamUid: session.stream_uid || null,
           streamStatus: session.stream_uid ? 'queued' : null,
           streamDuration: null,
