@@ -277,8 +277,8 @@
     if (btn) btn.textContent = 'Change Google Drive file';
     setResourceFormStatus(
       String(selectedDriveFile.mimeType).indexOf('application/vnd.google-apps.') === 0
-        ? 'This Google Doc will be imported into StudyCore as a PDF when you publish, so students read it in the StudyCore viewer.'
-        : 'This file will be copied into StudyCore when you publish. Your Google Drive copy is not moved or changed.'
+        ? 'This Google Doc stays in your Google Drive. When you publish, StudyCore registers it and serves students the PDF through its protected viewer.'
+        : 'This file stays in your Google Drive. When you publish, StudyCore registers it and streams it to students through its protected viewer — your Drive copy is not moved or changed.'
     );
   };
 
@@ -416,7 +416,7 @@
       progressText.textContent = 'Uploading… 0%';
       setResourceFormStatus('Uploading file…');
     } else if (selectedDriveFile) {
-      setResourceFormStatus('Importing "' + selectedDriveFile.name + '" from Google Drive into StudyCore…');
+      setResourceFormStatus('Registering "' + selectedDriveFile.name + '" from your Google Drive…');
     } else {
       setResourceFormStatus(editingResourceId ? 'Saving changes…' : 'Publishing resource…');
     }
@@ -744,12 +744,12 @@
             <button class="btn btn-outline btn-sm" id="driveDisconnectBtn" type="button">Disconnect</button>
           </div>
           <p style="margin-top:10px;color:var(--muted);font-size:0.82rem;">
-            Documents you import with "Select from Google Drive" are copied into StudyCore, so they keep
-            working for students whatever happens to this connection. Disconnecting never deletes or
-            changes anything in your Google Drive.
+            Documents you publish with "Select from Google Drive" stay in your Drive and are streamed
+            to students by the StudyCore backend through this connection. Keep it connected so those
+            documents keep opening; disconnecting never deletes or changes anything in your Google Drive.
           </p>`;
         document.getElementById('driveDisconnectBtn').addEventListener('click', async () => {
-          if (!confirm('Disconnect this Google Drive account? Documents already imported into StudyCore keep working. Nothing in your Google Drive is deleted.')) return;
+          if (!confirm('Disconnect this Google Drive account? Students will be unable to open documents published from Google Drive until an account is reconnected. Nothing in your Google Drive is deleted.')) return;
           try {
             await StudyCoreAPI.adminGoogleDriveDisconnect();
             showToast('Google Drive disconnected.', 'success');

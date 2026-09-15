@@ -2,9 +2,11 @@
 
 Google Drive is StudyCore's document **source library**. An admin organises
 their notes/tutorials/past papers/lab reports in their own Drive, picks one
-here, and StudyCore imports a copy and publishes it as a normal StudyCore
-resource. See `docs/google-drive-vault.md` for the full workflow and
-`docs/google-drive-documents.md` for the import path.
+here, and StudyCore registers it as a Google Drive-backed resource — the file
+id and Drive's metadata are stored, and the backend streams the original file
+to students through the protected viewer. See `docs/google-drive-vault.md`
+for the full workflow and `docs/google-drive-documents.md` for the
+registration and student-read paths.
 
 The Picker lives in the **existing** dashboards — the Content Admin Dashboard
 (`views/content-admin.html`, "Upload Resource" card) and the Main Admin
@@ -22,7 +24,7 @@ upload and is **never** saved into Google Drive.
 | `public/js/content-admin.js` | Content Admin: receives the picked file via `window.onGoogleDriveFilePicked(doc, auth)` and fills the hidden Drive form fields. |
 | `public/js/admin.js` | Main Admin: same `window.onGoogleDriveFilePicked(doc, auth)` hook, holding the pick in `selectedDriveFile` until publish. |
 | `views/content-admin.html` / `views/admin.html` | Button `#caSelectDriveBtn` (starts disabled) + status line `#caDriveStatus`. |
-| `lib/google-drive.js` | Server-side import: copies the picked file into StudyCore storage at publish time. |
+| `lib/google-drive.js` | Server-side registration: verifies the picked file with the connected account's credentials and records the Drive reference. |
 | `middleware/security.js` | CSP allowances for the Google origins. |
 | `server.js` → `GET /api/config` | Publishes `googlePicker.{apiKey, clientId, appId}` from env. |
 
@@ -98,9 +100,10 @@ without reloading the page.
    `.setOAuthToken(accessToken)`, `.setOrigin(...)` → `picker.setVisible(true)`.
 6. `PICKED` → the Drive file ID/URL/name/mimeType/size and the short-lived
    Picker access token are kept in the Content Admin form state and posted on
-   submit. The backend uses that token once to import the selected bytes into
-   StudyCore document storage, then drops it. Students never receive a Drive
-   URL or token.
+   submit. The token marks the submission as a fresh pick; the server
+   registers the file with its **own** standing Google connection (which is
+   also what serves students), then drops the token. Students never receive a
+   Drive URL or token.
 
 ## Status states
 

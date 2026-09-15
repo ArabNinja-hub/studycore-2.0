@@ -363,13 +363,13 @@ function storageObjectIsMissing(err) {
 }
 
 function r2StreamError(err, res, storageProvider) {
-  // A legacy Drive-linked document says so plainly: the file still lives in
-  // Google Drive, so "missing from storage" would point the admin at the wrong system.
+  // A Drive-backed document says so plainly: the file lives in Google Drive,
+  // so "missing from storage" would point the admin at the wrong system.
   const fromDrive = storageProvider === 'google_drive';
   if (storageObjectIsMissing(err)) {
     return res.status(404).json({
       message: fromDrive
-        ? 'This document could not be opened from Google Drive. It may have been moved, renamed or deleted there — please tell your admin.'
+        ? 'This document could not be opened from Google Drive. It may have been moved or deleted there — please tell your admin.'
         : 'File is missing from storage.',
       ...(fromDrive ? { driveUnavailable: true } : {})
     });
@@ -524,22 +524,24 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
 }
 
 // ---------------------------------------------------------------------------
-// LEGACY GOOGLE DRIVE-LINKED DOCUMENTS
+// GOOGLE DRIVE-BACKED DOCUMENTS
 //
-// New Drive Picker publishes are imported into StudyCore storage at publish
-// time, so they reach this route as ordinary 'google_drive_vault', 'r2' or
-// 'local' rows. The `google_drive_file_id` on those rows is provenance only.
+// A file selected with "Select from Google Drive" is registered as a
+// Google Drive-backed resource: storage_provider = 'google_drive' and
+// google_drive_file_id (or a legacy row's stored_name) is the original Drive
+// file id. The bytes stay in the admin's Drive — Drive is the document SOURCE
+// LIBRARY, not StudyCore storage — so the server reads them here, with its
+// OWN connected Google credentials (lib/drive-documents.js), and streams them
+// through this SAME /stream endpoint behind the normal login, program and
+// subscription gates. The student is never redirected to Drive and never
+// receives a Drive URL, file id or token.
 //
-// Some older rows may still be `storage_provider = 'google_drive'` or may have
-// defaulted to 'local' while `stored_name`/`google_drive_file_id` is really a
-// Drive file id. For compatibility we keep a server-side proxy for those rows:
-// StudyCore reads the original Drive file with its own credentials and serves
-// the bytes through this SAME /stream endpoint. The student is still never
-// redirected to Drive, which is what caused Google's "Request access" page.
+// Very old rows (provider 'local' or NULL with a Drive id in stored_name) are
+// the same thing written by an earlier build, and are served identically.
 //
-// A row whose provider is R2/local/vault is NOT legacy Drive-linked even if it has a
-// `google_drive_file_id` — for those the id is only provenance and the bytes
-// really are in StudyCore storage, so it must keep reading from there.
+// A row whose provider is R2/local/vault is NOT Drive-backed even if it has a
+// `google_drive_file_id` — for those the id is only provenance (a recovery
+// source if the stored object was lost), so they keep reading from storage.
 // ---------------------------------------------------------------------------
 function googleDriveSourceKey(row) {
   if (!row) return null;
@@ -562,57 +564,56 @@ function driveDocumentKey(row) {
   return googleDriveSourceKey(row);
 }
 
-// Serves a legacy Drive-linked document through the ordinary document pipeline.
-// The Drive file id is the compatibility key; lib/document-storage.js dispatches
-// it to lib/drive-documents.js, which fetches from Drive with StudyCore's own
-// credentials.
+// Serves a Drive-backed document through the ordinary document pipeline.
+// The Drive file id is the storage key; lib/document-storage.js dispatches
+// it to lib/drive-documents.js, which fetches from Drive with StudyCore's
+// own credentials (connected account OAuth token, refreshed server-side).
 async function streamDriveDocument(req, res, row, driveKey) {
-  // For old Drive-linked rows, Drive may know the authoritative name/type/size.
-  // The database copy is used when present so a plain GET does not pay for a
-  // metadata round trip, but missing size/type falls back to Drive metadata.
-  const storedMime = String(row.mime_type || '').trim().toLowerCase().split(';')[0].trim();
-  const knownSize = Number(row.file_size);
-  const hasUsableSize = Number.isFinite(knownSize) && knownSize > 0;
-
-  let filename = row.file_name || null;
-  let mimeType = isSpecificMime(storedMime) ? storedMime : null;
-  let fileSize = hasUsableSize ? knownSize : null;
-
-  if (!filename || !mimeType || fileSize === null) {
-    try {
-      const meta = await driveDocuments.headObject(driveKey);
-      if (!filename) filename = meta.fileName || null;
-      if (!mimeType) mimeType = meta.contentType || null;
-      if (fileSize === null) fileSize = Number(meta.contentLength) || 0;
-    } catch (err) {
-      return driveStreamError(err, res, row);
-    }
+  // Drive is the live source of truth for a Drive-backed resource, so the
+  // size/type/name come from Drive NOW rather than from the publish-time
+  // snapshot — the file may have changed since (and Workspace exports have
+  // no size until exported). lib/drive-documents.js caches metadata briefly
+  // so pdf.js range paging does not re-ask Drive on every 128 KB chunk.
+  let meta;
+  try {
+    meta = await driveDocuments.headObject(driveKey);
+  } catch (err) {
+    return driveStreamError(err, res, row);
   }
 
   return streamStoredObject(req, res, driveKey, {
-    filename: filename || 'document',
-    mimeType,
-    fileSize,
+    filename: meta.fileName || row.file_name || 'document',
+    mimeType: meta.contentType,
+    fileSize: Number(meta.contentLength) || 0,
     storageProvider: 'google_drive',
     resourceId: row.id
   });
 }
 
-// The unavailable state for a legacy Drive-linked document: Drive itself cannot
-// serve the original file (deleted, trashed, moved out of reach, or StudyCore's
-// access to it revoked). New Drive Picker publishes are imported into StudyCore
-// storage specifically so students do not depend on this path.
+// The unavailable state for a Drive-backed document. Two very different
+// causes: the file really is gone from Drive (deleted/trashed/moved out of
+// the library), or Drive refused StudyCore's credentials (connection
+// revoked, or the connected account cannot read this file). Students get an
+// honest, non-technical message either way; operators get the detail below.
 function driveStreamError(err, res, row) {
+  const accessDenied = err && (err.code === 'DriveAccessDenied' || err.name === 'DriveAccessDenied' || err.statusCode === 403);
   const notFound = err && (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.statusCode === 404);
-  // Operators need to know WHICH document and WHOSE, since the fix is in
-  // Google Drive, not in StudyCore (see scripts/list-drive-linked-resources.js).
+  // Operators need to know WHICH document and WHOSE, since the fix is either
+  // in Google Drive or in Admin → Integrations, not in StudyCore itself
+  // (see scripts/list-drive-linked-resources.js).
   console.error(
     `[StudyCore][Drive] resource ${row.id} ("${row.title}") could not be read from Google Drive: ${err.message}. ` +
     `Uploader: ${row.uploader_email || row.uploaded_by || 'unknown'}.`
   );
+  if (accessDenied) {
+    return res.status(502).json({
+      message: 'This document is in Google Drive, but StudyCore can no longer read it with its Google Drive connection — please tell your admin.',
+      driveUnavailable: true
+    });
+  }
   if (notFound) {
     return res.status(404).json({
-      message: 'This document could not be opened from Google Drive. It may have been moved, renamed or deleted there — please tell your admin.',
+      message: 'This document could not be opened from Google Drive. It may have been moved or deleted there — please tell your admin.',
       driveUnavailable: true
     });
   }
@@ -774,14 +775,12 @@ async function handleStream(req, res) {
     }
   }
 
-  // ── Legacy Google Drive references ─────────────────────────────────────
+  // ── Google Drive-backed resources ───────────────────────────────────────
   //
-  // New Drive Picker publishes are imported into StudyCore storage before a row
-  // is created, so they skip this branch and stream as ordinary stored objects.
-  // This branch exists only for older rows that still point at the original
-  // uploader's Drive file. When StudyCore's server-side credentials can read
-  // that original, the student still receives bytes through /stream — never a
-  // redirect to drive.google.com and never Google's "Request access" wall.
+  // A resource picked with "Select from Google Drive" points at the original
+  // Drive file. The backend reads that file with its own connected Google
+  // credentials and pipes the bytes through /stream — never a redirect to
+  // drive.google.com and never Google's "Request access" wall.
   const driveKey = driveDocumentKey(row);
   if (driveKey) {
     return streamDriveDocument(req, res, row, driveKey);
@@ -795,8 +794,8 @@ async function handleStream(req, res) {
   // NOTE: this endpoint never redirects a student to docs.google.com/gview or
   // drive.google.com. That redirect handed the student to GOOGLE's permission
   // check, so anyone not shared on the uploader's Drive file got "Request
-  // access" instead of the document. Imported Drive files are served from
-  // StudyCore storage; legacy Drive references are proxied server-side above.
+  // access" instead of the document. Drive-backed resources are proxied
+  // server-side above; ordinary uploads stream from StudyCore storage.
 
   // A Drive-picked document normally reads from its imported StudyCore copy
   // (R2/local/vault). If that historical copy is absent, use the retained

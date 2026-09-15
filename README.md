@@ -152,9 +152,11 @@ middleware/security.js  security headers + in-memory rate limiting (auth endpoin
 middleware/upload.js    streaming upload (SHA-256) + strict avatar/quiz-image upload config
 lib/r2.js               Cloudflare R2 client (S3-compatible)
 lib/storage.js          R2 + local-disk fallback, range-aware reads (never buffers whole files)
-lib/google-drive-vault.js  optional Google Drive storage vault for documents (see docs/google-drive-vault.md)
-lib/document-storage.js    dispatcher: writes go to the Drive vault when connected, else lib/storage.js;
-                            reads/deletes always follow each object's own recorded backend
+lib/google-drive.js       Google Drive reference registration ("Select from Google Drive")
+lib/google-drive-vault.js the connected Google account (encrypted refresh token) the backend reads Drive with
+lib/drive-documents.js    streams Google Drive-backed resources server-side through the gated viewer
+lib/document-storage.js    dispatcher: writes always go to R2/local; reads follow each object's
+                            own recorded backend (incl. 'google_drive' references)
 lib/mailer.js           SMTP email (access-granted confirmation), console fallback when unconfigured
 routes/auth.routes.js   register/login/me, profile, password, avatar, subscribe, payment-info
 routes/courses.routes.js  public course directory, course home (topics/progress/continue), lesson flow
@@ -199,10 +201,10 @@ npm start
 | `MAX_UPLOAD_MB` | Max upload size in MB (default 200, hard cap 2048) |
 | `CORS_ALLOWED_ORIGINS` | Optional comma-separated extra trusted origins (defaults to `studycore.academy` + `www`) |
 | `DATA_DIR` | Persistent disk path for the SQLite file (Render etc.) |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 for documents/images/audio only. **Required in production**, unless a Google Drive vault is connected (see below) — avatars/quiz images still need R2 either way. Videos never use it. |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 for documents/images/audio only. **Required in production** — avatars/quiz images still need R2 either way. Videos never use it. |
 | `BUNNY_LIBRARY_ID` / `BUNNY_API_KEY` / `BUNNY_CDN_HOSTNAME` | **Required for video uploads.** Bunny Stream library, server-only API key, and playback CDN hostname. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_API_KEY` / `GOOGLE_CLOUD_PROJECT_NUMBER` | Google Drive **Picker** (per-file, browser-side) — see `docs/google-picker.md`. |
-| `GOOGLE_CLIENT_SECRET` / `GOOGLE_DRIVE_REDIRECT_URI` | Google Drive **storage vault** — an optional, admin-connected account that becomes StudyCore's document storage backend (documents only; video stays on Bunny). See `docs/google-drive-vault.md`. Until connected in Admin → Integrations, documents keep using R2/local exactly as before. |
+| `GOOGLE_CLIENT_SECRET` / `GOOGLE_DRIVE_REDIRECT_URI` | Google Drive **server-side connection** — the connected Google account whose library StudyCore reads Drive-backed documents from ("Select from Google Drive"). Drive is a source library, NOT a storage destination: uploads keep going to R2/local, and video stays on Bunny. See `docs/google-drive-vault.md`. Until an account is connected in Admin → Integrations, publishing from Google Drive is refused with instructions. |
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP for the access-granted email sent when a payment is approved. Unset = email is logged to console instead of sent. |
 | `APP_URL` | Public base URL of this deployment, used for links inside emails |

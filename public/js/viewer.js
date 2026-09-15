@@ -149,16 +149,17 @@
     bindBackButtons();
   }
 
-  // The old Drive-specific viewer states lived here. New files selected from
-  // Google Drive are imported into StudyCore storage before publishing, and
-  // legacy Drive-linked rows are proxied by the backend when possible. Either
-  // way the browser stays in the same StudyCore reader and is never sent to a
-  // Google preview that can show "Request access".
+  // The Drive-specific unavailable state. Files selected from Google Drive
+  // stay in the uploader's Drive; the backend fetches them with its own
+  // Google connection and streams them through this StudyCore reader. When
+  // that fetch fails, the server's message names the real cause (file gone,
+  // or the connection lost access) — this default only covers a response
+  // without one.
   function driveUnavailable(message) {
     renderState({
       icon: 'alert-triangle',
       title: 'Document unavailable',
-      body: message || 'This document could not be opened from Google Drive. It may have been moved, renamed or deleted there — please tell your admin.',
+      body: message || 'This document could not be opened from Google Drive. It may have been moved or deleted there, or StudyCore\'s Google Drive connection needs attention — please tell your admin.',
       secondary: `<button class="btn btn-outline" type="button" data-viewer-back>${SC.icon('arrow-left', { size: 16 })} Go back</button>`
     });
     bindBackButtons();
@@ -380,11 +381,10 @@
 
     // NOTE: there is deliberately NO Google Drive branch here.
     //
-    // New files selected from Drive have already been imported into StudyCore
-    // storage before publishing; older Drive-linked rows are fetched/proxied by
-    // the backend when its server-side credentials can still read them. In both
-    // cases the student loads the ordinary protected /stream URL and renders in
-    // this same reader on desktop and mobile.
+    // Files selected from Google Drive are registered as Drive-backed
+    // resources: the backend fetches the original file with its own Google
+    // credentials and pipes it through the ordinary protected /stream URL, so
+    // the student renders it in this same reader on desktop and mobile.
     //
     // What must never come back:
     //   · embedding drive.google.com/.../preview — Google authorizes that
