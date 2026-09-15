@@ -12,6 +12,12 @@
   'use strict';
 
   let selectedFile = null;
+  // A file chosen through "Select from Google Drive". Google Drive is the
+  // admin's SOURCE LIBRARY: the server copies the picked file into StudyCore
+  // storage at publish time using `accessToken`, and students then read it
+  // from StudyCore like any other document. Nothing is ever written back to
+  // Drive, and an ordinary upload (`selectedFile`) never touches Drive.
+  let selectedDriveFile = null; // { id, name, url, mimeType, sizeBytes, accessToken }
   let editingResourceId = null;
   let editingAnnouncementId = null;
   let currentFilters = { search: '', category: '', sort: 'newest', program: '' };
@@ -90,6 +96,7 @@
   function resetResourceForm() {
     editingResourceId = null;
     selectedFile = null;
+    clearDriveSelection();
     document.getElementById('resourceForm').reset();
     // The file input lives in the drop zone rather than inside the metadata
     // form, so form.reset() does not clear it. Clearing it also lets an admin
@@ -128,6 +135,7 @@
     if (category === 'video' && !editingResourceId) {
       const courseId = resourceFormControls ? resourceFormControls.getCourseId() : '';
       if (!courseId) return 'Select a program course for this video. Videos without a course are not shown in Video Lessons.';
+      if (selectedDriveFile) return 'Video lessons are published to Bunny Stream. Upload the video file directly instead of selecting it from Google Drive.';
       if (!selectedFile) return 'Choose the video file before publishing.';
     }
 
@@ -222,6 +230,58 @@
     }
   }
 
+  /* ── "Select from Google Drive" ───────────
+     Google Drive is the SOURCE LIBRARY for documents, never StudyCore's
+     storage. Picking a file here records its id + the Picker's short-lived
+     OAuth token; on publish the server copies the bytes into StudyCore
+     storage and the resource is served by the normal, access-gated
+     StudyCore document viewer. The admin's Drive file is left untouched and
+     students are never shown Drive. */
+
+  function driveSelectionLabel() {
+    return document.getElementById('fileChosenLabel');
+  }
+
+  function clearDriveSelection() {
+    selectedDriveFile = null;
+    const btn = document.getElementById('caSelectDriveBtn');
+    if (btn) btn.textContent = 'Select from Google Drive';
+  }
+
+  // Called by /js/google-picker.js once the admin picks a file in the Picker.
+  window.onGoogleDriveFilePicked = function (doc, auth) {
+    if (!doc || !doc.id) return;
+    // A Drive pick and a direct upload are mutually exclusive: the last one
+    // chosen wins, so the admin always publishes the file they just selected.
+    selectedFile = null;
+    const fileInput = document.getElementById('fileInput');
+    if (fileInput) fileInput.value = '';
+
+    selectedDriveFile = {
+      id: doc.id,
+      name: doc.name || 'Google Drive Document',
+      url: doc.url || ('https://drive.google.com/file/d/' + doc.id + '/view'),
+      mimeType: doc.mimeType || '',
+      sizeBytes: Number(doc.sizeBytes) || 0,
+      accessToken: (auth && auth.accessToken) || null
+    };
+
+    const label = driveSelectionLabel();
+    if (label) {
+      const size = selectedDriveFile.sizeBytes
+        ? ' (' + (selectedDriveFile.sizeBytes / (1024 * 1024)).toFixed(2) + ' MB)'
+        : '';
+      label.textContent = 'From Google Drive: ' + selectedDriveFile.name + size;
+    }
+    const btn = document.getElementById('caSelectDriveBtn');
+    if (btn) btn.textContent = 'Change Google Drive file';
+    setResourceFormStatus(
+      String(selectedDriveFile.mimeType).indexOf('application/vnd.google-apps.') === 0
+        ? 'This Google Doc will be imported into StudyCore as a PDF when you publish, so students read it in the StudyCore viewer.'
+        : 'This file will be copied into StudyCore when you publish. Your Google Drive copy is not moved or changed.'
+    );
+  };
+
   /* ── Upload dropzone ────────────────────── */
   function bindDropZone() {
     const dropZone = document.getElementById('dropZone');
@@ -229,6 +289,9 @@
     const label = document.getElementById('fileChosenLabel');
 
     function chooseFile(file) {
+      // A direct upload is a plain StudyCore upload — it is never sent to
+      // Google Drive — and it supersedes any earlier Drive selection.
+      if (file) clearDriveSelection();
       selectedFile = file;
       label.textContent = file ? `Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)` : '';
     }
@@ -292,6 +355,17 @@
     fd.append('isPremium', document.getElementById('resIsFree').checked ? 'false' : 'true');
     fd.append('pinned', document.getElementById('resPinned').checked ? 'true' : 'false');
     if (selectedFile) fd.append('file', selectedFile);
+    else if (selectedDriveFile) {
+      // The server imports the bytes from Drive once, with this short-lived
+      // token, and stores them in StudyCore. The token is never persisted.
+      fd.append('google_drive_file_id', selectedDriveFile.id);
+      fd.append('google_drive_url', selectedDriveFile.url || '');
+      fd.append('file_name', selectedDriveFile.name || '');
+      fd.append('mime_type', selectedDriveFile.mimeType || '');
+      if (selectedDriveFile.accessToken) {
+        fd.append('google_drive_access_token', selectedDriveFile.accessToken);
+      }
+    }
     return fd;
   }
 
@@ -341,6 +415,8 @@
       progressBar.style.width = '0%';
       progressText.textContent = 'Uploading… 0%';
       setResourceFormStatus('Uploading file…');
+    } else if (selectedDriveFile) {
+      setResourceFormStatus('Importing "' + selectedDriveFile.name + '" from Google Drive into StudyCore…');
     } else {
       setResourceFormStatus(editingResourceId ? 'Saving changes…' : 'Publishing resource…');
     }
@@ -406,6 +482,9 @@
   function editResource(r) {
     editingResourceId = r.id;
     selectedFile = null;
+    // Editing shows the CURRENT file. Any previous Drive pick is dropped so a
+    // metadata-only save never re-imports from Drive (the token is gone too).
+    clearDriveSelection();
     document.getElementById('resourceId').value = r.id;
     document.getElementById('resCategory').value = r.category;
     document.getElementById('resTitle').value = r.title;
@@ -642,11 +721,14 @@
     } catch { /* non-fatal */ }
   }
 
-  /* ── Google Drive vault (Integrations) ────── */
-  // "Select from Google Drive" in the upload form (content-admin.js /
-  // google-picker.js) is a per-file, per-uploader pick and is unrelated to
-  // this: this is the ONE account StudyCore uses as its document storage
-  // backend for every non-video upload once connected.
+  /* ── Google Drive (Integrations) ─────────── */
+  // This is the SAME Google OAuth client the "Select from Google Drive"
+  // Picker uses. Connecting an account here simply lets the StudyCore server
+  // talk to Drive on its own (server-to-server), which is what keeps older
+  // Drive-referenced resources readable and lets StudyCore verify a picked
+  // file. It is NOT a storage backend: StudyCore never writes uploads into
+  // anybody's Drive. Every new document — uploaded directly or imported from
+  // the Picker — is stored in StudyCore's own storage.
   async function loadDriveIntegration() {
     const target = document.getElementById('driveIntegrationStatus');
     if (!target) return;
@@ -657,16 +739,17 @@
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
             <span style="font-size:0.9rem;">
               <strong style="color:var(--green-600);">Connected</strong> —
-              documents are being stored in <strong>${escapeHtml(data.email || 'the connected Google account')}</strong>'s Google Drive.
+              StudyCore can read documents from <strong>${escapeHtml(data.email || 'the connected Google account')}</strong>'s Google Drive library.
             </span>
             <button class="btn btn-outline btn-sm" id="driveDisconnectBtn" type="button">Disconnect</button>
           </div>
           <p style="margin-top:10px;color:var(--muted);font-size:0.82rem;">
-            Disconnecting does not delete or move any document already stored there — it only stops
-            new uploads from being sent to Drive. Existing documents keep opening exactly as before.
+            Documents you import with "Select from Google Drive" are copied into StudyCore, so they keep
+            working for students whatever happens to this connection. Disconnecting never deletes or
+            changes anything in your Google Drive.
           </p>`;
         document.getElementById('driveDisconnectBtn').addEventListener('click', async () => {
-          if (!confirm('Disconnect this Google Drive account? New documents will go back to StudyCore\'s default storage. Already-stored documents keep working.')) return;
+          if (!confirm('Disconnect this Google Drive account? Documents already imported into StudyCore keep working. Nothing in your Google Drive is deleted.')) return;
           try {
             await StudyCoreAPI.adminGoogleDriveDisconnect();
             showToast('Google Drive disconnected.', 'success');
@@ -678,7 +761,7 @@
       } else {
         target.innerHTML = `
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-            <span style="font-size:0.9rem;color:var(--muted);">Not connected — new documents use StudyCore's default storage.</span>
+            <span style="font-size:0.9rem;color:var(--muted);">Not connected — you can still use "Select from Google Drive" on the upload form, which authorises per file.</span>
             <a class="btn btn-primary btn-sm" href="/api/admin/google-drive/connect">Connect Google Drive</a>
           </div>`;
       }
@@ -695,7 +778,7 @@
     const connected = params.get('drive_connected');
     const error = params.get('drive_error');
     if (!connected && !error) return;
-    if (connected) showToast('Google Drive connected. New documents will now be stored there.', 'success');
+    if (connected) showToast('Google Drive connected.', 'success');
     else if (error) showToast(error, 'error');
     params.delete('drive_connected');
     params.delete('drive_error');

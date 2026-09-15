@@ -484,9 +484,77 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
       assert.doesNotMatch(stream.raw, /request access/i);
     });
 
-    await t.test('the main admin dashboard cannot attach an unverified Drive file', async () => {
-      // That route has no Drive Picker and so no per-file OAuth token: it
-      // could not confirm StudyCore is able to read the file for students.
+    await t.test('the Main Admin dashboard imports a picked Drive file into StudyCore', async () => {
+      // "Select from Google Drive" on the Main Admin upload form: Drive is the
+      // SOURCE LIBRARY. The picked file is copied into StudyCore storage and
+      // published as an ordinary StudyCore resource, and the student reads it
+      // through the normal gated viewer — never from Google.
+      const admin = {
+        id: `admin-${uuidv4()}`,
+        name: 'Importing Admin',
+        email: `import-${uuidv4()}@test.studycore`,
+        password: bcrypt.hashSync('admin-password', 4),
+        role: ROLES.ADMIN,
+        program_code: 'LAW',
+        subscription: 'premium',
+        trial_end: new Date(Date.now() + 86400000).toISOString(),
+        subscription_end: new Date(Date.now() + 86400000).toISOString(),
+        created_at: new Date().toISOString()
+      };
+      db.prepare(`
+        INSERT INTO users (id, name, email, password, role, program_code, subscription, trial_end, subscription_end, created_at)
+        VALUES (@id, @name, @email, @password, @role, @program_code, @subscription, @trial_end, @subscription_end, @created_at)
+      `).run(admin);
+      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+
+      const form = new FormData();
+      Object.entries({
+        title: 'Imported From My Drive',
+        category: 'document',
+        courseId: course.id,
+        semester: 'Term 1',
+        topic: 'Foundations',
+        targetAll: 'false',
+        programs: 'LAW',
+        publishStatus: 'published',
+        // Exactly what the Picker hands the dashboard.
+        google_drive_file_id: NEW_FILE_ID,
+        google_drive_url: `https://drive.google.com/file/d/${NEW_FILE_ID}/view`,
+        google_drive_access_token: ADMIN_TOKEN,
+        file_name: 'Contract Law Lecture Notes.pdf',
+        mime_type: 'application/pdf'
+      }).forEach(([k, v]) => form.append(k, v));
+
+      const published = await call(baseUrl, 'POST', '/api/admin/resources', { cookie, body: form });
+      assert.equal(published.response.status, 201, published.raw);
+      const importedId = published.data.resource.id;
+
+      const row = db.prepare('SELECT * FROM resources WHERE id = ?').get(importedId);
+      // Drive is never the storage provider: the bytes are in StudyCore.
+      assert.notEqual(row.storage_provider, 'google_drive');
+      assert.notEqual(row.storage_provider, 'google_drive_vault');
+      assert.ok(row.stored_name, 'a real StudyCore storage key is recorded');
+      assert.notEqual(row.stored_name, NEW_FILE_ID);
+      assert.equal(row.file_size, NEW_PDF.length);
+      // The Drive id/URL survive as provenance only.
+      assert.equal(row.google_drive_file_id, NEW_FILE_ID);
+
+      const stored = await documentStorage.readBytes(row.stored_name, 0, NEW_PDF.length - 1, row.storage_provider);
+      assert.deepEqual(Buffer.from(stored), NEW_PDF, 'the imported object matches the Drive file byte-for-byte');
+
+      // And a student reads it through StudyCore's own gated viewer.
+      await assertOpensInViewer(baseUrl, {
+        resourceId: importedId, student, expected: NEW_PDF,
+        label: 'main-admin-import', userAgent: DESKTOP_UA
+      });
+    });
+
+    await t.test('a Drive file cannot be attached without a Picker token', async () => {
+      // "Select from Google Drive" always supplies a short-lived OAuth token
+      // alongside the file id, because that token is what lets StudyCore copy
+      // the bytes in. A bare file id with no token cannot be imported, and
+      // must never be stored as a bare Drive reference — that is exactly the
+      // state that used to strand students on Google's "Request access" wall.
       const mainAdmin = {
         id: `admin-${uuidv4()}`,
         name: 'Main Admin',
@@ -513,7 +581,7 @@ test('Google Drive documents — old and new — open in the StudyCore viewer', 
         cookie, body: link
       });
       assert.equal(attempt.response.status, 400, attempt.raw);
-      assert.match(attempt.data.message, /Drive Picker/i);
+      assert.match(attempt.data.message, /Select from Google Drive/i);
 
       // And the existing imported document is untouched: still readable and
       // still stored in StudyCore, not relinked to the source Drive file.

@@ -221,14 +221,12 @@ function fileFilter(req, file, cb) {
 // buffered in this process.
 class ObjectStorage {
   // `backend` decides where non-video bytes for THIS multer instance land.
+  // Neither backend ever writes to Google Drive: an "Upload Document" is a
+  // plain StudyCore upload and is never copied into anybody's Drive.
   // - documentStorage (default): resource files (notes/tutorials/past
-  //   papers/lab reports) — dispatches to the Google Drive vault when one is
-  //   connected, otherwise R2/local. This is the only upload surface the
-  //   Drive vault applies to.
-  // - rawStorage: avatars and quiz question images. These are small,
-  //   app-managed assets rather than "documents" and are deliberately kept
-  //   on R2/local always, so they never depend on (or get stuck behind) an
-  //   admin's personal Google account being connected.
+  //   papers/lab reports) — StudyCore object storage (R2, or local disk).
+  // - rawStorage: avatars and quiz question images. Small, app-managed
+  //   assets rather than "documents", also on R2/local.
   constructor(backend) {
     this.backend = backend || documentStorage;
   }
@@ -300,9 +298,10 @@ class ObjectStorage {
     }
 
     // Documents (PDFs, office files, past papers, images, archives, audio)
-    // go through this instance's backend. For the default document backend
-    // that means the Google Drive vault when a Main Admin has connected one,
-    // otherwise the pre-existing R2/local backend. See lib/document-storage.js.
+    // go through this instance's backend, which is StudyCore's own object
+    // storage (R2, or local disk in development). Google Drive is a source
+    // you import FROM, never an upload destination. See
+    // lib/document-storage.js.
     const backend = this.backend;
     backend.putObject({
       key,
@@ -342,9 +341,8 @@ class ObjectStorage {
 
 const maxMb = resolveMaxUploadMb();
 
-// Resource uploads (notes/tutorials/past papers/lab reports/lessons) — the
-// only surface that dispatches through the Google Drive vault when one is
-// connected. See ObjectStorage's constructor comment above.
+// Resource uploads (notes/tutorials/past papers/lab reports/lessons). Stored
+// in StudyCore's own storage; never sent to Google Drive.
 const upload = multer({
   storage: new ObjectStorage(documentStorage),
   fileFilter,
@@ -352,9 +350,7 @@ const upload = multer({
 });
 
 // Quiz question images are small, app-managed assets rather than course
-// documents. They always stay on R2/local, independent of whether the
-// Google Drive vault is connected, so quiz authoring never depends on (or
-// is blocked by) an admin's personal Drive connection.
+// documents. Like every other upload they stay on R2/local.
 const assetUpload = multer({
   storage: new ObjectStorage(rawStorage),
   fileFilter,
