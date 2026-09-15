@@ -995,8 +995,13 @@
         let message = 'This document could not be opened.';
         if (name === 'PasswordException') message = 'This document is password protected.';
         else if (name === 'InvalidPDFException') message = 'This file appears to be corrupted. Ask your admin to re-upload a PDF version.';
-        else if (name === 'MissingPDFException') message = 'This document is missing from storage.';
-        else if (name === 'UnexpectedResponseException') {
+        else if (name === 'MissingPDFException') {
+          // pdf.js uses MissingPDFException for every 404, including a
+          // temporarily stale resource row or a legacy storage-provider
+          // mismatch. Ask the same-origin stream endpoint for its real,
+          // safe explanation before claiming that the uploader lost a file.
+          message = (await explainStreamFailure()) || 'This document is not available in storage. Please ask an admin to check or re-upload it.';
+        } else if (name === 'UnexpectedResponseException') {
           // 404/502 here can mean the backing file could not be fetched from
           // Google Drive (moved, renamed, deleted or access revoked there).
           // Ask the server for its exact reason so the student is told what is
