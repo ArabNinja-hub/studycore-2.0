@@ -285,20 +285,24 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
 
   // ---- "Select from Google Drive" -----------------------------------------
   // Google Drive is the admin's SOURCE LIBRARY, not StudyCore's storage. When
-  // the Picker supplied a file id (plus its short-lived OAuth token), the
-  // bytes are read out of Drive once, right here, and written into
-  // StudyCore's own storage. From this point the row is an ordinary StudyCore
-  // document: the student viewer, the access gates and the /stream endpoint
-  // treat it exactly like a direct upload, and no student is ever sent to
-  // drive.google.com. The Drive file itself is left untouched in the admin's
-  // Drive; only its id/URL are kept as provenance.
+  // the Picker supplies a file id, the resource is REGISTERED as a
+  // Google Drive-backed resource: the row stores the Drive file id plus
+  // Drive's own metadata, and no bytes are copied anywhere. When a student
+  // opens it, the backend reads the original file from Drive with its OWN
+  // connected Google credentials (see lib/google-drive-vault.js and
+  // lib/drive-documents.js) and streams it through the normal gated
+  // /api/resources/:id/stream endpoint. No student is ever sent to
+  // drive.google.com, and the Drive file itself is left untouched.
   const driveFileId = String((req.body && req.body.google_drive_file_id) || '').trim();
   if (driveFileId && !req.file) {
     if (category === 'video') {
-      return failUpload('Video lessons are published to Bunny Stream, not imported from Google Drive.');
+      return failUpload('Video lessons are published to Bunny Stream, not selected from Google Drive.');
     }
     try {
-      req.file = await googleDrive.importToStorage({
+      // Verifies with the SERVER's credentials that the file will be
+      // readable when students open it, and captures Drive's authoritative
+      // name/type/size. Refuses the publish when it cannot.
+      req.file = await googleDrive.registerFile({
         fileId: driveFileId,
         accessToken: req.body.google_drive_access_token,
         fileName: req.body.file_name || req.body.google_drive_file_name,
@@ -405,10 +409,9 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
     created_at: now,
     updated_at: now,
     storage_provider: req.file ? (req.file.bucket || storage.backendName()) : null,
-    // Provenance only. The bytes already live in StudyCore storage (the
-    // storage_provider above is r2/local, never 'google_drive'); these two
-    // columns just record which Drive file this resource was imported from so
-    // an admin can trace it back to their own library.
+    // For a Drive-backed resource this is the FILE THE RESOURCE IS SERVED
+    // FROM: the student stream route resolves it through lib/drive-documents.js
+    // with StudyCore's own Google credentials. Null for ordinary uploads.
     google_drive_file_id: req.file && req.file.driveFileId ? req.file.driveFileId : null,
     google_drive_url: req.file && req.file.driveFileId
       ? (req.body.google_drive_url || `https://drive.google.com/file/d/${req.file.driveFileId}/view`)
@@ -470,26 +473,28 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
 
   // Replacing this resource's file with one picked from Google Drive.
   //
-  // A Drive file is never merely "linked": StudyCore reads the bytes once,
-  // with the Picker's short-lived token, and stores them in its own storage.
-  // That is what makes the document open inside StudyCore's viewer for every
-  // entitled student instead of bouncing them to Google's "Request access"
-  // wall. The admin's Drive file is not modified, moved or deleted.
+  // The picked file is REGISTERED as the new source of this resource — a
+  // Google Drive-backed reference, not a copy. registerFile() verifies with
+  // the SERVER's own Google credentials (not the browser's Picker token) that
+  // the file is readable, which is what guarantees every entitled student can
+  // open it inside StudyCore's viewer instead of meeting Google's "Request
+  // access" wall. The admin's Drive file is not modified, moved or deleted.
+  //
+  // A fresh Picker run (token present) always re-registers, even for the same
+  // file — that refreshes Drive's metadata and converts rows written by older
+  // builds into Drive-backed references. A changed Drive file id is registered
+  // too. Editing metadata alone (same id, no new pick) keeps the reference.
   const replacementDriveFileId = String(req.body.google_drive_file_id || '').trim();
-  const importingDriveFile = Boolean(replacementDriveFileId) && !req.file && (
-    replacementDriveFileId !== existing.google_drive_file_id ||
-    (existing.storage_provider || 'local') === 'google_drive' ||
-    !existing.stored_name
+  const pickerJustRan = Boolean(req.body.google_drive_access_token);
+  const registeringDriveFile = Boolean(replacementDriveFileId) && !req.file && (
+    pickerJustRan || replacementDriveFileId !== existing.google_drive_file_id
   );
-  if (importingDriveFile) {
+  if (registeringDriveFile) {
     if (effectiveCategory === 'video') {
-      return failUpload('Video lessons are published to Bunny Stream, not imported from Google Drive.');
-    }
-    if (!req.body.google_drive_access_token) {
-      return failUpload('Re-select this file with "Select from Google Drive" so StudyCore can import it.');
+      return failUpload('Video lessons are published to Bunny Stream, not selected from Google Drive.');
     }
     try {
-      req.file = await googleDrive.importToStorage({
+      req.file = await googleDrive.registerFile({
         fileId: replacementDriveFileId,
         accessToken: req.body.google_drive_access_token,
         fileName: req.body.file_name || req.body.google_drive_file_name,
@@ -611,20 +616,20 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     ),
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
-    // Drive selections are imported, so this route never records
-    // storage_provider = 'google_drive'. If an old row still carries that
-    // marker and the Main Admin only edits metadata, it is preserved;
-    // uploading or importing a replacement moves it to the file's real
-    // backend (r2/local, or Bunny for video).
+    // Drive selections are registered as Google Drive-backed references, so
+    // this route records 'google_drive' for them (registerFile's bucket
+    // marker). A row edited without a new pick keeps whatever it had;
+    // uploading an ordinary replacement moves it to that file's real backend
+    // (r2/local, or Bunny for video).
     storage_provider: req.file
-      // Replacements already carry their final provider: Bunny for video,
-      // object storage for documents/images/audio.
+      // Replacements carry their final provider: Bunny for video, object
+      // storage for ordinary uploads, or the 'google_drive' marker for a
+      // registered Drive reference.
       ? (req.file.bucket || storage.backendName())
       : (existing.storage_provider || 'local'),
-    // Drive ids/URLs are PROVENANCE: "this StudyCore document came from that
-    // file in my Drive". They are never used to serve a student. A fresh
-    // import records the new source; an ordinary file upload clears it,
-    // because the resource no longer came from Drive.
+    // A Drive-backed row records WHICH Drive file backs it (registerFile()
+    // returns the canonical id from Drive's own metadata). An ordinary file
+    // upload replaces the Drive reference entirely, so the id is cleared.
     google_drive_file_id: req.file
       ? (req.file.driveFileId || null)
       : ((req.body.google_drive_file_id !== undefined && !req.body.google_drive_file_id)
@@ -1018,7 +1023,9 @@ router.get('/google-drive/callback', asyncHandler(async (req, res) => {
 
 router.post('/google-drive/disconnect', (req, res) => {
   googleDriveVault.disconnect();
-  res.json({ message: 'Google Drive disconnected. Documents already imported into StudyCore are unaffected, and nothing in your Google Drive was changed.' });
+  res.json({
+    message: 'Google Drive disconnected. Documents published from Google Drive cannot be opened by students until an account is reconnected; nothing in your Google Drive was changed. Ordinary StudyCore uploads are unaffected.'
+  });
 });
 
 module.exports = router;

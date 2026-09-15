@@ -451,12 +451,12 @@
     // Hand the Drive file off to the existing Content Admin dashboard code,
     // WITH the access token this picker session obtained.
     //
-    // The token is what lets the StudyCore server copy the chosen file out of
-    // Drive at publish time. Without it the server could only store a link,
-    // and students who are not shared on the uploader's private Drive file
-    // would be sent to Google's "Request access" page instead of the
-    // document. The token is short-lived, used for that single server-side
-    // read, and never stored.
+    // The token marks this as a fresh Picker run. Students are served by the
+    // StudyCore server, which reads the registered Drive file with its own
+    // standing Google connection — never by the student's (nonexistent)
+    // Google account, and never by a redirect to Drive's "Request access"
+    // page. The token is short-lived, held in memory for this one publish,
+    // and never stored.
     if (typeof window.onGoogleDriveFilePicked === 'function') {
       window.onGoogleDriveFilePicked(doc, { accessToken: state.accessToken });
     } else {

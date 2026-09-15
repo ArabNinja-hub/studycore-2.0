@@ -3,15 +3,19 @@
 // Dev-only harness (NOT part of `npm test`).
 //
 // Boots the real StudyCore server against a throwaway database with a FAKE
-// Google Drive standing in for Google, seeds one OLD Drive document (published
-// before the storage changes) and one NEW Drive document (as the Picker would
-// create it), plus a student account — so the document viewer can be opened in
-// a real browser on desktop and mobile widths and checked by eye.
+// Google standing in for Google (OAuth token endpoint + Drive), connects a
+// fake server-side Google account (the "Connect Google Drive" flow), and seeds
+// two Google Drive-backed documents — one exactly as "Select from Google
+// Drive" registers it, one in the older row shape a previous build wrote —
+// plus a student account, so the document viewer can be opened in a real
+// browser on desktop and mobile widths and checked by eye.
 //
 //   node scripts/dev-drive-demo.js
 //
 // Then sign in at /login.html with the printed credentials and open the
-// printed /viewer/<id> links.
+// printed /viewer/<id> links. Every read is served by the StudyCore backend,
+// which fetches the file from the (fake) Drive with the connected account's
+// credentials — students never touch Google.
 
 const fs = require('node:fs');
 const os = require('node:os');
@@ -28,6 +32,8 @@ process.env.R2_ACCESS_KEY_ID = '';
 process.env.R2_SECRET_ACCESS_KEY = '';
 process.env.R2_BUCKET_NAME = '';
 process.env.GOOGLE_API_KEY = 'AIzaDevFakeServerKey0000000000000000000';
+process.env.GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '1076280995038-devdemo.apps.googleusercontent.com';
+process.env.GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'dev-demo-client-secret';
 
 // ---------------------------------------------------------------------------
 // A believable multi-page PDF so paging/zoom/search can be exercised for real.
@@ -87,15 +93,37 @@ const DRIVE_FILES = new Map([
 ]);
 
 // ---------------------------------------------------------------------------
-// Fake Google Drive. Private files: released only to StudyCore's own
-// server-side credential — never to a student's browser.
+// Fake Google. Private Drive files: released only to StudyCore's own
+// server-side credential (the connected account's OAuth token, or the browser
+// API key) — never to a student's browser.
 // ---------------------------------------------------------------------------
+const VAULT_TOKEN = 'ya29.dev-demo-server-token';
 const realFetch = global.fetch;
 global.fetch = async (url, options = {}) => {
   const target = String(url);
+
+  if (target === 'https://oauth2.googleapis.com/token') {
+    const body = String((options && options.body) || '');
+    if (body.includes('grant_type=authorization_code')) {
+      return {
+        ok: true, status: 200,
+        json: async () => ({ access_token: VAULT_TOKEN, refresh_token: 'dev-demo-refresh-token', expires_in: 3600 })
+      };
+    }
+    return { ok: true, status: 200, json: async () => ({ access_token: VAULT_TOKEN, expires_in: 3600 }) };
+  }
+  if (target.startsWith('https://www.googleapis.com/oauth2/v2/userinfo')) {
+    return { ok: true, status: 200, json: async () => ({ email: 'dev-library@example.com' }) };
+  }
+  if (target.includes('/files?q=')) {
+    return { ok: true, status: 200, json: async () => ({ files: [{ id: 'folder-demo', name: 'StudyCore Documents' }] }) };
+  }
+
   if (!target.startsWith('https://www.googleapis.com/drive/')) return realFetch(url, options);
 
-  if (!target.includes(`key=${process.env.GOOGLE_API_KEY}`)) {
+  const auth = (options.headers && options.headers.Authorization) || '';
+  const serverCredential = auth === `Bearer ${VAULT_TOKEN}` || target.includes(`key=${process.env.GOOGLE_API_KEY}`);
+  if (!serverCredential) {
     return { ok: false, status: 404, json: async () => ({ error: { message: 'File not found' } }) };
   }
   const idMatch = target.match(/\/drive\/v3\/files\/([^?/]+)/);
@@ -139,7 +167,22 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { createToken, COOKIE_NAME } = require('../middleware/auth');
 const { ROLES } = require('../lib/roles');
+const vault = require('../lib/google-drive-vault');
 const app = require('../server');
+
+// The "Connect Google Drive" step (Admin → Integrations): stores an encrypted
+// refresh token for the fake connected account, exactly as the real flow does.
+// The server only starts listening once the connection exists, so the very
+// first document open is already served through it.
+function connectFakeGoogleAccount() {
+  return vault.handleCallback({
+    code: 'dev-demo-auth-code',
+    req: { protocol: 'http', get: () => 'localhost:3000' },
+    userId: null
+  }).then(({ email }) => {
+    console.log(`[dev-drive-demo] connected Google account: ${email} (server-side reads use this)`);
+  });
+}
 
 const course = db.prepare(`
   SELECT c.id, c.name FROM courses c
@@ -163,8 +206,8 @@ function seedDriveResource({ title, driveFileId, fileName, legacy }) {
     id,
     title,
     description: legacy
-      ? 'Published from Google Drive BEFORE the storage changes. Must open normally.'
-      : 'Published from the Google Drive Picker. Must open normally.',
+      ? 'Drive-backed row in the older shape a previous build wrote. Must open normally.'
+      : 'Registered with "Select from Google Drive". Must open normally.',
     subject: course ? course.name : 'Law',
     course_id: course ? course.id : null,
     file_name: fileName,
@@ -212,14 +255,19 @@ db.prepare(`
 `).run(student);
 
 const PORT = Number(process.env.PORT) || 3000;
+connectFakeGoogleAccount().then(() => {
 http.createServer(app).listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('StudyCore dev server (fake Google Drive attached)');
   console.log(`  listening on 0.0.0.0:${PORT}`);
   console.log('');
   console.log(`  student login : ${STUDENT_EMAIL} / ${STUDENT_PASSWORD}`);
-  console.log(`  OLD Drive doc : /viewer/${oldId}`);
-  console.log(`  NEW Drive doc : /viewer/${newId}`);
+  console.log(`  Drive doc (Picker-registered row) : /viewer/${newId}`);
+  console.log(`  Drive doc (older row shape)       : /viewer/${oldId}`);
   console.log(`  session cookie: ${COOKIE_NAME}=${createToken(student)}`);
   console.log('');
+});
+}).catch((err) => {
+  console.error('[dev-drive-demo] could not connect the fake Google account:', err.message);
+  process.exit(1);
 });

@@ -180,9 +180,10 @@ test('document reader is view-only and uses on-demand PDF ranges', () => {
 // so students who were not shared on the uploader's private file were shown
 // "Request access" instead of the document.
 //
-// Drive files are now copied into StudyCore storage at publish time
-// (lib/google-drive.js) and read through the normal protected reader, so the
-// embed, its CSS crop and the Drive-only toolbar are all gone.
+// Drive files are now registered as Google Drive-backed resources
+// (lib/google-drive.js) and streamed to students by the backend through the
+// normal protected reader, so the embed, its CSS crop and the Drive-only
+// toolbar are all gone.
 test('Drive documents read through the protected reader, never a Google embed', () => {
   const viewerJs = read('public/js/viewer.js');
   const viewerCss = read('public/css/viewer.css');
