@@ -17,7 +17,7 @@
 (function () {
   'use strict';
 
-  const DOC_VIEWER_CATEGORIES = ['document', 'tutorial', 'past_paper', 'lab_report', 'material'];
+  const DOC_VIEWER_CATEGORIES = ['document', 'tutorial', 'past_paper', 'material'];
 
   const id = (function resolveId() {
     const m = location.pathname.match(/\/viewer\/([^/?#]+)/);
@@ -31,18 +31,6 @@
   const $ = (sel) => document.querySelector(sel);
 
   /* ── Small helpers ───────────────────────── */
-  function getCategoryLabel(category) {
-    if (typeof CATEGORY_LABELS !== 'undefined' && CATEGORY_LABELS[category]) return CATEGORY_LABELS[category];
-    if (window.SC && window.SC.CATEGORY_LABELS && window.SC.CATEGORY_LABELS[category]) return window.SC.CATEGORY_LABELS[category];
-    return 'Resource';
-  }
-
-  function getSubjectSlug(subject) {
-    if (typeof subjectSlug === 'function') return subjectSlug(subject);
-    if (window.SC && typeof window.SC.subjectSlug === 'function') return window.SC.subjectSlug(subject);
-    return '';
-  }
-
   function fillIcons() {
     document.querySelectorAll('[data-vicon]').forEach((el) => {
       el.innerHTML = SC.icon(el.getAttribute('data-vicon'), { size: 18 });
@@ -149,22 +137,6 @@
     bindBackButtons();
   }
 
-  // The Drive-specific unavailable state. Files selected from Google Drive
-  // stay in the uploader's Drive; the backend fetches them with its own
-  // Google connection and streams them through this StudyCore reader. When
-  // that fetch fails, the server's message names the real cause (file gone,
-  // or the connection lost access) — this default only covers a response
-  // without one.
-  function driveUnavailable(message) {
-    renderState({
-      icon: 'alert-triangle',
-      title: 'Document unavailable',
-      body: message || 'This document could not be opened from Google Drive. It may have been moved or deleted there, or StudyCore\'s Google Drive connection needs attention — please tell your admin.',
-      secondary: `<button class="btn btn-outline" type="button" data-viewer-back>${SC.icon('arrow-left', { size: 16 })} Go back</button>`
-    });
-    bindBackButtons();
-  }
-
   /* ── Header / meta ───────────────────────── */
   function renderHeader() {
     $('#viewerTitleIcon').innerHTML = SC.icon(SC.courseCategoryIcon(resource.category), { size: 18 });
@@ -172,7 +144,7 @@
     document.title = `${resource.title} | StudyCore`;
 
     const meta = [
-      getCategoryLabel(resource.category),
+      CATEGORY_LABELS[resource.category] || 'Resource',
       resource.subject,
       resource.topic && resource.topic !== 'General' ? resource.topic : null,
       resource.yearLevel,
@@ -191,7 +163,7 @@
     if (resource && resource.courseId) {
       fallback = `/course/${encodeURIComponent(String(resource.courseId).replace(/^course-/i, ''))}`;
     } else if (resource && resource.subject) {
-      const slug = getSubjectSlug(resource.subject);
+      const slug = subjectSlug(resource.subject);
       if (slug) fallback = `/pages/subjects/${slug}.html`;
     }
     let referrerSameOrigin = false;
@@ -218,10 +190,19 @@
       });
   }
 
-  // (showDriveToolbar lived here.) It configured the toolbar for the embedded
-  // Google Drive /preview frame, which no longer exists: imported Drive files
-  // render in StudyCore's own PDF engine and therefore use the full toolbar —
-  // page navigation, zoom, fit and in-document search all work on them now.
+  // Google's embedded /preview frame is cross-origin: page navigation, zoom,
+  // fit and search act on StudyCore's own PDF engine, not on Google's
+  // viewer, so none of them apply to a Drive-hosted document. Fullscreen is
+  // the one control that does — keep the toolbar up with just that button.
+  function showDriveToolbar() {
+    const tools = $('#viewerTools');
+    if (!tools) return;
+    tools.hidden = false;
+    ['#viewerPrev', '#viewerNext', '#viewerZoomOut', '#viewerZoomIn', '#viewerFit',
+     '#viewerSearchBtn', '#viewerPageLabel', '#viewerZoomLabel']
+      .forEach((sel) => { const el = $(sel); if (el) el.hidden = true; });
+    tools.querySelectorAll('.viewer-tool-sep').forEach((el) => { el.hidden = true; });
+  }
 
   function updateState(s) {
     const paged = Boolean(s.numPages && s.numPages > 0);
@@ -290,8 +271,9 @@
   // fullscreens just the reading surface. That hides all StudyCore chrome
   // (site nav + this header bar) for a clean, immersive full-screen read and
   // floats its own auto-hiding page/zoom/Exit controls. Esc also exits.
-  // When no reader exists yet, fullscreen the reading surface (#viewerHost)
-  // directly so the document still fills the screen.
+  // When no reader exists (a Google Drive preview, or before the reader is
+  // ready), fullscreen the reading surface (#viewerHost) directly so the
+  // document still fills the screen.
   function toggleFullscreen() {
     if (reader && typeof reader.toggleFullscreen === 'function') {
       reader.toggleFullscreen();
@@ -379,23 +361,48 @@
 
     renderHeader();
 
-    // NOTE: there is deliberately NO Google Drive branch here.
-    //
-    // Files selected from Google Drive are registered as Drive-backed
-    // resources: the backend fetches the original file with its own Google
-    // credentials and pipes it through the ordinary protected /stream URL, so
-    // the student renders it in this same reader on desktop and mobile.
-    //
-    // What must never come back:
-    //   · embedding drive.google.com/.../preview — Google authorizes that
-    //     frame against the FILE's own sharing list, not the StudyCore
-    //     session, so unshared students got "Request access";
-    //   · an "Open in Google Drive" escape hatch.
-    //
-    // `storageProvider` / `googleDriveFileId` are intentionally not consulted
-    // when deciding how to render.
+    if (resource.googleDriveFileId) {
+      const isWorkspaceFile = resource.mimeType && resource.mimeType.startsWith('application/vnd.google-apps.');
+      const fileUrl = resource.googleDriveUrl || `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/view`;
 
-    // Resources with no readable file at all (link-only rows).
+      if (isWorkspaceFile) {
+        // Nothing is embedded for native Docs/Sheets/Slides — a plain
+        // "open in Drive" card — so no toolbar applies at all.
+        $('#viewerTools').hidden = true;
+        $('#viewerHost').innerHTML = `
+          <div style="padding: 60px 20px; text-align: center; max-width: 600px; margin: 0 auto;">
+            <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 40px; box-shadow: var(--shadow-sm);">
+              <div style="margin-bottom: 20px;">
+                ${window.SC ? SC.icon('file-text', { size: 48, color: 'var(--primary)' }) : ''}
+              </div>
+              <h2 style="margin: 0 0 10px; font-size: 1.25rem;">Google Workspace Document</h2>
+              <p style="color: var(--muted); margin: 0 0 24px; line-height: 1.5;">This file type cannot be previewed directly inside StudyCore. Please open it in Google Drive to view or edit.</p>
+              <a href="${fileUrl}" target="_blank" class="btn btn-primary">Open Document</a>
+            </div>
+          </div>
+        `;
+      } else {
+        // Google-hosted files render through Google's own /preview embed.
+        // That frame is cross-origin, so its toolbar — which carries the
+        // floating Share button — cannot be reached from this DOM. Instead
+        // .drive-preview-frame crops the top of the frame off (see the
+        // .drive-preview rules in viewer.css), and there is deliberately no
+        // floating "Open in Google Drive" button over the document.
+        // Fullscreen still applies to the reading surface; page nav, zoom,
+        // fit and search act on the built-in PDF engine only, so the
+        // toolbar keeps just the Fullscreen button.
+        const previewUrl = `https://drive.google.com/file/d/${encodeURIComponent(resource.googleDriveFileId)}/preview`;
+        $('#viewerHost').innerHTML = `
+          <div class="drive-preview">
+            <iframe class="drive-preview-frame" src="${previewUrl}" title="Google Drive Preview" allow="fullscreen"></iframe>
+          </div>
+        `;
+        showDriveToolbar();
+      }
+      return;
+    }
+
+    // Legacy link-only resources have no stored file to render.
     if (!resource.hasFile) {
       if (resource.externalUrl) externalOnly();
       else noFile();

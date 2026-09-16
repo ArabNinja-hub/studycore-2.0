@@ -127,10 +127,7 @@ function serializeResource(row, extra = {}) {
     semester: row.semester,
     term: row.semester,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-    // Most documents have a StudyCore storage key. Legacy Drive-linked rows may
-    // only have a google_drive_file_id, so that id still counts as "there is a
-    // file here" for course listings and the Open button.
-    hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
+    hasFile: Boolean(row.stored_name || row.stream_uid),
     fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: mime,

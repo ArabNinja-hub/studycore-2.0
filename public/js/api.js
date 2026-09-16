@@ -435,13 +435,6 @@
     }),
     adminDeleteContentAdmin: (id) => request(`/api/admin/content-admins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
     adminAnalytics: () => request('/api/admin/analytics'),
-    // Google Drive vault (Integrations): connect/disconnect is a full-page
-    // navigation (Google's own consent screen), not a fetch — the browser
-    // is sent straight to /api/admin/google-drive/connect. Only the status
-    // check is a normal JSON request.
-    adminGoogleDriveStatus: () => request('/api/admin/google-drive/status'),
-    adminGoogleDriveDiagnose: (resourceId) => request(`/api/admin/google-drive/diagnostics/${encodeURIComponent(resourceId)}`, { method: 'POST', timeoutMs: 90000, budgetMs: 90000 }),
-    adminGoogleDriveDisconnect: () => request('/api/admin/google-drive/disconnect', { method: 'POST' }),
     adminListPayments: (status) => request(`/api/admin/payments${status ? `?status=${status}` : ''}`),
     adminApprovePayment: (id) => request(`/api/admin/payments/${id}/approve`, { method: 'POST' }),
     adminRejectPayment: (id) => request(`/api/admin/payments/${id}/reject`, { method: 'POST' }),

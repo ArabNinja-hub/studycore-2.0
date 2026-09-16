@@ -465,50 +465,10 @@
       statusBox.innerHTML = `
         ${icon('alert-triangle', 34)}
         <h3>Document unavailable</h3>
-        <p style="white-space:pre-wrap;">${esc(message)}</p>
+        <p>${esc(message)}</p>
         ${canRetry === false ? '' : `<button class="btn btn-teal btn-sm" type="button" id="scDocRetry">${icon('refresh', 15)} Try again</button>`}`;
       const retry = statusBox.querySelector('#scDocRetry');
       if (retry) retry.addEventListener('click', () => { destroy(false); init(host, o); });
-    }
-
-    function adminDriveFailureText(data) {
-      const detail = data && data.googleDriveError;
-      if (!detail) return data && data.message ? data.message : null;
-      const value = (v) => (v === null || v === undefined || v === '' ? 'NOT REPORTED' : String(v));
-      return [
-        data.message || 'This Google Drive document could not be opened.',
-        '',
-        'Google Drive API error:',
-        `HTTP STATUS: ${value(detail.httpStatus)}`,
-        `ERROR CODE: ${value(detail.errorReason || detail.errorStatus || detail.errorCode)}`,
-        `ERROR MESSAGE: ${value(detail.errorMessage)}`,
-        `FILE ID: ${value(detail.fileId)}`,
-        `AUTH ACCOUNT: ${value(detail.authAccount)}`,
-        `TOKEN REFRESH: ${value(detail.tokenRefresh)}`
-      ].join('\n');
-    }
-
-    // When the byte stream fails, the /stream endpoint has already worked out
-    // WHY in a JSON body (for example: the file can no longer be read from
-    // Google Drive, where it is stored). pdf.js only surfaces a status code,
-    // so fetch that explanation and show the student the real reason. The
-    // technical block exists only when the server authenticated a Main Admin;
-    // students continue to receive the existing non-technical message.
-    async function explainStreamFailure() {
-      try {
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 8000);
-        const res = await fetch(url, {
-          method: 'GET', credentials: 'include', cache: 'no-store',
-          headers: { Range: 'bytes=0-0' }, signal: ctrl.signal
-        });
-        clearTimeout(t);
-        if (res.ok || res.status === 206) return null; // transient; no better message
-        const data = await res.json().catch(() => null);
-        return adminDriveFailureText(data);
-      } catch {
-        return null;
-      }
     }
 
     /* ── Type detection ─────────────────────── */
@@ -1014,21 +974,11 @@
         let message = 'This document could not be opened.';
         if (name === 'PasswordException') message = 'This document is password protected.';
         else if (name === 'InvalidPDFException') message = 'This file appears to be corrupted. Ask your admin to re-upload a PDF version.';
-        else if (name === 'MissingPDFException') {
-          // pdf.js uses MissingPDFException for every 404, including a
-          // temporarily stale resource row or a legacy storage-provider
-          // mismatch. Ask the same-origin stream endpoint for its real,
-          // safe explanation before claiming that the uploader lost a file.
-          message = (await explainStreamFailure()) || 'This document is not available in storage. Please ask an admin to check or re-upload it.';
-        } else if (name === 'UnexpectedResponseException') {
-          // 404/502 here can mean the backing file could not be fetched from
-          // Google Drive (moved, renamed, deleted or access revoked there).
-          // Ask the server for its exact reason so the student is told what is
-          // actually wrong instead of a generic storage error.
-          const explained = await explainStreamFailure();
-          message = explained || (err.status === 401 ? 'Please log in again to open this document.'
+        else if (name === 'MissingPDFException') message = 'This document is missing from storage.';
+        else if (name === 'UnexpectedResponseException') {
+          message = err.status === 401 ? 'Please log in again to open this document.'
             : err.status === 403 ? 'You do not have access to this document with your current plan.'
-              : 'The document server could not be reached. Please try again.');
+              : 'The document server could not be reached. Please try again.';
         } else if (err && err.message) message = err.message;
         console.error('[StudyCore reader] pdf open failed', err);
         showError(message);

@@ -5,9 +5,7 @@ const asyncHandler = require('../lib/async-handler');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, attachUser } = require('../middleware/auth');
-const storage = require('../lib/document-storage');
-const driveDocuments = require('../lib/drive-documents');
-const googleDriveVault = require('../lib/google-drive-vault');
+const storage = require('../lib/storage');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = require('../lib/program-access');
 const { isAdmin, isStudent } = require('../lib/roles');
 const accessPolicy = require('../lib/access-policy');
@@ -59,11 +57,8 @@ function serializeResource(row, user) {
     mimeType: (row.stored_name || row.google_drive_file_id) ? inferMime(row) : row.mime_type,
     hasFile: Boolean(row.stored_name || row.google_drive_file_id || row.stream_uid),
     externalUrl: row.external_url,
-    // Drive provenance is Main-Admin tooling only. It gives the server a
-    // recovery source when an old imported object is absent, but must never
-    // leak a source-file id or URL to a student browser.
-    googleDriveFileId: isAdmin(user) ? (row.google_drive_file_id || null) : null,
-    googleDriveUrl: isAdmin(user) ? (row.google_drive_url || null) : null,
+    googleDriveFileId: row.google_drive_file_id || null,
+    googleDriveUrl: row.google_drive_url || null,
     storageProvider: row.storage_provider || 'local',
     streamPlayback: streamPlaybackFor(row),
     // Generic list/detail/bookmark responses are not quiz authoring APIs.
@@ -193,21 +188,11 @@ const EXT_BY_MIME = {
 
 function inferMime(row) {
   const given = String(row.mime_type || '').trim().toLowerCase().split(';')[0].trim();
-  // Legacy native Google Workspace rows (Doc/Sheet/Slides) have no binary
-  // content, so the Drive proxy exports them to PDF; new Picker imports already
-  // recorded application/pdf at publish time.
-  if (given.startsWith('application/vnd.google-apps.')) {
-    return driveDocuments.exportMimeFor(given) || 'application/pdf';
-  }
   // Prefer an original-name extension, then the storage-key extension. The
   // latter repairs legacy mobile uploads whose original name was a bare UUID
   // but whose stored key received the extension inferred during upload.
   const originalExt = path.extname(String(row.file_name || '')).toLowerCase();
-  // A legacy Drive row's `stored_name` is a Drive FILE ID, not a filename, so
-  // it must never be mined for a file extension.
-  const storedExt = (row.storage_provider || 'local') === 'google_drive'
-    ? ''
-    : path.extname(String(row.stored_name || '')).toLowerCase();
+  const storedExt = path.extname(String(row.stored_name || '')).toLowerCase();
   if (MIME_BY_EXT[originalExt]) return MIME_BY_EXT[originalExt];
   if (MIME_BY_EXT[storedExt]) return MIME_BY_EXT[storedExt];
   if (given && given !== 'application/octet-stream' && given !== 'binary/octet-stream') {
@@ -354,47 +339,24 @@ function pipeBodyToResponse(body, res, req) {
   nodeStream.pipe(res);
 }
 
-function storageObjectIsMissing(err) {
-  return Boolean(err) && (
-    err.code === 'NoSuchKey' ||
-    err.name === 'NoSuchKey' ||
-    err.name === 'NotFound' ||
-    err.$metadata?.httpStatusCode === 404
-  );
-}
-
-function r2StreamError(err, res, storageProvider) {
-  // A Drive-backed document says so plainly: the file lives in Google Drive,
-  // so "missing from storage" would point the admin at the wrong system.
-  const fromDrive = storageProvider === 'google_drive';
-  if (storageObjectIsMissing(err)) {
-    return res.status(404).json({
-      message: fromDrive
-        ? 'This document could not be opened from Google Drive. It may have been moved or deleted there — please tell your admin.'
-        : 'File is missing from storage.',
-      ...(fromDrive ? { driveUnavailable: true } : {})
-    });
+function r2StreamError(err, res) {
+  if (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.$metadata?.httpStatusCode === 404) {
+    return res.status(404).json({ message: 'File is missing from storage.' });
   }
   console.error('Storage stream error:', err.message);
-  if (fromDrive) {
-    return res.status(err.statusCode === 503 ? 503 : 502).json({
-      message: err.userSafe ? err.message : 'Google Drive could not be reached right now. Please try again shortly.',
-      driveUnavailable: true
-    });
-  }
   return res.status(502).json({ message: 'Could not reach file storage. Please try again shortly.' });
 }
 
-async function resolveType(key, storedType, fallbackType, provider) {
+async function resolveType(key, storedType, fallbackType) {
   // Always try to sniff the real file type first — stored metadata can be
   // wrong when a file was uploaded without an extension (mobile browsers
   // sometimes send application/octet-stream for a PDF named as a UUID).
   // Sniffing is cheap (first 16 bytes, 8KB for ZIP containers so Office
   // part names are visible) and authoritative.
   try {
-    const first = await storage.readBytes(key, 0, 15, provider);
+    const first = await storage.readBytes(key, 0, 15);
     const isZip = first.length >= 4 && first[0] === 0x50 && first[1] === 0x4b && first[2] === 0x03 && first[3] === 0x04;
-    const head = isZip ? await storage.readBytes(key, 0, 8191, provider) : first;
+    const head = isZip ? await storage.readBytes(key, 0, 8191) : first;
     const sniffed = sniffMime(head);
     if (sniffed) return sniffed;
   } catch {
@@ -413,27 +375,7 @@ function isSpecificMime(value) {
   return Boolean(type && type !== 'application/octet-stream' && type !== 'binary/octet-stream');
 }
 
-function reconcileStorageProvider(resourceId, recordedProvider, actualProvider) {
-  // A compatibility read may have found a legacy object on the other ordinary
-  // backend (local ↔ R2). Persist that discovery so the next document page
-  // does not have to probe a missing backend first. Never rewrite Drive or
-  // Bunny markers: those are distinct storage systems, not fallbacks.
-  if (!resourceId || !['local', 'r2'].includes(actualProvider) || actualProvider === recordedProvider) return;
-  try {
-    db.prepare(`
-      UPDATE resources
-      SET storage_provider = ?, updated_at = ?
-      WHERE id = ? AND (storage_provider IS NULL OR storage_provider != ?)
-    `).run(actualProvider, new Date().toISOString(), resourceId, actualProvider);
-    console.warn(`[StudyCore][Storage] Repaired resource ${resourceId} provider: ${recordedProvider || 'unknown'} → ${actualProvider}`);
-  } catch (err) {
-    // The document has already been found and can still be served. A failed
-    // bookkeeping update must never turn that recovery into another outage.
-    console.error(`[StudyCore][Storage] Could not persist recovered provider for ${resourceId}:`, err.message);
-  }
-}
-
-async function streamStoredObject(req, res, key, { filename, mimeType, fileSize, storageProvider, resourceId, onMissing }) {
+async function streamStoredObject(req, res, key, { filename, mimeType, fileSize }) {
   // The database already stores the exact upload size and normalized type.
   // Use those values for GET/range requests so every 128 KB PDF chunk maps to
   // one storage request rather than HEAD + signature probe + GET. Keep the
@@ -446,19 +388,17 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
   if (req.method === 'HEAD' || !hasKnownSize) {
     let meta;
     try {
-      meta = await storage.headObject(key, storageProvider);
+      meta = await storage.headObject(key);
     } catch (err) {
-      if (typeof onMissing === 'function' && storageObjectIsMissing(err)) return onMissing(err);
-      return r2StreamError(err, res, storageProvider);
+      return r2StreamError(err, res);
     }
-    reconcileStorageProvider(resourceId, storageProvider, meta.backend);
     size = Number(meta.contentLength) || 0;
     storedType = meta.contentType;
   }
 
   const detectedType = isSpecificMime(mimeType)
     ? String(mimeType).trim().toLowerCase().split(';')[0].trim()
-    : await resolveType(key, storedType, mimeType, storageProvider);
+    : await resolveType(key, storedType, mimeType);
   const range = parseRange(req.headers.range, size);
 
   // SVG is active content: served same-origin as image/svg+xml it can
@@ -505,21 +445,10 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
 
   let object;
   try {
-    object = await storage.getObject(key, range || undefined, storageProvider);
+    object = await storage.getObject(key, range || undefined);
   } catch (err) {
-    if (typeof onMissing === 'function' && storageObjectIsMissing(err)) return onMissing(err);
-    if (storageProvider === 'google_drive') {
-      return driveStreamError(err, res, {
-        id: resourceId,
-        title: filename,
-        uploader_email: null,
-        storage_provider: 'google_drive',
-        google_drive_file_id: key
-      }, req);
-    }
-    return r2StreamError(err, res, storageProvider);
+    return r2StreamError(err, res);
   }
-  reconcileStorageProvider(resourceId, storageProvider, object.backend);
 
   if (range) {
     res.status(206);
@@ -531,121 +460,6 @@ async function streamStoredObject(req, res, key, { filename, mimeType, fileSize,
   }
 
   pipeBodyToResponse(object.body, res, req);
-}
-
-// ---------------------------------------------------------------------------
-// GOOGLE DRIVE-BACKED DOCUMENTS
-//
-// A file selected with "Select from Google Drive" is registered as a
-// Google Drive-backed resource: storage_provider = 'google_drive' and
-// google_drive_file_id (or a legacy row's stored_name) is the original Drive
-// file id. The bytes stay in the admin's Drive — Drive is the document SOURCE
-// LIBRARY, not StudyCore storage — so the server reads them here, with its
-// OWN connected Google credentials (lib/drive-documents.js), and streams them
-// through this SAME /stream endpoint behind the normal login, program and
-// subscription gates. The student is never redirected to Drive and never
-// receives a Drive URL, file id or token.
-//
-// Very old rows (provider 'local' or NULL with a Drive id in stored_name) are
-// the same thing written by an earlier build, and are served identically.
-//
-// A row whose provider is R2/local/vault is NOT Drive-backed even if it has a
-// `google_drive_file_id` — for those the id is only provenance (a recovery
-// source if the stored object was lost), so they keep reading from storage.
-// ---------------------------------------------------------------------------
-function googleDriveSourceKey(row) {
-  return driveDocuments.sourceFileIdForResource(row);
-}
-
-function driveDocumentKey(row) {
-  return driveDocuments.fileIdForResource(row);
-}
-
-// Serves a Drive-backed document through the ordinary document pipeline.
-// The Drive file id is the storage key; lib/document-storage.js dispatches
-// it to lib/drive-documents.js, which fetches from Drive with StudyCore's
-// own credentials (connected account OAuth token, refreshed server-side).
-async function streamDriveDocument(req, res, row, driveKey) {
-  // Drive is the live source of truth for a Drive-backed resource, so the
-  // size/type/name come from Drive NOW rather than from the publish-time
-  // snapshot — the file may have changed since (and Workspace exports have
-  // no size until exported). lib/drive-documents.js caches metadata briefly
-  // so pdf.js range paging does not re-ask Drive on every 128 KB chunk.
-  let meta;
-  try {
-    meta = await driveDocuments.headObject(driveKey);
-  } catch (err) {
-    return driveStreamError(err, res, row, req);
-  }
-
-  return streamStoredObject(req, res, driveKey, {
-    filename: meta.fileName || row.file_name || 'document',
-    mimeType: meta.contentType,
-    fileSize: Number(meta.contentLength) || 0,
-    storageProvider: 'google_drive',
-    resourceId: row.id,
-    onMissing: (err) => driveStreamError(err, res, row, req)
-  });
-}
-
-// The unavailable state for a Drive-backed document. Two very different
-// causes: the file really is gone from Drive (deleted/trashed/moved out of
-// the library), or Drive refused StudyCore's credentials (connection
-// revoked, or the connected account cannot read this file). Students get an
-// honest, non-technical message either way; operators get the detail below.
-function driveStreamError(err, res, row, req) {
-  const accessDenied = err && (err.code === 'DriveAccessDenied' || err.name === 'DriveAccessDenied' || err.statusCode === 403);
-  const notFound = err && (err.code === 'NoSuchKey' || err.name === 'NoSuchKey' || err.statusCode === 404);
-  const connection = googleDriveVault.connectionDiagnosticSnapshot();
-  // Only documented, credential-safe fields are copied. Never serialize the
-  // Error/Response itself: those objects may retain request headers or URLs.
-  const detail = {
-    operation: err && err.googleDriveError && err.googleDriveError.operation || 'drive.viewer.request',
-    fileId: err && err.googleDriveError && err.googleDriveError.fileId || driveDocuments.sourceFileIdForResource(row),
-    httpStatus: err && err.googleDriveError && err.googleDriveError.httpStatus || null,
-    errorCode: err && err.googleDriveError && err.googleDriveError.errorCode || err && err.code || null,
-    errorStatus: err && err.googleDriveError && err.googleDriveError.errorStatus || null,
-    errorReason: err && err.googleDriveError && err.googleDriveError.errorReason || null,
-    errorMessage: err && err.googleDriveError && err.googleDriveError.errorMessage || err && err.message || null,
-    authMethod: err && err.googleDriveError && err.googleDriveError.authMethod || 'server_oauth',
-    authAccount: err && err.googleDriveError && err.googleDriveError.authAccount || connection.configuredAccount || null,
-    tokenRefresh: err && err.googleDriveError && err.googleDriveError.tokenRefresh || null
-  };
-  // Operators need to know WHICH document and WHOSE, since the fix is either
-  // in Google Drive or in Admin → Integrations, not in StudyCore itself. This
-  // is the real Google status/reason/message, not the old generic wrapper.
-  console.error('[StudyCore][Drive] Google Drive API error:', JSON.stringify({
-    ...detail,
-    resourceId: row.id,
-    resourceTitle: row.title,
-    uploader: row.uploader_email || row.uploaded_by || 'unknown'
-  }));
-
-  // The existing student-facing message remains unchanged. Exact Google detail
-  // is temporarily included only when the caller is a Main Admin; the route's
-  // requireAuth + gate checks have already loaded the current database role.
-  const adminDiagnostic = req && isAdmin(req.user) ? { googleDriveError: detail } : {};
-  if (accessDenied) {
-    return res.status(502).json({
-      message: 'This document is in Google Drive, but StudyCore can no longer read it with its Google Drive connection — please tell your admin.',
-      driveUnavailable: true,
-      ...adminDiagnostic
-    });
-  }
-  if (notFound) {
-    return res.status(404).json({
-      message: 'This document could not be opened from Google Drive. It may have been moved or deleted there — please tell your admin.',
-      driveUnavailable: true,
-      ...adminDiagnostic
-    });
-  }
-  return res.status(err && err.statusCode === 503 ? 503 : 502).json({
-    message: err && err.userSafe
-      ? err.message
-      : 'Google Drive could not be reached right now. Please try again shortly.',
-    driveUnavailable: true,
-    ...adminDiagnostic
-  });
 }
 
 function lockedResponse(res, reason) {
@@ -771,69 +585,9 @@ router.get('/:id/ticket', requireAuth, gate, (req, res) => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// The stream endpoint serves the READER, not the browser's address bar.
-//
-// Removing the download control and 403-ing /:id/download closed the obvious
-// routes, but the stream URL itself was still a working file link: pasted
-// into a tab (or reached by "Open in new tab" / "Save link as" / a
-// right-click on the canvas area) it returned the complete PDF with its real
-// filename, which every browser hands to its BUILT-IN PDF viewer — toolbar,
-// Save button, Print button and all. That is a download, and it bypasses the
-// reader and every client-side guard in public/js/privacy-guard.js.
-//
-// Fetch Metadata tells the two apart with no guessing. The reader always
-// reads bytes with fetch()/XHR or an <img>/<video> element, which send
-// Sec-Fetch-Dest of empty/image/video/audio and Sec-Fetch-Mode cors|no-cors.
-// A top-level navigation sends Sec-Fetch-Dest: document with
-// Sec-Fetch-Mode: navigate — a combination the reader never produces.
-//
-// Requests with NO Sec-Fetch-* headers are allowed through: those are older
-// browsers and non-browser clients, and refusing them would break real
-// students to stop an attacker who can trivially set headers anyway. This is
-// deterrence against the casual save, exactly like the rest of the
-// content-protection layer — the access control is still requireAuth + the
-// program/Premium gates above it.
-function isTopLevelNavigation(req) {
-  const dest = String(req.get('Sec-Fetch-Dest') || '').toLowerCase();
-  const mode = String(req.get('Sec-Fetch-Mode') || '').toLowerCase();
-  if (!dest && !mode) return false; // header-less client: don't punish it
-  // `document` covers the address bar and target=_blank; `iframe`/`embed`/
-  // `object` cover handing the URL to a native plugin viewer, which offers
-  // the same Save button.
-  const navigationalDest = ['document', 'iframe', 'frame', 'embed', 'object'].includes(dest);
-  return navigationalDest || mode === 'navigate';
-}
-
-// A student who lands here has usually clicked a stale link rather than gone
-// looking for an exploit, so send them to the reader instead of a dead end.
-function refuseDirectFileAccess(req, res, resourceId) {
-  const viewerUrl = `/viewer/${encodeURIComponent(resourceId)}`;
-  // HTML for a navigation (the client is a browser window by definition).
-  if (String(req.get('Accept') || '').includes('text/html')) {
-    res.status(403);
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    return res.end(`<!doctype html><meta charset="utf-8">` +
-      `<meta name="robots" content="noindex,noarchive,nosnippet">` +
-      `<meta http-equiv="refresh" content="0; url=${viewerUrl}">` +
-      `<title>Opening in StudyCore…</title>` +
-      `<p>This document is view-only. <a href="${viewerUrl}">Open it in the StudyCore reader</a>.</p>`);
-  }
-  res.setHeader('Cache-Control', 'no-store');
-  return res.status(403).json({
-    message: 'This document is view-only. Open it in the StudyCore reader.',
-    viewerUrl
-  });
-}
-
 async function handleStream(req, res) {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
-
-  // Refuse before any bytes are read — and before the Drive/storage round
-  // trip — so a saved link costs nothing to reject.
-  if (isTopLevelNavigation(req)) return refuseDirectFileAccess(req, res, row.id);
   // Program permission (Student → Program → Course → Resource) is checked
   // before any subscription gating — a Law student streaming a Mines
   // resource id is refused outright.
@@ -858,43 +612,21 @@ async function handleStream(req, res) {
     }
   }
 
-  // ── Google Drive-backed resources ───────────────────────────────────────
-  //
-  // A resource picked with "Select from Google Drive" points at the original
-  // Drive file. The backend reads that file with its own connected Google
-  // credentials and pipes the bytes through /stream — never a redirect to
-  // drive.google.com and never Google's "Request access" wall.
-  const driveKey = driveDocumentKey(row);
-  if (driveKey) {
-    return streamDriveDocument(req, res, row, driveKey);
+  if (!row.stored_name && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
+  if (row.external_url && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
+
+  // Google Drive-backed resources: redirect to the secure preview link instead
+  // of streaming bytes. This avoids exposing admin OAuth tokens and avoids
+  // downloading the document onto Render permanently.
+  if (row.google_drive_file_id) {
+    const previewUrl = `https://docs.google.com/gview?embedded=1&url=https://drive.google.com/uc?export=view&id=${encodeURIComponent(row.google_drive_file_id)}`;
+    return res.redirect(previewUrl);
   }
 
-  if (!row.stored_name) {
-    return res.status(404).json({ message: 'This resource has no previewable file.' });
-  }
-  if (row.external_url) return res.status(404).json({ message: 'This resource has no previewable file.' });
-
-  // NOTE: this endpoint never redirects a student to docs.google.com/gview or
-  // drive.google.com. That redirect handed the student to GOOGLE's permission
-  // check, so anyone not shared on the uploader's Drive file got "Request
-  // access" instead of the document. Drive-backed resources are proxied
-  // server-side above; ordinary uploads stream from StudyCore storage.
-
-  // A Drive-picked document normally reads from its imported StudyCore copy
-  // (R2/local/vault). If that historical copy is absent, use the retained
-  // Drive provenance as a same-origin server-side recovery source. Students
-  // still never receive a Drive URL or credential; the normal session,
-  // program, subscription and ticket checks above have already passed.
-  const recoveryDriveKey = googleDriveSourceKey(row);
   await streamStoredObject(req, res, row.stored_name, {
     filename: row.file_name || row.stored_name,
     mimeType: inferMime(row),
-    fileSize: row.file_size,
-    storageProvider: row.storage_provider,
-    resourceId: row.id,
-    onMissing: recoveryDriveKey && recoveryDriveKey !== row.stored_name
-      ? () => streamDriveDocument(req, res, row, recoveryDriveKey)
-      : undefined
+    fileSize: row.file_size
   });
 }
 

@@ -12,12 +12,6 @@
   'use strict';
 
   let selectedFile = null;
-  // A file chosen through "Select from Google Drive". Google Drive is the
-  // admin's SOURCE LIBRARY: the server copies the picked file into StudyCore
-  // storage at publish time using `accessToken`, and students then read it
-  // from StudyCore like any other document. Nothing is ever written back to
-  // Drive, and an ordinary upload (`selectedFile`) never touches Drive.
-  let selectedDriveFile = null; // { id, name, url, mimeType, sizeBytes, accessToken }
   let editingResourceId = null;
   let editingAnnouncementId = null;
   let currentFilters = { search: '', category: '', sort: 'newest', program: '' };
@@ -96,7 +90,6 @@
   function resetResourceForm() {
     editingResourceId = null;
     selectedFile = null;
-    clearDriveSelection();
     document.getElementById('resourceForm').reset();
     // The file input lives in the drop zone rather than inside the metadata
     // form, so form.reset() does not clear it. Clearing it also lets an admin
@@ -135,7 +128,6 @@
     if (category === 'video' && !editingResourceId) {
       const courseId = resourceFormControls ? resourceFormControls.getCourseId() : '';
       if (!courseId) return 'Select a program course for this video. Videos without a course are not shown in Video Lessons.';
-      if (selectedDriveFile) return 'Video lessons are published to Bunny Stream. Upload the video file directly instead of selecting it from Google Drive.';
       if (!selectedFile) return 'Choose the video file before publishing.';
     }
 
@@ -230,58 +222,6 @@
     }
   }
 
-  /* ── "Select from Google Drive" ───────────
-     Google Drive is the SOURCE LIBRARY for documents, never StudyCore's
-     storage. Picking a file here records its id + the Picker's short-lived
-     OAuth token; on publish the server copies the bytes into StudyCore
-     storage and the resource is served by the normal, access-gated
-     StudyCore document viewer. The admin's Drive file is left untouched and
-     students are never shown Drive. */
-
-  function driveSelectionLabel() {
-    return document.getElementById('fileChosenLabel');
-  }
-
-  function clearDriveSelection() {
-    selectedDriveFile = null;
-    const btn = document.getElementById('caSelectDriveBtn');
-    if (btn) btn.textContent = 'Select from Google Drive';
-  }
-
-  // Called by /js/google-picker.js once the admin picks a file in the Picker.
-  window.onGoogleDriveFilePicked = function (doc, auth) {
-    if (!doc || !doc.id) return;
-    // A Drive pick and a direct upload are mutually exclusive: the last one
-    // chosen wins, so the admin always publishes the file they just selected.
-    selectedFile = null;
-    const fileInput = document.getElementById('fileInput');
-    if (fileInput) fileInput.value = '';
-
-    selectedDriveFile = {
-      id: doc.id,
-      name: doc.name || 'Google Drive Document',
-      url: doc.url || ('https://drive.google.com/file/d/' + doc.id + '/view'),
-      mimeType: doc.mimeType || '',
-      sizeBytes: Number(doc.sizeBytes) || 0,
-      accessToken: (auth && auth.accessToken) || null
-    };
-
-    const label = driveSelectionLabel();
-    if (label) {
-      const size = selectedDriveFile.sizeBytes
-        ? ' (' + (selectedDriveFile.sizeBytes / (1024 * 1024)).toFixed(2) + ' MB)'
-        : '';
-      label.textContent = 'From Google Drive: ' + selectedDriveFile.name + size;
-    }
-    const btn = document.getElementById('caSelectDriveBtn');
-    if (btn) btn.textContent = 'Change Google Drive file';
-    setResourceFormStatus(
-      String(selectedDriveFile.mimeType).indexOf('application/vnd.google-apps.') === 0
-        ? 'This Google Doc stays in your Google Drive. When you publish, StudyCore registers it and serves students the PDF through its protected viewer.'
-        : 'This file stays in your Google Drive. When you publish, StudyCore registers it and streams it to students through its protected viewer — your Drive copy is not moved or changed.'
-    );
-  };
-
   /* ── Upload dropzone ────────────────────── */
   function bindDropZone() {
     const dropZone = document.getElementById('dropZone');
@@ -289,9 +229,6 @@
     const label = document.getElementById('fileChosenLabel');
 
     function chooseFile(file) {
-      // A direct upload is a plain StudyCore upload — it is never sent to
-      // Google Drive — and it supersedes any earlier Drive selection.
-      if (file) clearDriveSelection();
       selectedFile = file;
       label.textContent = file ? `Selected: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)` : '';
     }
@@ -355,17 +292,6 @@
     fd.append('isPremium', document.getElementById('resIsFree').checked ? 'false' : 'true');
     fd.append('pinned', document.getElementById('resPinned').checked ? 'true' : 'false');
     if (selectedFile) fd.append('file', selectedFile);
-    else if (selectedDriveFile) {
-      // The server imports the bytes from Drive once, with this short-lived
-      // token, and stores them in StudyCore. The token is never persisted.
-      fd.append('google_drive_file_id', selectedDriveFile.id);
-      fd.append('google_drive_url', selectedDriveFile.url || '');
-      fd.append('file_name', selectedDriveFile.name || '');
-      fd.append('mime_type', selectedDriveFile.mimeType || '');
-      if (selectedDriveFile.accessToken) {
-        fd.append('google_drive_access_token', selectedDriveFile.accessToken);
-      }
-    }
     return fd;
   }
 
@@ -415,8 +341,6 @@
       progressBar.style.width = '0%';
       progressText.textContent = 'Uploading… 0%';
       setResourceFormStatus('Uploading file…');
-    } else if (selectedDriveFile) {
-      setResourceFormStatus('Registering "' + selectedDriveFile.name + '" from your Google Drive…');
     } else {
       setResourceFormStatus(editingResourceId ? 'Saving changes…' : 'Publishing resource…');
     }
@@ -482,9 +406,6 @@
   function editResource(r) {
     editingResourceId = r.id;
     selectedFile = null;
-    // Editing shows the CURRENT file. Any previous Drive pick is dropped so a
-    // metadata-only save never re-imports from Drive (the token is gone too).
-    clearDriveSelection();
     document.getElementById('resourceId').value = r.id;
     document.getElementById('resCategory').value = r.category;
     document.getElementById('resTitle').value = r.title;
@@ -693,7 +614,6 @@
           <td data-label="Actions">
             <div class="table-actions">
               ${['announcement', 'quiz'].includes(r.category) ? '' : `<button class="btn btn-outline btn-sm" data-edit="${r.id}">${SC.icon('edit', { size: 13 })} Edit</button>`}
-              ${r.storageProvider === 'google_drive' || r.googleDriveFileId ? `<button class="btn btn-outline btn-sm" data-diagnose-drive="${r.id}">${SC.icon('search', { size: 13 })} Diagnose Drive</button>` : ''}
               ${r.category === 'announcement' ? `<button class="btn btn-ghost btn-sm" data-edit-ann="${r.id}">${SC.icon('bell', { size: 13 })}</button>` : ''}
               <button class="btn btn-ghost btn-sm" data-delete="${r.id}" style="color:var(--red-600);">${SC.icon('trash', { size: 13 })}</button>
             </div>
@@ -703,7 +623,6 @@
 
       tbody.querySelectorAll('[data-toggle-publish]').forEach((btn) => btn.addEventListener('click', () => togglePublish(btn)));
       tbody.querySelectorAll('[data-edit]').forEach((btn) => btn.addEventListener('click', () => editResource(resources.find((r) => r.id === btn.getAttribute('data-edit')))));
-      tbody.querySelectorAll('[data-diagnose-drive]').forEach((btn) => btn.addEventListener('click', () => diagnoseDriveResource(btn)));
       tbody.querySelectorAll('[data-edit-ann]').forEach((btn) => btn.addEventListener('click', () => editAnnouncement(resources.find((r) => r.id === btn.getAttribute('data-edit-ann')))));
       tbody.querySelectorAll('[data-delete]').forEach((btn) => btn.addEventListener('click', () => deleteResource(btn.getAttribute('data-delete'))));
     } catch (err) {
@@ -721,148 +640,6 @@
       const topics = [...new Set(resources.map((r) => r.topic).filter(Boolean))].sort();
       document.getElementById('topicSuggest').innerHTML = topics.map((t) => `<option value="${escapeHtml(t)}">`).join('');
     } catch { /* non-fatal */ }
-  }
-
-  /* ── Google Drive (Integrations) ─────────── */
-  function diagnosticValue(value) {
-    if (value === null || value === undefined || value === '') return 'NOT REPORTED';
-    if (value === true) return 'YES';
-    if (value === false) return 'NO';
-    return String(value);
-  }
-
-  function formatDriveDiagnostic(report) {
-    const database = report.database || {};
-    const viewer = report.viewer || {};
-    const google = report.google || {};
-    const connection = google.connection || {};
-    const token = google.tokenInspection || {};
-    const refresh = google.tokenRefresh || {};
-    const metadata = google.metadataFilesGet || {};
-    const media = google.mediaFilesGet || {};
-    const ownership = google.ownership || {};
-    const decisive = media.ok === false ? media : (metadata.ok === false ? metadata : media);
-    const scopes = Array.isArray(token.scopes) ? token.scopes.join(' ') : '';
-
-    return [
-      'Google Drive production diagnostic (Main Admin only)',
-      '',
-      `HTTP STATUS: ${diagnosticValue(decisive && decisive.httpStatus)}`,
-      `ERROR CODE: ${diagnosticValue(decisive && (decisive.errorReason || decisive.errorStatus || decisive.errorCode))}`,
-      `ERROR MESSAGE: ${diagnosticValue(decisive && decisive.errorMessage)}`,
-      `FILE ID: ${diagnosticValue(viewer.resolvedDriveFileId)}`,
-      `AUTH ACCOUNT: ${diagnosticValue(token.authAccount || (google.accountInspection && google.accountInspection.authAccount) || connection.configuredAccount)}`,
-      `TOKEN REFRESH: ${diagnosticValue(refresh.status)}`,
-      '',
-      `DATABASE FILE ID: ${diagnosticValue(database.storedDriveFileId)}`,
-      `VIEWER PASSES DATABASE ID: ${diagnosticValue(viewer.passesStoredDriveFileId)}`,
-      `STORAGE PROVIDER: ${diagnosticValue(database.storageProvider)}`,
-      `ACCESS TOKEN VALID: ${diagnosticValue(token.valid)}`,
-      `REFRESH TOKEN EXISTS: ${diagnosticValue(connection.refreshToken && connection.refreshToken.exists)}`,
-      `REFRESH TOKEN SOURCE: ${diagnosticValue(connection.refreshToken && connection.refreshToken.selectedSource)}`,
-      `REFRESH TOKEN DECRYPTABLE: ${diagnosticValue(connection.refreshToken && connection.refreshToken.databaseTokenDecryptable)}`,
-      `REFRESH TOKEN PERSISTS AFTER RESTART: ${diagnosticValue(connection.persistence && connection.persistence.refreshTokenAvailableAfterProcessRestart)}`,
-      `OAUTH SCOPE PERMITS DRIVE READ: ${diagnosticValue(token.scopePermitsDriveRead)}`,
-      `OAUTH SCOPES: ${diagnosticValue(scopes)}`,
-      `FILE OWNED BY AUTH ACCOUNT: ${diagnosticValue(ownership.ownedByAuthAccount)}`,
-      `AUTH ACCOUNT CAN DOWNLOAD: ${diagnosticValue(ownership.downloadableByAuthAccount)}`,
-      `METADATA files.get STATUS: ${diagnosticValue(metadata.httpStatus)}`,
-      `MEDIA files.get STATUS: ${diagnosticValue(media.httpStatus)}`,
-      `BACKEND USED PICKER TOKEN: ${diagnosticValue(connection.pickerTokenUsedByBackend)}`,
-      `GOOGLE_CLIENT_ID SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_CLIENT_ID)}`,
-      `GOOGLE_CLIENT_SECRET SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_CLIENT_SECRET)}`,
-      `GOOGLE_API_KEY SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_API_KEY)}`,
-      `GOOGLE_CLOUD_PROJECT_NUMBER SET: ${diagnosticValue(connection.oauthEnvironment && connection.oauthEnvironment.GOOGLE_CLOUD_PROJECT_NUMBER)}`,
-      `DATA_DIR SET: ${diagnosticValue(connection.persistence && connection.persistence.DATA_DIRConfigured)}`,
-      '',
-      'Full credential-safe report:',
-      JSON.stringify(report, null, 2)
-    ].join('\n');
-  }
-
-  async function diagnoseDriveResource(button) {
-    const resourceId = button.getAttribute('data-diagnose-drive');
-    const output = document.getElementById('driveDiagnosticOutput');
-    if (!resourceId || !output) return;
-    const oldLabel = button.innerHTML;
-    button.disabled = true;
-    output.hidden = false;
-    output.textContent = 'Running the real server OAuth refresh, files.get metadata, and files.get media request…';
-    document.getElementById('integrations').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    try {
-      const data = await StudyCoreAPI.adminGoogleDriveDiagnose(resourceId);
-      output.textContent = formatDriveDiagnostic(data.diagnostic || {});
-    } catch (err) {
-      output.textContent = `Google Drive diagnostic could not run:\n${err.message || 'Unknown error'}`;
-    } finally {
-      button.disabled = false;
-      button.innerHTML = oldLabel;
-    }
-  }
-
-  // This is the SAME Google OAuth client the "Select from Google Drive"
-  // Picker uses. Connecting an account here simply lets the StudyCore server
-  // talk to Drive on its own (server-to-server), which is what keeps older
-  // Drive-referenced resources readable and lets StudyCore verify a picked
-  // file. It is NOT a storage backend: StudyCore never writes uploads into
-  // anybody's Drive. Every new document — uploaded directly or imported from
-  // the Picker — is stored in StudyCore's own storage.
-  async function loadDriveIntegration() {
-    const target = document.getElementById('driveIntegrationStatus');
-    if (!target) return;
-    try {
-      const data = await StudyCoreAPI.adminGoogleDriveStatus();
-      if (data.connected) {
-        target.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-            <span style="font-size:0.9rem;">
-              <strong style="color:var(--green-600);">Connected</strong> —
-              StudyCore can read documents from <strong>${escapeHtml(data.email || 'the connected Google account')}</strong>'s Google Drive library.
-            </span>
-            <button class="btn btn-outline btn-sm" id="driveDisconnectBtn" type="button">Disconnect</button>
-          </div>
-          <p style="margin-top:10px;color:var(--muted);font-size:0.82rem;">
-            Documents you publish with "Select from Google Drive" stay in your Drive and are streamed
-            to students by the StudyCore backend through this connection. Keep it connected so those
-            documents keep opening; disconnecting never deletes or changes anything in your Google Drive.
-          </p>`;
-        document.getElementById('driveDisconnectBtn').addEventListener('click', async () => {
-          if (!confirm('Disconnect this Google Drive account? Students will be unable to open documents published from Google Drive until an account is reconnected. Nothing in your Google Drive is deleted.')) return;
-          try {
-            await StudyCoreAPI.adminGoogleDriveDisconnect();
-            showToast('Google Drive disconnected.', 'success');
-            loadDriveIntegration();
-          } catch (err) {
-            showToast(err.message, 'error');
-          }
-        });
-      } else {
-        target.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-            <span style="font-size:0.9rem;color:var(--muted);">Not connected — you can still use "Select from Google Drive" on the upload form, which authorises per file.</span>
-            <a class="btn btn-primary btn-sm" href="/api/admin/google-drive/connect">Connect Google Drive</a>
-          </div>`;
-      }
-    } catch (err) {
-      target.innerHTML = `<p style="color:var(--red-600);">${escapeHtml(err.message)}</p>`;
-    }
-  }
-
-  // The connect/disconnect round trip finishes with a full-page redirect
-  // back here (see routes/admin.routes.js's /google-drive/callback), so the
-  // result arrives as a query param rather than a fetch response.
-  function reportDriveCallbackResult() {
-    const params = new URLSearchParams(window.location.search);
-    const connected = params.get('drive_connected');
-    const error = params.get('drive_error');
-    if (!connected && !error) return;
-    if (connected) showToast('Google Drive connected.', 'success');
-    else if (error) showToast(error, 'error');
-    params.delete('drive_connected');
-    params.delete('drive_error');
-    const qs = params.toString();
-    const hash = window.location.hash || '#integrations';
-    window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}${hash}`);
   }
 
   /* ── Payments ───────────────────────────── */
@@ -1144,8 +921,6 @@
     loadContentAdmins();
     loadUsers();
     loadTopicSuggest();
-    reportDriveCallbackResult();
-    loadDriveIntegration();
   }
 
   document.addEventListener('DOMContentLoaded', initAdminPage);

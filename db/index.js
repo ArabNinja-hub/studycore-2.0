@@ -15,22 +15,6 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'studycore.sqlite'));
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = ON');
-// WAL lets readers and one writer work concurrently, but a second *writer*
-// still has to wait its turn. node:sqlite defaults busy_timeout to 0, so that
-// wait is not a wait at all: any write issued while another connection holds
-// the write lock throws `database is locked` immediately.
-//
-// The server is not the only writer. Every maintenance script (make-admin,
-// seed-documents, list-drive-linked-resources, ...) opens this same file
-// through this same module, and the README tells operators to run them against
-// a live deployment. With a 0ms timeout that is a coin flip:
-//   · the script dies at require() time, mid-way through the boot migrations;
-//   · worse, the migrations at the top of this file swallow their errors
-//     ("already exists" is the expected failure), so a lock-induced failure is
-//     indistinguishable from a no-op and the schema change is silently skipped.
-// A few seconds of patience removes both failure modes — contended writes here
-// are millisecond-scale, so the timeout is a safety net, never a latency cost.
-db.exec('PRAGMA busy_timeout = 5000');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
@@ -315,51 +299,6 @@ try {
   db.exec('ALTER TABLE resources ADD COLUMN google_drive_url TEXT');
 } catch {
   // column already exists - fine
-}
-
-// Backfill storage_provider for legacy Google Drive rows where storage_provider was defaulted to 'local'
-try {
-  db.exec(`
-    UPDATE resources
-    SET storage_provider = 'google_drive'
-    WHERE (storage_provider IS NULL OR storage_provider = 'local')
-      AND google_drive_file_id IS NOT NULL
-      AND (stored_name IS NULL OR stored_name = google_drive_file_id)
-  `);
-} catch {
-  // ignore
-}
-
-// -----------------------------------------------------------------------
-// Google Drive CONNECTION (server-side read access to the document library).
-// One Main Admin connects one real Google account with offline access;
-// StudyCore keeps the resulting refresh token here, encrypted at rest with a
-// key derived from JWT_SECRET (see lib/google-drive-vault.js). This is the
-// credential the backend uses to read Google Drive-backed resources when a
-// student opens them (lib/drive-documents.js), and to verify a picked file at
-// publish time. It is never a write destination: uploads go to R2/local, and
-// the original Drive files stay exactly where the admin put them. Every
-// student read is proxied through the normal session/subscription-gated
-// /stream endpoint.
-//
-// Only one row is ever expected (single connected vault account), but the
-// table is not literally singleton-constrained so a re-connect can insert
-// a fresh row and the old one can be inspected/rotated if ever needed.
-try {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS google_drive_accounts (
-      id TEXT PRIMARY KEY,
-      google_email TEXT,
-      encrypted_refresh_token TEXT NOT NULL,
-      folder_id TEXT,
-      connected_by TEXT REFERENCES users(id) ON DELETE SET NULL,
-      connected_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'active'
-    )
-  `);
-} catch {
-  // already exists - fine
 }
 
 // Bunny Stream integration. New uploaded videos are written only to Bunny,

@@ -183,15 +183,6 @@ if (googlePickerIssues.length) {
   console.log('StudyCore: Google Picker env OK (client ' + String(process.env.GOOGLE_CLIENT_ID).trim() + ', project ' + String(process.env.GOOGLE_CLOUD_PROJECT_NUMBER).trim() + ', key ' + String(process.env.GOOGLE_API_KEY).trim().slice(0, 6) + '…)');
 }
 
-// Google Drive server-side connection audit (for serving Drive-backed documents).
-const googleDriveVault = require('./lib/google-drive-vault');
-const driveStatus = googleDriveVault.status();
-if (driveStatus.connected) {
-  console.log('StudyCore: Google Drive connection OK (' + (driveStatus.email || 'connected') + ').');
-} else if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-  console.log('StudyCore: Google Drive credentials set, but no account is connected yet. Connect in Admin → Integrations or set GOOGLE_REFRESH_TOKEN.');
-}
-
 // Bunny Stream is the only provider for new video uploads. If configuration is
 // missing, video uploads fail safely instead of falling back to R2/local. Never log configuration values (especially the API
 // key), only whether the server-side integration is available.

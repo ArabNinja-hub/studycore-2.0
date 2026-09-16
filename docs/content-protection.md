@@ -129,24 +129,6 @@ Access control lives on the server, and it always has:
   request**, including every 128 KB range chunk of a PDF;
 * `/api/resources/:id/download` is an explicit `403`, so a saved link from
   before the download control was removed cannot quietly bypass the reader;
-* **`/api/resources/:id/stream` refuses top-level navigations.** Removing the
-  download button was not enough on its own: the stream URL was still a
-  working file link, and pasting it into the address bar (or "Open in new
-  tab" / "Save link as" / handing it to a native PDF plugin) returned the
-  complete PDF with its real filename. The browser then rendered it in its
-  **built-in PDF viewer, which has its own Save and Print buttons** — and
-  because the reader page was never loaded, none of the client-side guards
-  below ever ran. The route now distinguishes the reader from the address bar
-  using Fetch Metadata: the reader reads bytes with `fetch()`/XHR or an
-  `<img>`/`<video>` element (`Sec-Fetch-Dest: empty|image|video`), whereas a
-  navigation sends `Sec-Fetch-Dest: document` with `Sec-Fetch-Mode: navigate`
-  — a combination the reader never produces. Navigations get a `403` that
-  links to `/viewer/:id` instead, and leak neither bytes nor the filename.
-  Requests carrying **no** `Sec-Fetch-*` headers are still served: those are
-  older browsers and non-browser clients, and refusing them would break real
-  students to stop an attacker who can set a header anyway. Like everything
-  else in this section it is deterrence against the casual save — the
-  authorization gates above remain the actual access control;
 * R2 and Bunny Stream credentials exist only in server environment
   variables. The browser never addresses object storage directly — CSP's
   `media-src`/`connect-src` would refuse it even if some code tried.
@@ -232,14 +214,6 @@ These are not oversights; they are properties of the web platform.
    effort of casual capture", not "makes leaking impossible". The
    server-side gates and the signed tickets are the parts that are actually
    enforcement.
-7. **The navigation block is deterrence too, not a cryptographic barrier.**
-   `Sec-Fetch-*` headers are set by the browser and cannot be forged by page
-   JavaScript, so it reliably stops the address-bar/new-tab/"Save link as"
-   routes a student would actually use. It does **not** stop someone using
-   `curl`, DevTools or a script with a copied session cookie — and it never
-   could, because the reader itself has to be able to fetch the bytes. Any
-   client that can render a document can also retain it; the goal here is to
-   remove the one-click save, not to claim the file is unreachable.
 
 ### How to describe this system
 
@@ -295,7 +269,6 @@ behaviour.
 | `middleware/security.js` | `display-capture=()`, `picture-in-picture=()` in `Permissions-Policy` |
 | `lib/stream.js` | View-only Bunny Stream player options; `hlsUrl` no longer published |
 | `scripts/test-privacy-guard.js` | Regression tests (scope, layering, no-breakage) |
-| `scripts/test-no-document-download.js` | Documents stay view-only: navigations/plugins refused, reader + ranges unaffected |
 | `scripts/test-content-tickets.js` | Ticket signing, binding, expiry and tamper tests |
 | `scripts/live-protection-check.js` | End-to-end check against a running server (dev tool) |
 

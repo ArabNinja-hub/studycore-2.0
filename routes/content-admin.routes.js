@@ -16,9 +16,8 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
 const resumableUploads = require('../lib/resumable-uploads');
-const storage = require('../lib/document-storage');
+const storage = require('../lib/storage');
 const stream = require('../lib/stream');
-const googleDrive = require('../lib/google-drive');
 const { ROLES } = require('../lib/roles');
 const { resolveCourse, programIncludesCourse, programOwnsCourse } = require('../lib/program-access');
 const { validateLabReportPlacement } = require('../lib/lab-reports');
@@ -68,9 +67,7 @@ function cleanupIncomingFile(req) {
   const file = req && req.file;
   if (!file) return;
   if (file.streamUid) stream.deleteVideo(file.streamUid).catch(() => {});
-  // A legacy Drive reference owns no StudyCore object, and the file in Google
-  // Drive belongs to the uploader — abandoning a publish must never delete it.
-  else if (file.key && file.bucket !== 'google_drive') storage.deleteObject(file.key, file.bucket).catch(() => {});
+  else if (file.key) storage.deleteObject(file.key).catch(() => {});
   if (req.uploadSessionId) resumableUploads.discardSession(req.uploadSessionId).catch(() => {});
 }
 
@@ -418,27 +415,15 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
   }
 
-  // A Drive selection is REGISTERED, not copied. The resource keeps pointing
-  // at the original Drive file — Google Drive is the document SOURCE LIBRARY
-  // — and students are served by the backend, which reads that file with its
-  // own connected Google credentials through the protected /stream endpoint.
-  // registerFile() verifies exactly that (and captures Drive's authoritative
-  // name/type/size) before the row is created, so a resource that no student
-  // could open is never published.
-  if (isDriveFile && !req.file) {
-    try {
-      req.file = await googleDrive.registerFile({
-        fileId: req.body.google_drive_file_id,
-        accessToken: req.body.google_drive_access_token,
-        fileName: req.body.file_name || req.body.google_drive_file_name,
-        mimeType: req.body.mime_type || req.body.google_drive_mime_type
-      });
-    } catch (err) {
-      return uploadError(req, res, err.statusCode || 502, err.message);
-    }
-  }
-
-  const fileError = validateFileForType(parsed.value.type, req.file);
+  const dummyFile = isDriveFile ? {
+    originalname: req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document',
+    mimetype: req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf',
+    size: Number(req.body.file_size) || 0,
+    key: req.body.google_drive_file_id,
+    stored_name: req.body.google_drive_file_id
+  } : null;
+  const fileForValidation = req.file || dummyFile;
+  const fileError = validateFileForType(parsed.value.type, fileForValidation);
   if (fileError) {
     cleanupIncomingFile(req);
     return uploadError(req, res, 400, fileError);
@@ -447,12 +432,14 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   const now = new Date().toISOString();
   const uploader = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
   const id = `res-${uuidv4()}`;
+  // When selecting from Google Drive, clean up any accidentally uploaded file.
+  if (isDriveFile && req.file) cleanupIncomingFile(req);
 
-  const fileName = req.file.originalname;
-  const storedName = req.file.key || null;
-  const fileSizeVal = req.file.size;
-  const mimeTypeVal = req.file.mimetype;
-  const contentHashVal = req.file.contentHash || null;
+  const fileName = isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document') : req.file.originalname;
+  const storedName = isDriveFile ? (req.body.google_drive_file_id || null) : (req.file.key || null);
+  const fileSizeVal = isDriveFile ? (Number(req.body.file_size) || 0) : req.file.size;
+  const mimeTypeVal = isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf') : req.file.mimetype;
+  const contentHashVal = isDriveFile ? null : (req.file.contentHash || null);
 
   const row = {
     id,
@@ -473,8 +460,6 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     file_size: fileSizeVal,
     mime_type: mimeTypeVal,
     content_hash: contentHashVal,
-    // A Drive-imported document is not an "external link" resource: StudyCore
-    // serves its stored copy from the in-app viewer, so external_url stays empty.
     external_url: isDriveFile ? null : (req.body.external_url || null),
     quiz_data: null,
     due_date: null,
@@ -490,18 +475,11 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
     uploaded_at: now,
     created_at: now,
     updated_at: now,
-    // Where the bytes ACTUALLY live. An ordinary upload records its StudyCore
-    // storage backend ('r2'/'local'). A file selected from Google Drive is
-    // Drive-backed: 'google_drive' means the original Drive file IS the
-    // storage, and the student stream route reads it server-side through
-    // lib/drive-documents.js with StudyCore's own Google credentials.
-    storage_provider: req.file.bucket || storage.backendName(),
-    stream_uid: req.file.streamUid || null,
-    stream_status: req.file.streamStatus || null,
-    stream_duration: req.file.streamDuration || null,
-    // The Drive file this resource is backed by (canonical id from Drive
-    // metadata, captured by registerFile()). Null for ordinary uploads.
-    google_drive_file_id: (isDriveFile && req.file && req.file.driveFileId) || null,
+    storage_provider: isDriveFile ? 'google_drive' : (req.file.bucket || storage.backendName()),
+    stream_uid: isDriveFile ? null : (req.file.streamUid || null),
+    stream_status: isDriveFile ? null : (req.file.streamStatus || null),
+    stream_duration: isDriveFile ? null : (req.file.streamDuration || null),
+    google_drive_file_id: isDriveFile ? req.body.google_drive_file_id : null,
     google_drive_url: isDriveFile ? (req.body.google_drive_url || null) : null
   };
 
@@ -558,37 +536,15 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
   if (isDriveFile && parsed.value.type.category === 'video') {
     return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
   }
-
-  // Picking a Drive file while editing registers it, exactly like publish.
-  // A Picker token is present only when the Picker actually ran in this
-  // submission — that is a fresh selection, so it always re-registers (which
-  // also refreshes Drive's metadata and converts rows imported by an older
-  // build into Drive-backed references). A changed Drive file id is registered
-  // too. A plain metadata edit — same id, no new pick — keeps the existing
-  // reference untouched.
-  const pickerJustRan = Boolean(req.body.google_drive_access_token);
-  const driveIdChanged = req.body.google_drive_file_id !== existing.google_drive_file_id;
-  const registerDriveFile = isDriveFile && !req.file && (pickerJustRan || driveIdChanged);
-  if (registerDriveFile) {
-    try {
-      req.file = await googleDrive.registerFile({
-        fileId: req.body.google_drive_file_id,
-        accessToken: req.body.google_drive_access_token,
-        fileName: req.body.file_name || req.body.google_drive_file_name,
-        mimeType: req.body.mime_type || req.body.google_drive_mime_type
-      });
-    } catch (err) {
-      return uploadError(req, res, err.statusCode || 502, err.message);
-    }
-  }
-
-  const fileForValidation = req.file || {
+  const fileForValidation = req.file || (isDriveFile ? {
+    originalname: req.body.file_name || req.body.google_drive_file_name || existing.file_name || 'Google Drive Document',
+    stored_name: req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name,
+    mimetype: req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type
+  } : {
     originalname: existing.file_name,
-    // A legacy Drive row's stored_name is a Drive file id, not a filename, so
-    // it must not be mined for an extension during type validation.
-    stored_name: (existing.storage_provider || 'local') === 'google_drive' ? null : existing.stored_name,
+    stored_name: existing.stored_name,
     mimetype: existing.mime_type
-  };
+  });
   const fileError = validateFileForType(parsed.value.type, fileForValidation);
   if (fileError) return uploadError(req, res, 400, fileError);
 
@@ -615,15 +571,11 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     ),
     publish_status: parsed.value.publishStatus,
     updated_at: now,
-    // `replacingFile` covers a newly registered Drive reference too: its key
-    // is null (no StudyCore object — the Drive file is the storage), so
-    // stored_name becomes null and the row is Drive-backed. An ordinary
-    // replacement upload records its real storage key here.
-    file_name: replacingFile ? req.file.originalname : existing.file_name,
-    stored_name: replacingFile ? (req.file.key || null) : existing.stored_name,
-    file_size: replacingFile ? req.file.size : existing.file_size,
-    mime_type: replacingFile ? req.file.mimetype : existing.mime_type,
-    content_hash: replacingFile ? (req.file.contentHash || null) : existing.content_hash,
+    file_name: replacingFile ? req.file.originalname : (isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || existing.file_name) : existing.file_name),
+    stored_name: replacingFile ? (req.file.key || null) : (isDriveFile ? (req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name || null) : existing.stored_name),
+    file_size: replacingFile ? req.file.size : (isDriveFile ? (Number(req.body.file_size) || existing.file_size || 0) : existing.file_size),
+    mime_type: replacingFile ? req.file.mimetype : (isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type || 'application/pdf') : existing.mime_type),
+    content_hash: replacingFile ? (req.file.contentHash || null) : (isDriveFile ? null : existing.content_hash),
     // Replacing the file invalidates any Stream video encoded from the old
     // bytes; clear the fields (and delete the old Stream video below) so a
     // fresh offload can run. Otherwise carry the existing Stream fields.
@@ -633,7 +585,9 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     owner_id: req.user.id,
     storage_provider: replacingFile
       ? (req.file.bucket || storage.backendName())
-      : (existing.storage_provider || 'local'),
+      : ((req.body.google_drive_file_id !== undefined)
+        ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
+        : (existing.storage_provider || 'local')),
     google_drive_file_id: (req.body.google_drive_file_id !== undefined)
       ? (req.body.google_drive_file_id || null)
       : (existing.google_drive_file_id || null),
@@ -677,15 +631,8 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     return res.status(500).json({ message: 'Could not save the resource. Please try again.' });
   }
 
-  // A Drive-backed row has no StudyCore object to delete (very old Drive rows
-  // kept the Drive file id in stored_name, which is also not a storage key),
-  // and the Drive file itself belongs to the uploader — removing the resource
-  // must never remove it from Google Drive. Ordinary stored objects are
-  // cleaned up normally.
-  const hadStoredObject = existing.stored_name &&
-    (existing.storage_provider || 'local') !== 'google_drive';
-  if (replacingFile && hadStoredObject && existing.stored_name !== req.file.key) {
-    storage.deleteObject(existing.stored_name, existing.storage_provider).catch(() => {});
+  if (replacingFile && existing.stored_name && existing.stored_name !== req.file.key) {
+    storage.deleteObject(existing.stored_name).catch(() => {});
   }
   // The old Bunny video is removed only after the row safely references the
   // replacement that Bunny accepted.
@@ -708,14 +655,7 @@ router.delete('/resources/:id', (req, res) => {
     console.error('Content Admin resource delete failed:', err.message);
     return res.status(500).json({ message: 'Could not delete the resource. Please try again.' });
   }
-  // A Drive-backed resource deletes only its StudyCore row. The original file
-  // stays in the uploader's Google Drive — it is their document library, not
-  // StudyCore storage. (Very old rows kept the Drive file id in stored_name,
-  // which is likewise not a StudyCore storage key.) Ordinary stored objects
-  // are deleted as usual.
-  if (existing.stored_name && (existing.storage_provider || 'local') !== 'google_drive') {
-    storage.deleteObject(existing.stored_name, existing.storage_provider).catch(() => {});
-  }
+  if (existing.stored_name) storage.deleteObject(existing.stored_name).catch(() => {});
   if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   return res.json({ message: 'Resource deleted.' });
 });
