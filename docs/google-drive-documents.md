@@ -2,10 +2,13 @@
 
 Google Drive is StudyCore's document **source library**. A file selected with
 "Select from Google Drive" is **registered** as a Google Drive-backed StudyCore
-resource — its Drive file id and Drive's own metadata are stored, and no bytes
-are copied anywhere at publish time. When a student opens the resource, the
-StudyCore **backend** reads the original file from Drive with its own connected
-Google credentials and streams it through the protected viewer.
+resource — its Drive file id and Drive's own metadata are stored, and no
+copy is written to StudyCore storage at publish time. StudyCore performs a
+one-byte media probe (or validates the PDF export for a native Workspace file)
+with its server credential so a metadata-readable but unopenable file cannot
+be published. When a student opens the resource, the StudyCore **backend**
+reads the original file from Drive with its own connected Google credentials
+and streams it through the protected viewer.
 
 ```
 Google Drive Picker  →  register file id + metadata  →  resource row (google_drive)
@@ -38,14 +41,15 @@ deleted"* for a file that was perfectly fine in Drive.
 2. The server reads the file's metadata **with its own credentials** — the
    connected Google account from Admin → Integrations (`lib/google-drive-vault.js`),
    with the browser API key as a fallback for files their owner already
-   link-shared. This is exactly the credential students' reads depend on, so
-   verifying it here guarantees the resource will actually be openable.
-3. If the server cannot read the file, the publish is **refused** with an
-   actionable message (connect the account / pick from the connected library /
-   the file no longer exists). Nothing is published half-broken.
+   link-shared. It then probes the actual media path with one byte (or validates
+   the export path for a native Workspace file). This uses exactly the
+   credential chain students' reads depend on, not the Picker token.
+3. If either metadata or media/export access fails, the publish is **refused**
+   with an actionable message (connect the account / pick from the connected
+   library / the file no longer exists). Nothing is published half-broken.
 4. Native Google Docs/Sheets/Slides are registered as their PDF exports — the
-   export happens on demand when a student opens the document (cached briefly
-   in memory by `lib/drive-documents.js`).
+   export is validated at publish and cached briefly in memory, then repeated
+   on demand after the cache expires when a student opens the document.
 5. Videos are refused: video lessons are published to Bunny Stream only.
 6. The resource row records `storage_provider = 'google_drive'`,
    `google_drive_file_id`, `google_drive_url`, and Drive's name/type/size.
