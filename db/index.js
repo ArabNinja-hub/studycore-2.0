@@ -15,6 +15,19 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(path.join(DATA_DIR, 'studycore.sqlite'));
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = ON');
+// WAL lets readers and one writer work concurrently, but a second *writer*
+// still has to wait its turn. node:sqlite defaults busy_timeout to 0, so that
+// wait is not a wait at all: any write issued while another connection holds
+// the write lock throws `database is locked` immediately.
+//
+// The server is not the only writer. Maintenance scripts such as make-admin
+// open this same file through this module and may run against a live deployment.
+// With a 0ms timeout a script can die at require() time during boot migrations;
+// worse, migrations that treat an error as "already exists" can silently skip
+// their work when the actual error was lock contention. A few seconds of
+// patience removes both failure modes. Contended writes here are normally
+// millisecond-scale, so this is a safety net rather than routine latency.
+db.exec('PRAGMA busy_timeout = 5000');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
