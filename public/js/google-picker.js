@@ -429,7 +429,7 @@
       console.info('[StudyCore][GooglePicker] building Picker with origin=' + window.location.origin +
         ' appId=' + state.config.appId +
         ' developerKey=' + state.config.apiKey.slice(0, 6) + '…' +
-        ' token=present');
+        ' token=' + String(accessToken || '').slice(0, 10) + '…');
       const picker = builder.build();
       picker.setVisible(true);
       console.info('[StudyCore][GooglePicker] Picker visible — waiting for a Drive file to be picked');
@@ -448,17 +448,9 @@
     const doc = (data.docs && data.docs[0]) || null;
     if (!doc) return;
     console.info('[StudyCore][GooglePicker] file picked:', doc.id, doc.name);
-    // Hand the Drive file off to the existing Content Admin dashboard code,
-    // WITH the access token this picker session obtained.
-    //
-    // The token marks this as a fresh Picker run. Students are served by the
-    // StudyCore server, which reads the registered Drive file with its own
-    // standing Google connection — never by the student's (nonexistent)
-    // Google account, and never by a redirect to Drive's "Request access"
-    // page. The token is short-lived, held in memory for this one publish,
-    // and never stored.
+    // Hand the Drive file off to the existing Content Admin dashboard code.
     if (typeof window.onGoogleDriveFilePicked === 'function') {
-      window.onGoogleDriveFilePicked(doc, { accessToken: state.accessToken });
+      window.onGoogleDriveFilePicked(doc);
     } else {
       console.warn('[StudyCore][GooglePicker] onGoogleDriveFilePicked handler missing');
     }

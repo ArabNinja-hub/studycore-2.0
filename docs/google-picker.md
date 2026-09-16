@@ -1,30 +1,16 @@
-# Google Drive Picker — "Select from Google Drive"
+# Google Drive Picker — Content Admin Dashboard
 
-Google Drive is StudyCore's document **source library**. An admin organises
-their notes/tutorials/past papers/lab reports in their own Drive, picks one
-here, and StudyCore registers it as a Google Drive-backed resource — the file
-id and Drive's metadata are stored, and the backend streams the original file
-to students through the protected viewer. See `docs/google-drive-vault.md`
-for the full workflow and `docs/google-drive-documents.md` for the
-registration and student-read paths.
-
-The Picker lives in the **existing** dashboards — the Content Admin Dashboard
-(`views/content-admin.html`, "Upload Resource" card) and the Main Admin
-Dashboard (`views/admin.html`, "Upload a new resource" card). No new dashboard
-was created and neither admin UI was replaced.
-
-The ordinary **Upload** control on either dashboard is a plain StudyCore
-upload and is **never** saved into Google Drive.
+The Picker lives in the **existing** Content Admin Dashboard
+(`views/content-admin.html`, "Upload Resource" card). No new dashboard was
+created and the admin UI was not replaced.
 
 ## Files
 
 | File | Role |
 | --- | --- |
 | `public/js/google-picker.js` | Loads both Google libraries, verifies readiness, owns status/error states, builds the Picker. |
-| `public/js/content-admin.js` | Content Admin: receives the picked file via `window.onGoogleDriveFilePicked(doc, auth)` and fills the hidden Drive form fields. |
-| `public/js/admin.js` | Main Admin: same `window.onGoogleDriveFilePicked(doc, auth)` hook, holding the pick in `selectedDriveFile` until publish. |
-| `views/content-admin.html` / `views/admin.html` | Button `#caSelectDriveBtn` (starts disabled) + status line `#caDriveStatus`. |
-| `lib/google-drive.js` | Server-side registration: verifies the picked file with the connected account's credentials and records the Drive reference. |
+| `public/js/content-admin.js` | Receives the picked file via `window.onGoogleDriveFilePicked(doc)` and fills the hidden Drive form fields. |
+| `views/content-admin.html` | Button `#caSelectDriveBtn` (starts disabled) + status line `#caDriveStatus`. |
 | `middleware/security.js` | CSP allowances for the Google origins. |
 | `server.js` → `GET /api/config` | Publishes `googlePicker.{apiKey, clientId, appId}` from env. |
 
@@ -98,12 +84,8 @@ without reloading the page.
    → access token → Picker built with
    `.setDeveloperKey(GOOGLE_API_KEY)`, `.setAppId(GOOGLE_CLOUD_PROJECT_NUMBER)`,
    `.setOAuthToken(accessToken)`, `.setOrigin(...)` → `picker.setVisible(true)`.
-6. `PICKED` → the Drive file ID/URL/name/mimeType/size and the short-lived
-   Picker access token are kept in the Content Admin form state and posted on
-   submit. The token marks the submission as a fresh pick; the server
-   registers the file with its **own** standing Google connection (which is
-   also what serves students), then drops the token. Students never receive a
-   Drive URL or token.
+6. `PICKED` → the Drive file ID/URL/name/mimeType/size are written into the
+   hidden inputs and posted to `/api/content-admin` on submit.
 
 ## Status states
 
@@ -152,16 +134,10 @@ GOOGLE_CLOUD_PROJECT_NUMBER=1076280995038
 git-ignored `.env`). They are never committed to this repository —
 `.env.example` intentionally ships them blank.
 
-**No OAuth client secret is used or required for THIS flow.** This is the
-browser-side Picker flow (GIS `initTokenClient`), and Google does not use
-client secrets for Web application clients in this flow.
-
-> **Note:** `GOOGLE_CLIENT_SECRET` *does* exist elsewhere in this codebase,
-> but it belongs to a completely separate feature — the Google Drive
-> **storage vault** (Admin Dashboard → Integrations → "Connect Google
-> Drive"), which is a server-side OAuth flow with offline access and does
-> need a secret. See `docs/google-drive-vault.md`. The Picker above still
-> needs no secret and `GOOGLE_CLIENT_SECRET` is never read by it.
+**No OAuth client secret is used or required.** This is the browser-side
+Picker flow (GIS `initTokenClient`), and Google does not use client secrets
+for Web application clients in this flow. Do not add a
+`GOOGLE_CLIENT_SECRET` variable.
 
 After the redeploy, confirm the server sees them:
 

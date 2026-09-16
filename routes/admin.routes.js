@@ -1,17 +1,13 @@
 const express = require('express');
 const asyncHandler = require('../lib/async-handler');
 const path = require('path');
-const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { upload } = require('../middleware/upload');
 const { attachResumableUpload, claimResumableUpload } = require('../middleware/resumable');
 const resumableUploads = require('../lib/resumable-uploads');
-const storage = require('../lib/document-storage');
-const googleDriveVault = require('../lib/google-drive-vault');
-const googleDrive = require('../lib/google-drive');
-const driveDocuments = require('../lib/drive-documents');
+const storage = require('../lib/storage');
 const stream = require('../lib/stream');
 const { sendAccessGrantedEmail } = require('../lib/mailer');
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
@@ -28,23 +24,9 @@ const {
 } = require('../lib/terms');
 
 const router = express.Router();
-
-// Short-lived CSRF state for the "Connect Google Drive" OAuth round trip.
-// Google's callback is a plain unauthenticated GET (the browser navigates
-// there directly), so the state token — not a session cookie — is what
-// proves the callback belongs to a connection this server actually started.
-const connectStates = new Map();
-
 // Main Admin only. Content Admin has its own scoped /api/content-admin routes
 // and is rejected here even if it manually requests an /api/admin URL.
-// The OAuth callback is the one exception: Google redirects the admin's
-// browser there directly and cannot attach an Authorization header or
-// forward the session cookie through the consent redirect chain reliably,
-// so it is authenticated by the one-time `state` token instead (see below).
-router.use((req, res, next) => {
-  if (req.path === '/google-drive/callback') return next();
-  return requireAuth(req, res, () => requireRole(ROLES.ADMIN)(req, res, next));
-});
+router.use(requireAuth, requireRole(ROLES.ADMIN));
 
 // Keeps the Video library genuinely video-only and the Document library
 // genuinely document-only - without this, nothing stops an admin from
@@ -183,26 +165,17 @@ function serializeResource(row) {
   };
 }
 
-// `provider` is the object's OWN recorded storage_provider (resources.
-// storage_provider), so a Drive-vault-stored file is deleted from Drive and
-// an R2/local one from R2/local, regardless of which backend is active
-// today. Callers with no provider (e.g. a user's avatar_key, which never
-// goes through the vault) simply omit it and get the R2/local backend.
-function deleteFileIfExists(storedKey, provider) {
+function deleteFileIfExists(storedKey) {
   if (!storedKey) return;
-  // Legacy Drive-linked rows used the Drive file id as stored_name; that is
-  // not a StudyCore storage key. Imported Drive files record their real backend
-  // ('google_drive_vault', 'r2' or 'local') and are deleted normally.
-  if (provider === 'google_drive') return;
   // Fire-and-forget - a resource row being deleted shouldn't be blocked
   // because storage was briefly slow.
-  storage.deleteObject(storedKey, provider).catch(() => {});
+  storage.deleteObject(storedKey).catch(() => {});
 }
 
 function deleteIncomingFile(file) {
   if (!file) return;
   if (file.streamUid) stream.deleteVideo(file.streamUid).catch(() => {});
-  else if (file.key && file.bucket !== 'google_drive') storage.deleteObject(file.key, file.bucket).catch(() => {});
+  else if (file.key) storage.deleteObject(file.key).catch(() => {});
 }
 
 // Use the same live-user join for mutation responses as the management table.
@@ -283,36 +256,6 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
 
   if (!title || !title.trim()) return failUpload('Title is required.');
   if (!category) return failUpload('Category is required.');
-
-  // ---- "Select from Google Drive" -----------------------------------------
-  // Google Drive is the admin's SOURCE LIBRARY, not StudyCore's storage. When
-  // the Picker supplies a file id, the resource is REGISTERED as a
-  // Google Drive-backed resource: the row stores the Drive file id plus
-  // Drive's own metadata, and no bytes are copied anywhere. When a student
-  // opens it, the backend reads the original file from Drive with its OWN
-  // connected Google credentials (see lib/google-drive-vault.js and
-  // lib/drive-documents.js) and streams it through the normal gated
-  // /api/resources/:id/stream endpoint. No student is ever sent to
-  // drive.google.com, and the Drive file itself is left untouched.
-  const driveFileId = String((req.body && req.body.google_drive_file_id) || '').trim();
-  if (driveFileId && !req.file) {
-    if (category === 'video') {
-      return failUpload('Video lessons are published to Bunny Stream, not selected from Google Drive.');
-    }
-    try {
-      // Verifies with the SERVER's credentials that the file will be
-      // readable when students open it, and captures Drive's authoritative
-      // name/type/size. Refuses the publish when it cannot.
-      req.file = await googleDrive.registerFile({
-        fileId: driveFileId,
-        accessToken: req.body.google_drive_access_token,
-        fileName: req.body.file_name || req.body.google_drive_file_name,
-        mimeType: req.body.mime_type || req.body.google_drive_mime_type
-      });
-    } catch (err) {
-      return failUpload(err.message, err.statusCode || 502);
-    }
-  }
 
   // Resolve a dynamic program course when one is supplied.
   let courseRow = null;
@@ -410,13 +353,6 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
     created_at: now,
     updated_at: now,
     storage_provider: req.file ? (req.file.bucket || storage.backendName()) : null,
-    // For a Drive-backed resource this is the FILE THE RESOURCE IS SERVED
-    // FROM: the student stream route resolves it through lib/drive-documents.js
-    // with StudyCore's own Google credentials. Null for ordinary uploads.
-    google_drive_file_id: req.file && req.file.driveFileId ? req.file.driveFileId : null,
-    google_drive_url: req.file && req.file.driveFileId
-      ? (req.body.google_drive_url || `https://drive.google.com/file/d/${req.file.driveFileId}/view`)
-      : null,
     stream_uid: req.file ? (req.file.streamUid || null) : null,
     stream_status: req.file ? (req.file.streamStatus || null) : null,
     stream_duration: req.file ? (req.file.streamDuration || null) : null
@@ -427,12 +363,10 @@ router.post('/resources', resourceUpload, asyncHandler(async (req, res) => {
     db.prepare(`
       INSERT INTO resources (id, title, description, category, resource_type, subject, course, course_id, target_all, topic, year_level, semester, tags,
         file_name, stored_name, file_size, mime_type, content_hash, external_url, quiz_data, due_date, is_premium, pinned, publish_status,
-        uploaded_by, uploader_role, uploader_name, uploader_email, uploaded_at, created_at, updated_at, storage_provider,
-        google_drive_file_id, google_drive_url, stream_uid, stream_status, stream_duration)
+        uploaded_by, uploader_role, uploader_name, uploader_email, uploaded_at, created_at, updated_at, storage_provider, stream_uid, stream_status, stream_duration)
       VALUES (@id, @title, @description, @category, @resource_type, @subject, @course, @course_id, @target_all, @topic, @year_level, @semester, @tags,
         @file_name, @stored_name, @file_size, @mime_type, @content_hash, @external_url, @quiz_data, @due_date, @is_premium, @pinned, @publish_status,
-        @uploaded_by, @uploader_role, @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at, @storage_provider,
-        @google_drive_file_id, @google_drive_url, @stream_uid, @stream_status, @stream_duration)
+        @uploaded_by, @uploader_role, @uploader_name, @uploader_email, @uploaded_at, @created_at, @updated_at, @storage_provider, @stream_uid, @stream_status, @stream_duration)
     `).run(row);
     syncResourcePrograms(id, targeting.targetAll, targeting.programCodes);
     db.exec('COMMIT');
@@ -471,40 +405,6 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   };
 
   const effectiveCategory = category ?? existing.category;
-
-  // Replacing this resource's file with one picked from Google Drive.
-  //
-  // The picked file is REGISTERED as the new source of this resource — a
-  // Google Drive-backed reference, not a copy. registerFile() verifies with
-  // the SERVER's own Google credentials (not the browser's Picker token) that
-  // the file is readable, which is what guarantees every entitled student can
-  // open it inside StudyCore's viewer instead of meeting Google's "Request
-  // access" wall. The admin's Drive file is not modified, moved or deleted.
-  //
-  // A fresh Picker run (token present) always re-registers, even for the same
-  // file — that refreshes Drive's metadata and converts rows written by older
-  // builds into Drive-backed references. A changed Drive file id is registered
-  // too. Editing metadata alone (same id, no new pick) keeps the reference.
-  const replacementDriveFileId = String(req.body.google_drive_file_id || '').trim();
-  const pickerJustRan = Boolean(req.body.google_drive_access_token);
-  const registeringDriveFile = Boolean(replacementDriveFileId) && !req.file && (
-    pickerJustRan || replacementDriveFileId !== existing.google_drive_file_id
-  );
-  if (registeringDriveFile) {
-    if (effectiveCategory === 'video') {
-      return failUpload('Video lessons are published to Bunny Stream, not selected from Google Drive.');
-    }
-    try {
-      req.file = await googleDrive.registerFile({
-        fileId: replacementDriveFileId,
-        accessToken: req.body.google_drive_access_token,
-        fileName: req.body.file_name || req.body.google_drive_file_name,
-        mimeType: req.body.mime_type || req.body.google_drive_mime_type
-      });
-    } catch (err) {
-      return failUpload(err.message, err.statusCode || 502);
-    }
-  }
 
   // Dynamic course: resolve when supplied; keep existing when omitted.
   let courseRow = null;
@@ -617,32 +517,19 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
     ),
     publish_status: publishStatus ?? existing.publish_status,
     updated_at: new Date().toISOString(),
-    // Drive selections are registered as Google Drive-backed references, so
-    // this route records 'google_drive' for them (registerFile's bucket
-    // marker). A row edited without a new pick keeps whatever it had;
-    // uploading an ordinary replacement moves it to that file's real backend
-    // (r2/local, or Bunny for video).
     storage_provider: req.file
-      // Replacements carry their final provider: Bunny for video, object
-      // storage for ordinary uploads, or the 'google_drive' marker for a
-      // registered Drive reference.
+      // Replacements already carry their final provider: Bunny for video,
+      // object storage for documents/images/audio.
       ? (req.file.bucket || storage.backendName())
-      : (existing.storage_provider || 'local'),
-    // A Drive-backed row records WHICH Drive file backs it (registerFile()
-    // returns the canonical id from Drive's own metadata). An ordinary file
-    // upload replaces the Drive reference entirely, so the id is cleared.
-    google_drive_file_id: req.file
-      ? (req.file.driveFileId || null)
-      : ((req.body.google_drive_file_id !== undefined && !req.body.google_drive_file_id)
-        ? null
-        : (existing.google_drive_file_id || null)),
-    google_drive_url: req.file
-      ? (req.file.driveFileId
-        ? (req.body.google_drive_url || `https://drive.google.com/file/d/${req.file.driveFileId}/view`)
-        : null)
-      : ((req.body.google_drive_file_id !== undefined && !req.body.google_drive_file_id)
-        ? null
-        : (existing.google_drive_url || null)),
+      : ((req.body.google_drive_file_id !== undefined)
+        ? (req.body.google_drive_file_id ? 'google_drive' : (existing.storage_provider || 'local'))
+        : (existing.storage_provider || 'local')),
+    google_drive_file_id: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_file_id || null)
+      : (existing.google_drive_file_id || null),
+    google_drive_url: (req.body.google_drive_file_id !== undefined)
+      ? (req.body.google_drive_url || null)
+      : (existing.google_drive_url || null),
     ...fileFields
   };
 
@@ -668,7 +555,7 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
   // Retire the previous object only after the database safely references the
   // successfully uploaded replacement.
   if (req.file) {
-    if (existing.stored_name) deleteFileIfExists(existing.stored_name, existing.storage_provider);
+    if (existing.stored_name) deleteFileIfExists(existing.stored_name);
     if (existing.stream_uid && existing.stream_uid !== req.file.streamUid) stream.deleteVideo(existing.stream_uid).catch(() => {});
   }
 
@@ -679,7 +566,7 @@ router.put('/resources/:id', resourceUpload, asyncHandler(async (req, res) => {
 router.delete('/resources/:id', (req, res) => {
   const existing = db.prepare('SELECT * FROM resources WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ message: 'Resource not found.' });
-  deleteFileIfExists(existing.stored_name, existing.storage_provider);
+  deleteFileIfExists(existing.stored_name);
   // Remove the matching Bunny Stream video too, so deleting a lesson
   // never leaves a paid-for Stream video orphaned in the account.
   if (existing.stream_uid) stream.deleteVideo(existing.stream_uid).catch(() => {});
@@ -969,111 +856,6 @@ router.get('/analytics', (req, res) => {
     mostViewed,
     recentUploads,
     recentActivity
-  });
-});
-
-// ---- Google Drive connection ------------------------------------------------
-//
-// Google Drive is the document SOURCE LIBRARY, not StudyCore's storage. These
-// routes connect ONE Google account so the StudyCore server can read Drive on
-// its own behalf (legacy rows, and verification of picked files) using the
-// SAME GOOGLE_CLIENT_ID/SECRET credentials as the "Select from Google Drive"
-// Picker. Connecting an account never changes where uploads are stored — see
-// lib/google-drive-vault.js and lib/document-storage.js.
-
-router.get('/google-drive/status', (req, res) => {
-  res.json(googleDriveVault.status());
-});
-
-// Temporary Main-Admin production probe for one Drive-backed resource. It
-// exercises the same stored id and server OAuth credential as the viewer, then
-// makes both files.get(metadata) and files.get(alt=media, Range 0-0). The
-// report contains booleans/statuses/scopes/account addresses only — never an
-// access token, refresh token, client secret, API key, authorization header,
-// or raw token response.
-router.post('/google-drive/diagnostics/:resourceId', asyncHandler(async (req, res) => {
-  const row = db.prepare(`
-    SELECT id, title, file_name, stored_name, mime_type, storage_provider,
-           google_drive_file_id, google_drive_url, uploaded_by, uploader_email
-    FROM resources WHERE id = ?
-  `).get(req.params.resourceId);
-  if (!row) return res.status(404).json({ message: 'Resource not found.' });
-
-  const viewerFileId = driveDocuments.fileIdForResource(row);
-  if (!viewerFileId) {
-    return res.status(400).json({
-      message: 'This resource is not a Google Drive-backed document.',
-      database: {
-        resourceId: row.id,
-        storageProvider: row.storage_provider || 'local',
-        storedDriveFileId: row.google_drive_file_id || null,
-        storedName: row.stored_name || null
-      },
-      viewer: { resolvedDriveFileId: null, passesStoredDriveFileId: false }
-    });
-  }
-
-  const google = await googleDriveVault.diagnoseFile(viewerFileId);
-  const report = {
-    database: {
-      resourceId: row.id,
-      resourceTitle: row.title,
-      storageProvider: row.storage_provider || 'local',
-      storedDriveFileId: row.google_drive_file_id || null,
-      storedName: row.stored_name || null
-    },
-    viewer: {
-      resolvedDriveFileId: viewerFileId,
-      passesStoredDriveFileId: viewerFileId === String(row.google_drive_file_id || '').trim()
-    },
-    google
-  };
-  console.info('[StudyCore][DriveDiagnostic] Main-Admin production probe:', JSON.stringify(report));
-  res.setHeader('Cache-Control', 'no-store, private');
-  return res.json({ diagnostic: report });
-}));
-
-// Step 1: redirect the admin's browser to Google's consent screen.
-router.get('/google-drive/connect', (req, res) => {
-  // The state value round-trips through Google so the callback can confirm
-  // this really is a continuation of a request this server issued, not a
-  // forged callback hit directly by a third party.
-  const state = crypto.randomBytes(24).toString('hex');
-  connectStates.set(state, { userId: req.user.id, expiresAt: Date.now() + 10 * 60 * 1000 });
-  let url;
-  try {
-    url = googleDriveVault.getAuthUrl(req, state);
-  } catch (err) {
-    return res.status(err.statusCode || 500).json({ message: err.userSafe ? err.message : 'Could not start the Google Drive connection.' });
-  }
-  res.redirect(url);
-});
-
-// Step 2: Google redirects back here with an authorization code.
-router.get('/google-drive/callback', asyncHandler(async (req, res) => {
-  const { code, state, error } = req.query || {};
-  const record = state && connectStates.get(String(state));
-  if (record) connectStates.delete(String(state));
-
-  const redirectBack = (query) => res.redirect(`/admin.html?${query}#integrations`);
-
-  if (error) return redirectBack(`drive_error=${encodeURIComponent('Google Drive authorization was cancelled.')}`);
-  if (!code || !record || record.expiresAt < Date.now()) {
-    return redirectBack(`drive_error=${encodeURIComponent('That connection link expired. Please try again.')}`);
-  }
-
-  try {
-    await googleDriveVault.handleCallback({ code: String(code), req, userId: record.userId });
-  } catch (err) {
-    return redirectBack(`drive_error=${encodeURIComponent(err.userSafe ? err.message : 'Could not connect Google Drive.')}`);
-  }
-  return redirectBack('drive_connected=1');
-}));
-
-router.post('/google-drive/disconnect', (req, res) => {
-  googleDriveVault.disconnect();
-  res.json({
-    message: 'Google Drive disconnected. Documents published from Google Drive cannot be opened by students until an account is reconnected; nothing in your Google Drive was changed. Ordinary StudyCore uploads are unaffected.'
   });
 });
 

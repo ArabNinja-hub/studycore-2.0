@@ -29,28 +29,6 @@
 
       <section class="section-tight">
         <div class="container">
-          <!-- Integrations -->
-          <div class="card card-pad" style="margin-bottom:28px;" id="integrations">
-            <h3 style="margin-bottom:6px;">Integrations</h3>
-            <p style="margin-bottom:16px;">
-              <strong>Google Drive is your document library, not StudyCore's storage.</strong>
-              Organise your notes, tutorials, past papers and lab reports in your own Google Drive,
-              then use <em>"Select from Google Drive"</em> on the upload form below to bring a file in.
-              StudyCore registers the file you pick and, when a student opens it, its backend reads
-              the original from your Drive with this connection and streams it through the usual
-              login- and subscription-gated viewer. Students are never sent to Google Drive and
-              never see your Drive account, and your original file stays exactly where you put it —
-              StudyCore never moves, edits or deletes it.
-            </p>
-            <p style="margin-bottom:16px;color:var(--muted);font-size:0.86rem;">
-              Files uploaded with the ordinary <strong>Upload</strong> form are plain StudyCore
-              uploads and are <strong>never</strong> copied into Google Drive. Video lessons always
-              go to Bunny Stream and are unaffected by this integration.
-            </p>
-            <div id="driveIntegrationStatus"><p class="loading-text">Checking connection…</p></div>
-            <pre id="driveDiagnosticOutput" hidden aria-live="polite" style="margin:16px 0 0;padding:14px;max-height:480px;overflow:auto;white-space:pre-wrap;border:1px solid var(--border);border-radius:10px;background:var(--surface-soft,#f7f9fb);font-size:0.78rem;line-height:1.5;"></pre>
-          </div>
-
           <!-- Analytics -->
           <div id="adminAnalytics" class="dash-grid" style="margin-bottom:32px;">
             <div class="skeleton skeleton-card span-3" style="height:96px;"></div>
@@ -138,14 +116,6 @@
                 <strong id="dropZoneLabel" style="color:var(--ink);">Drag &amp; drop a file here, or click to browse</strong>
                 <span id="uploadSizeLabel" style="font-size:0.82rem;color:var(--muted);">PDF, Word, PowerPoint, Excel, images, ZIP, video or audio</span>
                 <input type="file" id="fileInput" style="display:none;" />
-              </div>
-              <div style="margin-top:12px;display:flex;flex-direction:column;align-items:center;gap:6px;">
-                <button type="button" class="btn btn-outline btn-sm" id="caSelectDriveBtn" disabled>Select from Google Drive</button>
-                <div id="caDriveStatus" role="status" aria-live="polite" style="font-size:0.8rem;color:var(--muted);">Loading Google Drive…</div>
-                <small style="font-size:0.78rem;color:var(--muted);max-width:460px;text-align:center;">
-                  Picks an existing file from your Google Drive library. StudyCore imports a copy and
-                  serves it through its own viewer — your Drive file is not moved or changed.
-                </small>
               </div>
               <div id="fileChosenLabel" style="margin-top:10px;font-size:0.88rem;color:var(--teal-700);font-weight:600;"></div>
               <div id="uploadProgressWrap" style="display:none;margin-top:10px;max-width:420px;margin-left:auto;margin-right:auto;">
@@ -340,18 +310,6 @@
 
     <div id="siteFooter"></div>
 
-    <script>
-      // Public site config (includes the Google Picker OAuth client id / API
-      // key / project number) so "Select from Google Drive" can initialise.
-      window.STUDYCORE_CONFIG_READY = fetch('/api/config')
-        .then(function (r) { return r.json(); })
-        .then(function (cfg) { window.STUDYCORE_CONFIG = cfg || {}; return window.STUDYCORE_CONFIG; })
-        .catch(function (err) {
-          console.error('[StudyCore] Failed to load /api/config:', err);
-          window.STUDYCORE_CONFIG = {};
-          return window.STUDYCORE_CONFIG;
-        });
-    </script>
     <script src="/js/icons.js"></script>
     <script src="/js/api.js"></script>
     <script src="/js/auth.js"></script>
@@ -365,8 +323,5 @@
          bails out silently when the global is missing. -->
     <script src="/js/quiz-admin.js"></script>
     <script src="/js/admin.js"></script>
-    <!-- Google Drive Picker ("Select from Google Drive"). Loads api.js + GIS
-         and enables #caSelectDriveBtn once the OAuth config is verified. -->
-    <script src="/js/google-picker.js"></script>
   </body>
 </html>

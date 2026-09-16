@@ -3,8 +3,7 @@ const crypto = require('crypto');
 const { Transform } = require('stream');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
-const rawStorage = require('../lib/storage');
-const documentStorage = require('../lib/document-storage');
+const storage = require('../lib/storage');
 const bunnyStream = require('../lib/stream');
 
 // NOTE: .svg / image/svg+xml are deliberately NOT in the allowlist.
@@ -220,17 +219,6 @@ function fileFilter(req, file, cb) {
 // the first bytes for the magic-byte check. The whole object is never
 // buffered in this process.
 class ObjectStorage {
-  // `backend` decides where non-video bytes for THIS multer instance land.
-  // Neither backend ever writes to Google Drive: an "Upload Document" is a
-  // plain StudyCore upload and is never copied into anybody's Drive.
-  // - documentStorage (default): resource files (notes/tutorials/past
-  //   papers/lab reports) — StudyCore object storage (R2, or local disk).
-  // - rawStorage: avatars and quiz question images. Small, app-managed
-  //   assets rather than "documents", also on R2/local.
-  constructor(backend) {
-    this.backend = backend || documentStorage;
-  }
-
   _handleFile(req, file, cb) {
     const ext = extensionFor(file);
     const key = `${uuidv4()}${ext}`;
@@ -297,21 +285,14 @@ class ObjectStorage {
       });
     }
 
-    // Documents (PDFs, office files, past papers, images, archives, audio)
-    // go through this instance's backend, which is StudyCore's own object
-    // storage (R2, or local disk in development). Google Drive is a source
-    // you import FROM, never an upload destination. See
-    // lib/document-storage.js.
-    const backend = this.backend;
-    backend.putObject({
+    storage.putObject({
       key,
       body: hashingPassThrough,
-      contentType: file.mimetype,
-      fileName: file.originalname || key
+      contentType: file.mimetype
     })
-      .then((written) => {
+      .then(() => {
         if (!matchesSignature(head.subarray(0, headLen), ext)) {
-          return backend.deleteObject(written.key, written.backend).then(() => {
+          return storage.deleteObject(key).then(() => {
             const err = new Error('The uploaded file does not match its file type. Please check the file and try again.');
             err.statusCode = 400;
             err.userSafe = true;
@@ -319,10 +300,10 @@ class ObjectStorage {
           });
         }
         cb(null, {
-          key: written.key,
+          key,
           size,
           contentHash: hash.digest('hex'),
-          bucket: written.backend
+          bucket: storage.backendName()
         });
       })
       .catch((err) => cb(err));
@@ -333,7 +314,7 @@ class ObjectStorage {
       return bunnyStream.deleteVideo(file.streamUid).then(() => cb(null)).catch((err) => cb(err));
     }
     if (!file.key) return cb(null);
-    this.backend.deleteObject(file.key, file.bucket)
+    storage.deleteObject(file.key)
       .then(() => cb(null))
       .catch((err) => cb(err));
   }
@@ -341,18 +322,8 @@ class ObjectStorage {
 
 const maxMb = resolveMaxUploadMb();
 
-// Resource uploads (notes/tutorials/past papers/lab reports/lessons). Stored
-// in StudyCore's own storage; never sent to Google Drive.
 const upload = multer({
-  storage: new ObjectStorage(documentStorage),
-  fileFilter,
-  limits: { fileSize: maxMb * 1024 * 1024 }
-});
-
-// Quiz question images are small, app-managed assets rather than course
-// documents. Like every other upload they stay on R2/local.
-const assetUpload = multer({
-  storage: new ObjectStorage(rawStorage),
+  storage: new ObjectStorage(),
   fileFilter,
   limits: { fileSize: maxMb * 1024 * 1024 }
 });
@@ -376,7 +347,7 @@ function avatarFileFilter(req, file, cb) {
 }
 
 const avatarUpload = multer({
-  storage: new ObjectStorage(rawStorage),
+  storage: new ObjectStorage(),
   fileFilter: avatarFileFilter,
   limits: { fileSize: AVATAR_MAX_BYTES }
 });
@@ -384,4 +355,4 @@ const avatarUpload = multer({
 // matchesSignature is exported for tests: the magic-byte rules decide whether
 // a legitimate upload is kept or deleted, so they need to be verifiable
 // directly rather than only through a full multipart round trip.
-module.exports = { upload, assetUpload, avatarUpload, ALLOWED_EXTENSIONS, VIDEO_EXTENSIONS, resolveMaxUploadMb, matchesSignature };
+module.exports = { upload, avatarUpload, ALLOWED_EXTENSIONS, VIDEO_EXTENSIONS, resolveMaxUploadMb, matchesSignature };

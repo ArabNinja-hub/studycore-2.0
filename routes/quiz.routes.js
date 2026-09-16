@@ -28,7 +28,7 @@ const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { assetUpload } = require('../middleware/upload');
+const { upload } = require('../middleware/upload');
 const storage = require('../lib/storage');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const { programCanSeeResource, resourceVisibilityClause, resolveCourse, validProgramCode, targetingForResource } = require('../lib/program-access');
@@ -400,7 +400,7 @@ router.get('/:id/manage', requireAuth, requireRole(...AUTHOR_ROLES), (req, res) 
 // (scripts/foreignObject) - a stored XSS vector when rendered in the quiz.
 const QUIZ_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 
-router.post('/image', requireAuth, requireRole(...AUTHOR_ROLES), assetUpload.single('image'), (req, res) => {
+router.post('/image', requireAuth, requireRole(...AUTHOR_ROLES), upload.single('image'), (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'Choose an image to upload.' });
   const mime = String(req.file.mimetype || '').toLowerCase();
   if (!QUIZ_IMAGE_MIMES.has(mime)) {

@@ -119,8 +119,6 @@ function resourceHref(resource, subjectFallback) {
 }
 SC.resourceHref = resourceHref;
 SC.isViewerCategory = isViewerCategory;
-SC.CATEGORY_LABELS = CATEGORY_LABELS;
-SC.subjectSlug = subjectSlug;
 
 function formatFileSize(bytes) {
   if (!bytes) return '';
