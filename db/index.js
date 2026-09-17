@@ -585,7 +585,7 @@ try {
       WHEN 'video' THEN 'Video'
       WHEN 'past_paper' THEN 'Past Paper'
       WHEN 'lab_report' THEN 'Lab Report'
-      WHEN 'tutorial' THEN 'Study Guide'
+      WHEN 'tutorial' THEN 'Tutorial Sheet'
       WHEN 'announcement' THEN 'Announcement'
       WHEN 'quiz' THEN 'Quiz'
       WHEN 'assignment' THEN 'Assignment'
