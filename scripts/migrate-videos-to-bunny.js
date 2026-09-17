@@ -28,7 +28,16 @@ async function migrate(row) {
   if (!row.stored_name || !['local', 'r2'].includes(row.storage_provider || 'local')) return;
   if (!apply) { log(row, null, 'dry-run', 'not-started', 'not-verified'); return; }
 
-  const source = await storage.getObject(row.stored_name);
+  // Read the source from the SAME backend the row was stored in, not from
+  // whatever backend is globally configured. In production R2 is configured,
+  // so storage.getObject() looks in R2 for EVERY key — correct for 'r2' rows
+  // but wrong for 'local' rows whose bytes live on the Render persistent disk
+  // (DATA_DIR/uploads). Dispatch on the recorded provider so local videos are
+  // read from disk and R2 videos from R2.
+  const provider = row.storage_provider || 'local';
+  const source = provider === 'r2'
+    ? await storage.getObject(row.stored_name)
+    : await storage.getLocalObject(row.stored_name);
   const video = await bunny.uploadFromStream(source.body, { name: row.title, fileName: row.file_name, contentLength: source.contentLength });
   log(row, video.uid, 'uploaded', video.status, 'waiting');
   const started = Date.now();
