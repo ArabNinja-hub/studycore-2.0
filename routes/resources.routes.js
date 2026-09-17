@@ -24,11 +24,13 @@ function streamPlaybackFor(row, opts) {
   if (!row || !row.stream_uid || !stream.isConfigured()) return null;
   const iframe = stream.iframeUrl(row.stream_uid, opts || {});
   if (!iframe) return null;
+  const ready = (row.stream_status || 'ready') === 'ready';
   return {
     uid: row.stream_uid,
     status: row.stream_status || 'ready',
-    ready: (row.stream_status || 'ready') === 'ready',
-    iframe,
+    ready,
+    processing: !ready,
+    iframe: ready ? iframe : null,
     // The raw HLS manifest URL is deliberately NOT sent to the browser.
     // Nothing in the front-end plays it (the Bunny iframe player fetches
     // its own manifest inside the frame), so shipping it only published a
@@ -610,6 +612,15 @@ async function handleStream(req, res) {
         expired: check.reason === 'expired'
       });
     }
+  }
+
+  // Bunny-backed videos are never proxied through Render. A queued/failed
+  // encode is an explicit state, not permission to fall back to old storage.
+  if (row.stream_uid) {
+    return res.status(row.stream_status === 'error' ? 502 : 409).json({
+      message: row.stream_status === 'error' ? 'Video processing failed.' : 'Video is still processing.',
+      processing: row.stream_status !== 'error'
+    });
   }
 
   if (!row.stored_name && !row.google_drive_file_id) return res.status(404).json({ message: 'This resource has no previewable file.' });
