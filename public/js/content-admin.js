@@ -288,11 +288,19 @@
   // Where each storage category surfaces for students, mirroring the course
   // and study pages (routes/courses.routes.js, routes/programs.routes.js).
   const PLACEMENT_NOTES = {
-    document: 'Lands in the Notes slot of the chosen term.',
-    tutorial: 'Lands in the Tutorial sheets slot of the chosen term — its own section, separate from notes.',
-    past_paper: 'Lands in the Past papers section of the course.',
-    lab_report: 'Lands in the Lab reports section of the course.',
-    video: 'Lands in the Video lessons slot of the chosen term.'
+    document: 'Notes · grouped inside the selected course term.',
+    tutorial: 'Tutorial sheets · grouped inside the selected course term, separate from notes.',
+    past_paper: 'Past papers · grouped in the course Past papers shelf by exam year / sitting.',
+    lab_report: 'Lab reports · grouped in the course Lab reports shelf by practical session.',
+    video: 'Video lessons · grouped inside the selected course term.'
+  };
+
+  const DESTINATION_META = {
+    document: { title: 'Course → Term → Notes', icon: 'file-text' },
+    tutorial: { title: 'Course → Term → Tutorial sheets', icon: 'book-open' },
+    past_paper: { title: 'Course → Past papers → Exam year', icon: 'file' },
+    lab_report: { title: 'Course → Lab reports → Practical session', icon: 'flask' },
+    video: { title: 'Course → Term → Video lessons', icon: 'video' }
   };
 
   function categoryForType(resourceType) {
@@ -331,6 +339,30 @@
       const placement = PLACEMENT_NOTES[category] || '';
       placementNote.textContent = placement;
       placementNote.hidden = !placement;
+    }
+
+    const destination = DESTINATION_META[category] || DESTINATION_META.document;
+    const destinationTitle = $('#caDestinationTitle');
+    const destinationText = $('#caDestinationText');
+    const destinationIcon = $('#caDestinationIcon');
+    if (destinationTitle) destinationTitle.textContent = destination.title;
+    if (destinationText) destinationText.textContent = `This ${TYPE_META[resourceType]?.label || 'resource'} will be filed here after publishing.`;
+    if (destinationIcon) destinationIcon.innerHTML = icon(destination.icon, 17);
+
+    // Make the extra filing key explicit for the shelves that are not term based.
+    const levelField = $('#caYearLevelField');
+    const levelLabel = levelField ? levelField.querySelector('label') : null;
+    const levelInput = $('#caYearLevel');
+    const needsShelfKey = category === 'past_paper' || category === 'lab_report';
+    if (levelField && levelLabel && levelInput) {
+      levelField.hidden = false;
+      levelInput.required = needsShelfKey;
+      levelLabel.innerHTML = category === 'past_paper'
+        ? 'Exam year / sitting <span class="ca-required">*</span>'
+        : category === 'lab_report'
+          ? 'Practical / lab session <span class="ca-required">*</span>'
+          : 'Year / level <span style="font-weight:400;color:var(--muted);">(optional)</span>';
+      levelInput.placeholder = category === 'past_paper' ? 'e.g. 2025 June' : category === 'lab_report' ? 'e.g. Practical 3' : 'e.g. Year 1, 2026';
     }
 
     const accessNote = $('#caAccessNote');
@@ -434,6 +466,11 @@
     // its term. Past papers (filed by year) and lab reports (filed by lab
     // session) are exempt.
     const category = categoryForType($('#caResourceType').value);
+    if ((category === 'past_paper' || category === 'lab_report') && !$('#caYearLevel').value.trim()) {
+      return category === 'past_paper'
+        ? 'Add the exam year or sitting so students find this paper in the correct shelf.'
+        : 'Add the practical or lab session so students find this report in the correct shelf.';
+    }
     if (termAppliesTo(category) && !$('#caTerm').value) {
       const label = ($('#caResourceType').selectedOptions[0] || {}).text || 'this resource';
       return `Choose Term 1, Term 2, or Term 3 so students find this ${label.toLowerCase()} under the right term.`;
