@@ -61,7 +61,11 @@
     // still owns resume position, progress reporting and 90%-completion via
     // the Stream Player SDK. Falls through to the progressive player below
     // when the lesson has no Stream video.
-    if (o.streamPlayback && o.streamPlayback.iframe) {
+    if (o.streamPlayback) {
+      if (!o.streamPlayback.ready || !o.streamPlayback.iframe) {
+        container.innerHTML = '<div class="player-shell"><div class="player-state"><h3>Video processing</h3><p>This video is still being prepared. Please try again shortly.</p></div></div>';
+        return { destroy() {} };
+      }
       return initStream(container, o);
     }
 
