@@ -22,6 +22,7 @@
     notes: { label: 'Notes', category: 'document', icon: 'file-text' },
     past_paper: { label: 'Past Paper', category: 'past_paper', icon: 'file' },
     lab_report: { label: 'Lab Report', category: 'lab_report', icon: 'flask' },
+    tutorial_sheet: { label: 'Tutorial Sheet', category: 'tutorial', icon: 'file-text' },
     study_guide: { label: 'Study Guide', category: 'tutorial', icon: 'book-open' },
     lecture_material: { label: 'Lecture Material', category: 'document', icon: 'file-text' },
     document: { label: 'Document', category: 'document', icon: 'file-text' },
@@ -277,10 +278,21 @@
     lecture_material: 'document',
     document: 'document',
     other: 'document',
+    tutorial_sheet: 'tutorial',
     study_guide: 'tutorial',
     past_paper: 'past_paper',
     lab_report: 'lab_report',
     video: 'video'
+  };
+
+  // Where each storage category surfaces for students, mirroring the course
+  // and study pages (routes/courses.routes.js, routes/programs.routes.js).
+  const PLACEMENT_NOTES = {
+    document: 'Lands in the Notes slot of the chosen term.',
+    tutorial: 'Lands in the Tutorial sheets slot of the chosen term — its own section, separate from notes.',
+    past_paper: 'Lands in the Past papers section of the course.',
+    lab_report: 'Lands in the Lab reports section of the course.',
+    video: 'Lands in the Video lessons slot of the chosen term.'
   };
 
   function categoryForType(resourceType) {
@@ -310,6 +322,16 @@
     $('#caFileHelp').textContent = isVideo
       ? 'Video resources must be assigned to Term 1, Term 2, or Term 3.'
       : 'To upload a video, select the Video resource type first.';
+
+    // Tell the uploader which student-facing shelf this type lands on. The
+    // `tutorial` category is rendered by the "Tutorial sheets" slot of the
+    // course and study pages, separately from notes.
+    const placementNote = $('#caPlacementNote');
+    if (placementNote) {
+      const placement = PLACEMENT_NOTES[category] || '';
+      placementNote.textContent = placement;
+      placementNote.hidden = !placement;
+    }
 
     const accessNote = $('#caAccessNote');
     if (accessNote) {

@@ -144,12 +144,16 @@
                     <option value="notes">Notes</option>
                     <option value="past_paper">Past Paper</option>
                     <option value="lab_report">Lab Report</option>
+                    <option value="tutorial_sheet">Tutorial Sheet</option>
                     <option value="study_guide">Study Guide</option>
                     <option value="lecture_material">Lecture Material</option>
                     <option value="document">Document</option>
                     <option value="video">Video</option>
                     <option value="other">Other</option>
                   </select>
+                  <!-- Says where students will actually find this upload, so
+                       a tutorial sheet is never filed as generic notes. -->
+                  <small class="ca-help" id="caPlacementNote" hidden></small>
                   <!-- Tells the uploader which access rule this type carries,
                        so nobody expects a premium lock on free study material. -->
                   <small class="ca-help" id="caAccessNote" hidden></small>

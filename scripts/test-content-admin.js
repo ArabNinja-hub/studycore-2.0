@@ -300,6 +300,48 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.equal(studentSearch.response.status, 200);
     assert.equal(studentSearch.data.authenticated, true, 'student search keeps its authenticated program-aware path');
 
+    // A Content Admin can publish a TUTORIAL SHEET from the upload form, and
+    // it must be stored in the `tutorial` category so students find it in the
+    // tutorial sheets slot of the term — never merged into notes.
+    const sheetUpload = await call(baseUrl, 'POST', '/api/content-admin/resources', {
+      cookie: alice.cookie,
+      body: uploadBody(course, {
+        resourceType: 'tutorial_sheet',
+        title: 'Contract Law tutorial sheet 1',
+        semester: 'Term 1'
+      })
+    });
+    assert.equal(sheetUpload.response.status, 201, sheetUpload.raw);
+    const sheetId = sheetUpload.data.resource.id;
+    assert.equal(sheetUpload.data.resource.resourceType, 'Tutorial Sheet');
+    const storedSheet = db.prepare('SELECT category, resource_type, semester, is_premium FROM resources WHERE id = ?').get(sheetId);
+    assert.equal(storedSheet.category, 'tutorial');
+    assert.equal(storedSheet.resource_type, 'Tutorial Sheet');
+    assert.equal(storedSheet.semester, 'Term 1');
+    // Tutorial sheets follow the free study-material policy.
+    assert.equal(storedSheet.is_premium, 0);
+
+    // …and the student-facing study view lists it under `tutorials`, not `notes`.
+    const studyView = await call(
+      baseUrl,
+      'GET',
+      `/api/programs/course/${encodeURIComponent(course.code)}?view=study&term=${encodeURIComponent('Term 1')}`,
+      { cookie: studentCookie }
+    );
+    assert.equal(studyView.response.status, 200, studyView.raw);
+    assert.ok(
+      (studyView.data.tutorials || []).some((item) => item.id === sheetId),
+      'a published tutorial sheet lands in the tutorial sheets slot'
+    );
+    assert.ok(
+      !(studyView.data.notes || []).some((item) => item.id === sheetId),
+      'a tutorial sheet is never filed with the notes'
+    );
+    assert.equal(
+      (await call(baseUrl, 'DELETE', `/api/content-admin/resources/${encodeURIComponent(sheetId)}`, { cookie: alice.cookie })).response.status,
+      200
+    );
+
     // The uploader can remove their own resource without affecting the shared
     // resource system or another uploader's ownership boundary.
     const disposableUpload = await call(baseUrl, 'POST', '/api/content-admin/resources', {
