@@ -169,6 +169,11 @@ public/js/player.js     StudyCore video player (custom controls, resume, progres
 public/js/privacy-guard.js  content privacy on learning pages: copy/print/capture blocks
                             (see docs/content-protection.md)
 public/js/hero.js       per-course canvas hero animations (math/physics/chem/bio/code/comm)
+public/js/auth-stage.js animated backdrop behind login / signup / admin signup, and the
+                        rotating study line above the card (decoration only - the form
+                        works unchanged if it never loads)
+public/css/auth.css     the auth "study desk" stage: navy gradient, drifting graph paper,
+                        aurora, course glyphs, and the glass card that sits on it
 public/js/video.js      Video Lessons page (/pages/videos.html) — per-course, per-term
 public/pages/community.html  the community room UI (chat column + members rail + composer)
 public/js/community.js  room logic: SSE + catch-up polling, bubbles, replies, reactions, pins
