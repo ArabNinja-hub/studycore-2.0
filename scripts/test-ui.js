@@ -458,3 +458,168 @@ test('the notification panel can actually become visible', () => {
   assert.match(openRule, /pointer-events:\s*auto/);
   assert.match(openRule, /opacity:\s*1/);
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Auth stage (css/auth.css + js/auth-stage.js).
+//
+// The backdrop behind Log in / Create account / Create admin account. It
+// is pure decoration, which is exactly why it needs locking down: the one
+// way a background like this does real damage is by getting between a
+// student and the form, or by burning a cheap phone's battery.
+// ─────────────────────────────────────────────────────────────────────
+
+const AUTH_PAGES = ['public/login.html', 'public/signup.html', 'public/content-admin-signup.html'];
+
+test('every auth screen loads the same shared stage', () => {
+  for (const page of AUTH_PAGES) {
+    const html = read(page);
+    assert.match(html, /<body data-page="auth">/, `${page}: the stage keys off data-page="auth"`);
+    assert.match(html, /<link rel="stylesheet" href="\/css\/auth\.css" \/>/, `${page}: stage stylesheet`);
+    assert.match(html, /<script src="\/js\/auth-stage\.js" defer><\/script>/, `${page}: stage script, deferred`);
+
+    // One shell wrapping the lockup, the rotating line and the card, so all
+    // three move together between the screens.
+    assert.match(html, /<div class="auth-shell">/, `${page}: the form column is one object`);
+    assert.match(html, /class="auth-mark"/, `${page}: brand lockup`);
+    assert.match(html, /data-auth-rotator/, `${page}: rotating study line`);
+
+    // The first line is server-rendered inside the element, so the page
+    // reads correctly with JavaScript disabled or still loading.
+    const rotator = html.match(/<p\s[\s\S]*?data-auth-rotator[\s\S]*?<\/p>/);
+    assert.ok(rotator, `${page}: rotator markup`);
+    assert.match(rotator[0], /<span>[^<]+<\/span>/, `${page}: the first line is in the HTML, not injected`);
+    const lines = JSON.parse(rotator[0].match(/data-lines='([\s\S]*?)'/)[1]);
+    assert.ok(lines.length >= 3, `${page}: enough lines to be worth rotating`);
+    assert.ok(lines.includes(rotator[0].match(/<span>([^<]+)<\/span>/)[1]), `${page}: the rendered line is one of the rotation`);
+  }
+});
+
+test('the auth stage is decoration that can never block the form', () => {
+  const css = read('public/css/auth.css');
+  const js = read('public/js/auth-stage.js');
+
+  // Inert: no pointer events, no text selection, hidden from assistive tech.
+  assert.match(css, /\.auth-stage\s*\{[\s\S]*?pointer-events: none/);
+  assert.match(css, /\.auth-stage\s*\{[\s\S]*?user-select: none/);
+  assert.match(js, /stage\.setAttribute\('aria-hidden', 'true'\)/);
+
+  // Behind the content, and the content is explicitly above it. The stage
+  // sits at z-index:-1, which only stays inside the page because <body> is
+  // made a stacking context — without that it paints behind body's own
+  // background and disappears entirely.
+  assert.match(css, /\.auth-stage\s*\{[\s\S]*?z-index: -1/);
+  assert.match(css, /body\[data-page='auth'\]\s*\{[\s\S]*?isolation: isolate/);
+  assert.match(css, /body\[data-page='auth'\] main\s*\{[\s\S]*?z-index: 1/);
+
+  // The card must not clip: the focus ring on the first and last field is a
+  // box-shadow, and `overflow: hidden` here would shave it off. Comments are
+  // stripped first — the note next to the rule quotes the very pattern it is
+  // warning against, the same way the grid-track check above has to.
+  const cardRule = css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .match(/body\[data-page='auth'\] \.auth-card \{[^}]*\}/)[0];
+  assert.doesNotMatch(cardRule, /overflow:\s*hidden/, 'clipping the card cuts off the input focus rings');
+});
+
+test('the auth stage backs off for slow phones and reduced motion', () => {
+  const js = read('public/js/auth-stage.js');
+  const css = read('public/css/auth.css');
+
+  // The same data-plan test the hero slideshow uses, plus a memory check.
+  assert.match(js, /saveData/);
+  assert.match(js, /'slow-2g', '2g'/);
+  assert.match(js, /deviceMemory/);
+  assert.match(js, /prefers-reduced-motion/);
+
+  // The expensive layers (the sweep and the glyph field) are the ones that
+  // get dropped, and the calm stage keeps the gradient + ruling.
+  assert.match(js, /if \(!calm\) \{/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.auth-beam, \.auth-glyphs \{ display: none/);
+
+  // A backgrounded tab must not keep animating.
+  assert.match(js, /visibilitychange/);
+  assert.match(css, /\.auth-stage\.is-paused \* \{ animation-play-state: paused; \}/);
+});
+
+test('the auth stage only animates compositor-friendly properties', () => {
+  const css = read('public/css/auth.css');
+  // Anything animating width/height/top/left/background/box-shadow forces
+  // layout or paint on every frame — behind a form a student is typing in,
+  // that is a stutter they will feel.
+  const keyframes = [...css.matchAll(/@keyframes\s+[\w-]+\s*\{([\s\S]*?)\n\}/g)];
+  assert.ok(keyframes.length >= 5, 'expected the stage keyframes');
+  for (const [block] of keyframes) {
+    const properties = [...block.matchAll(/^\s*(?:[\w%,\s.]+\{)?\s*([a-z-]+)\s*:/gm)].map((m) => m[1]);
+    for (const property of properties) {
+      assert.ok(
+        ['transform', 'opacity'].includes(property),
+        `auth.css keyframes may only animate transform/opacity, found "${property}"`
+      );
+    }
+  }
+});
+
+test('the glyph field is parked outside the form column', () => {
+  const js = read('public/js/auth-stage.js');
+  // Positions are anchored to the margin beside the 440px column, not to
+  // the viewport, so no glyph can drift under the inputs on any width...
+  assert.match(js, /const COLUMN_PX = 440/);
+  assert.match(js, /\(100vw - \$\{COLUMN_PX \+ COLUMN_GUTTER_PX \* 2\}px\) \/ 2/);
+  for (const glyph of js.match(/const GLYPHS = \[([\s\S]*?)\n  \];/)[1].split('\n').filter((l) => l.includes('icon:'))) {
+    assert.match(glyph, /side: '(left|right)'/, `each glyph picks a margin: ${glyph.trim()}`);
+  }
+  // ...and below the width where a margin exists at all, they stand down.
+  assert.match(js, /const GLYPH_MIN_WIDTH = 1024/);
+  assert.match(js, /if \(hasRoomForGlyphs\(\)\)/);
+});
+
+test('moving between the auth screens keeps one continuous background', () => {
+  const css = read('public/css/auth.css');
+  const js = read('public/js/auth-stage.js');
+
+  // The flat navy is on <html> as well, so it is already painted during the
+  // navigation itself — that is what removes the white flash between pages.
+  assert.match(js, /document\.documentElement\.style\.backgroundColor/);
+  assert.match(css, /body\[data-page='auth'\]\s*\{[\s\S]*?background: #07131f/);
+
+  // Arriving from the other auth screen, the stage appears instantly
+  // instead of fading up a second time.
+  assert.match(js, /CONTINUITY_KEY/);
+  assert.match(css, /\.auth-stage\.is-instant > \* \{ transition: none; \}/);
+
+  // The shared body-level page transition would drag the whole desk with
+  // it (and a transform on <body> would re-parent the fixed stage), so on
+  // these pages the shell alone animates.
+  assert.match(css, /body\[data-page='auth'\]\.sc-page-leave,[\s\S]*?\{\s*animation: none;/);
+  assert.match(css, /body\[data-page='auth'\]\.sc-page-leave \.auth-shell/);
+  // Chromium's native cross-document view transition needs standing down
+  // for the same reason.
+  assert.match(css, /::view-transition-old\(root\),[\s\S]*?::view-transition-new\(root\)\s*\{\s*animation: none/);
+});
+
+test('the auth stage costs no extra bytes on the wire', () => {
+  const js = read('public/js/auth-stage.js');
+  const css = read('public/css/auth.css');
+  // No images, fonts, or canvas: the whole backdrop is CSS gradients plus
+  // inline SVG from the icon system already on the page.
+  assert.doesNotMatch(css, /url\((?!["']?data:)/, 'the stage must not fetch any asset');
+  assert.doesNotMatch(js, /new Image\(|fetch\(|XMLHttpRequest|createElement\('canvas'\)/);
+  // The glyphs come from the one shared icon family, not a second set.
+  assert.match(js, /global\.SC\.icon\(g\.icon/);
+  assert.match(js, /if \(!global\.SC \|\| typeof global\.SC\.icon !== 'function'\) return null;/);
+});
+
+test('the site chrome is re-tinted for the dark auth stage', () => {
+  const css = read('public/css/auth.css');
+  // The navbar and mobile dock are light glass built for the pale --bg. On
+  // the navy desk they need re-tinting or the labels go grey-on-grey. Dark
+  // theme already ships correct glass, so the overrides must exclude it.
+  for (const selector of ['.navbar', '.mob-tabs', '.nav-item a.nav-link', '.icon-btn']) {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(
+      css,
+      new RegExp(`body\\[data-page='auth'\\]:not\\(\\[data-theme='dark'\\]\\) ${escaped}`),
+      `${selector} needs a light-theme re-tint on the dark stage`
+    );
+  }
+});

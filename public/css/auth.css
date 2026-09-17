@@ -1,0 +1,463 @@
+/* =============================================
+   STUDYCORE — Auth stage (css/auth.css)
+   ---------------------------------------------
+   The screen behind Log in / Create account / Create admin account.
+
+   The idea is a STUDY DESK AT NIGHT, not a generic gradient: deep navy
+   paper, faint graph-paper ruling drifting under everything, two slow
+   teal auroras (the same brand light the home and course heroes use),
+   one long light sweep, and a handful of course glyphs floating far
+   behind the form.
+
+   Rules this file holds itself to, because auth is the first screen a
+   student on a cheap Android sees:
+
+     1. ONLY `opacity` and `transform` are ever animated, so every loop
+        stays on the compositor and nothing repaints while the student
+        is typing.
+     2. The flat navy lives on <html> (painted by js/auth-stage.js) as
+        well as <body>. That is what kills the white flash between
+        /login.html and /signup.html — the colour is already on screen
+        before the new document has any elements, so the two pages read
+        as one desk where only the card swaps out.
+     3. Everything decorative is built by js/auth-stage.js and is skipped
+        for prefers-reduced-motion and Save-Data / 2G. With no JavaScript
+        at all the page still gets the full navy background below.
+     4. Nothing here is interactive: the stage is pointer-events:none and
+        aria-hidden, so it can never sit between a student and the form.
+   ============================================= */
+
+/* ── The page surface ───────────────────────────
+   A flat colour (not the gradient) so it is on screen at first paint and
+   survives the gap between two documents; the gradient rides on the stage.
+
+   `isolation: isolate` matters: it makes <body> a stacking context, so the
+   z-index:-1 stage below paints INSIDE it — above body's own background and
+   below every piece of content. Without it the stage would paint behind
+   body's background and disappear. */
+body[data-page='auth'] {
+  background: #07131f;
+  isolation: isolate;
+}
+body[data-theme='dark'][data-page='auth'] {
+  background: #040c15;
+}
+/* The form always sits above the decoration. */
+body[data-page='auth'] main {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── The stage ──────────────────────────────────
+   Fixed, so a long signup form scrolls over a steady backdrop instead of
+   dragging a full-height gradient up the screen. */
+.auth-stage {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  background:
+    radial-gradient(120% 78% at 50% -18%, rgba(27, 67, 104, 0.85), transparent 62%),
+    radial-gradient(90% 70% at 92% 108%, rgba(13, 95, 85, 0.55), transparent 66%),
+    linear-gradient(168deg, #07131f 0%, #0b2033 46%, #0a2b33 100%);
+}
+body[data-theme='dark'] .auth-stage {
+  background:
+    radial-gradient(120% 78% at 50% -18%, rgba(18, 49, 78, 0.80), transparent 62%),
+    radial-gradient(90% 70% at 92% 108%, rgba(13, 95, 85, 0.42), transparent 66%),
+    linear-gradient(168deg, #040c15 0%, #071a2a 48%, #06212a 100%);
+}
+/* The decorative layers fade up once js/auth-stage.js has built them, so
+   they arrive with the card rather than popping in a frame late. */
+.auth-stage > * {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.auth-stage.is-live > * { opacity: 1; }
+/* Arriving from the OTHER auth screen, the desk was already lit — it must
+   not fade up again, or moving between Log in and Sign up would pulse the
+   whole background instead of just swapping the card. */
+.auth-stage.is-instant > * { transition: none; }
+/* A backgrounded tab must not keep a phone's GPU busy on decoration. */
+.auth-stage.is-paused * { animation-play-state: paused; }
+
+/* Aurora — two large, soft colour fields on independent long loops. No
+   blur() filter: the radial gradients are already soft, and a filtered
+   full-screen layer is the one thing that reliably costs frames on a
+   mid-range Android. */
+.auth-aurora {
+  inset: -28%;
+  background:
+    radial-gradient(38% 46% at 24% 26%, rgba(43, 179, 163, 0.30), transparent 68%),
+    radial-gradient(34% 44% at 78% 72%, rgba(15, 140, 127, 0.26), transparent 70%),
+    radial-gradient(28% 34% at 62% 16%, rgba(245, 166, 35, 0.10), transparent 72%);
+  animation: auth-aurora-drift 34s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.auth-aurora::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(30% 38% at 84% 22%, rgba(27, 67, 104, 0.55), transparent 70%),
+    radial-gradient(32% 40% at 14% 82%, rgba(13, 95, 85, 0.32), transparent 72%);
+  animation: auth-aurora-drift 46s ease-in-out infinite alternate-reverse;
+}
+@keyframes auth-aurora-drift {
+  from { transform: translate3d(-2.4%, -1.6%, 0) scale(1); }
+  to   { transform: translate3d(2.6%, 2.2%, 0) scale(1.08); }
+}
+
+/* Graph paper. A fine ruling inside a heavier one, panning by exactly one
+   major square (76px) so the loop is seamless. The pan distance is a plain
+   literal, not a custom property: `var()` inside @keyframes can drop an
+   animation off the compositor in some engines, and this layer covers the
+   whole screen. The layer is larger than the viewport and masked toward the
+   middle, so the ruling never shows a hard edge and never fights the card. */
+.auth-grid {
+  inset: -120px;
+  background-image:
+    linear-gradient(to right, rgba(226, 240, 250, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(226, 240, 250, 0.055) 1px, transparent 1px),
+    linear-gradient(to right, rgba(226, 240, 250, 0.022) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(226, 240, 250, 0.022) 1px, transparent 1px);
+  background-size: 76px 76px, 76px 76px, 19px 19px, 19px 19px;
+  -webkit-mask-image: radial-gradient(96% 78% at 50% 42%, #000 6%, rgba(0, 0, 0, 0.35) 52%, transparent 84%);
+  mask-image: radial-gradient(96% 78% at 50% 42%, #000 6%, rgba(0, 0, 0, 0.35) 52%, transparent 84%);
+  animation: auth-grid-pan 96s linear infinite;
+  will-change: transform;
+}
+@keyframes auth-grid-pan {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(-76px, -76px, 0); }
+}
+
+/* One long, very faint sweep of light across the desk. */
+.auth-beam {
+  inset: -40% -60%;
+  background: linear-gradient(104deg,
+    transparent 34%,
+    rgba(43, 179, 163, 0.10) 47%,
+    rgba(226, 240, 250, 0.07) 50%,
+    rgba(43, 179, 163, 0.10) 53%,
+    transparent 66%);
+  animation: auth-beam-sweep 26s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
+}
+@keyframes auth-beam-sweep {
+  0%   { transform: translate3d(-26%, 0, 0); opacity: 0; }
+  18%  { opacity: 1; }
+  72%  { opacity: 1; }
+  100% { transform: translate3d(26%, 0, 0); opacity: 0; }
+}
+
+/* Course glyphs drifting far behind the form — maths, physics, chemistry,
+   biology, code, communication, drawn from the one shared icon set so the
+   backdrop speaks StudyCore's own vocabulary instead of stock sparkles.
+   Positions come from a designed table in js/auth-stage.js (never random),
+   anchored to the empty margins either side of the form column so none can
+   drift under the inputs, and each glyph breathes on its own long, offset
+   loop. The -50% in the keyframes keeps each one centred on its coordinate
+   — it has to live in the transform, because the transform is what the
+   animation replaces. */
+.auth-glyphs { inset: 0; }
+.auth-glyph {
+  position: absolute;
+  left: var(--gx, 50%);
+  top: var(--gy, 50%);
+  color: rgba(226, 240, 250, 0.16);
+  animation: auth-glyph-float var(--gd, 22s) ease-in-out var(--gdelay, 0s) infinite alternate;
+  will-change: transform, opacity;
+}
+.auth-glyph:nth-child(3n) { color: rgba(43, 179, 163, 0.26); }
+.auth-glyph:nth-child(5n) { color: rgba(245, 166, 35, 0.16); }
+@keyframes auth-glyph-float {
+  from { transform: translate3d(-50%, 14px, 0) rotate(-5deg) scale(0.94); opacity: 0.45; }
+  to   { transform: translate3d(-50%, -20px, 0) rotate(5deg) scale(1.06); opacity: 1; }
+}
+/* The soft halo is a per-element filter, so it stays on desktop. */
+@media (min-width: 900px) {
+  .auth-glyph { filter: drop-shadow(0 6px 22px rgba(8, 23, 38, 0.55)); }
+}
+
+/* Burnt-in vignette: guarantees the card's contrast whatever the aurora is
+   doing underneath, and dissolves the stage into the page edges. */
+.auth-vignette {
+  inset: 0;
+  background:
+    radial-gradient(118% 92% at 50% 44%, transparent 34%, rgba(4, 12, 21, 0.62) 100%),
+    linear-gradient(180deg, rgba(4, 12, 21, 0.52) 0%, rgba(4, 12, 21, 0.06) 22%, rgba(4, 12, 21, 0.10) 62%, rgba(4, 12, 21, 0.58) 100%);
+}
+
+/* ── The form column ────────────────────────────
+   One shell, so the brand lockup, the rotating line and the card move as a
+   single object. On a cold load this is the entrance; on an internal link
+   it replaces the shared body-level page transition (see below). */
+.auth-shell {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: auth-shell-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes auth-shell-in {
+  from { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.97); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes auth-shell-out {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to   { opacity: 0; transform: translate3d(0, -16px, 0) scale(0.98); }
+}
+
+/* Brand lockup above the card. */
+.auth-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-decoration: none;
+  margin-bottom: 2px;
+}
+.auth-mark img {
+  width: 46px; height: 46px; border-radius: 14px;
+  box-shadow: 0 10px 26px -10px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.18);
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.auth-mark:hover img { transform: scale(1.06) rotate(-2deg); }
+.auth-mark-text {
+  font-family: var(--font-display);
+  font-weight: 800; font-size: 1.3rem; letter-spacing: -0.02em;
+  color: #fff;
+}
+.auth-mark-text em { font-style: normal; color: var(--teal-400); }
+
+/* The rotating study line — the only text on the stage. One line at a time,
+   slow, and completely still for reduced motion. */
+.auth-rotator {
+  margin: -4px 0 2px;
+  min-height: 1.5em;
+  text-align: center;
+  font-size: 0.9rem;
+  color: rgba(226, 240, 250, 0.72);
+  text-wrap: balance;
+}
+.auth-rotator span {
+  display: inline-block;
+  transition: opacity 320ms ease, transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.auth-rotator.is-swapping span {
+  opacity: 0;
+  transform: translate3d(0, -7px, 0);
+}
+
+/* ── The card on the stage ──────────────────────
+   Frosted glass rather than the flat white card, because it now sits on a
+   dark, moving surface. Scoped to data-page="auth" so /404.html, which
+   reuses .auth-wrap on the ordinary light page, is untouched. */
+body[data-page='auth'] .auth-card {
+  position: relative;
+  /* Deliberately NOT `overflow: hidden`: the focus ring is a box-shadow,
+     and clipping the card would shave it off the outermost fields. The
+     brand rim below is inset well inside the corner radius instead. */
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(26px) saturate(180%);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.60);
+  border-radius: 22px;
+  box-shadow:
+    0 32px 70px -26px rgba(2, 9, 16, 0.72),
+    0 12px 28px -14px rgba(2, 9, 16, 0.50),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+body[data-theme='dark'][data-page='auth'] .auth-card {
+  background: rgba(14, 30, 45, 0.90);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 32px 70px -26px rgba(0, 0, 0, 0.80),
+    0 12px 28px -14px rgba(0, 0, 0, 0.60),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+/* Brand rim along the top edge of the card. Inset from both sides so it
+   ends well before the 22px corner radius and needs no clipping. */
+body[data-page='auth'] .auth-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 14%; right: 14%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, var(--teal-400), transparent);
+  pointer-events: none;
+}
+
+/* Footnote links under the card read against the dark stage, not the card. */
+.auth-foot {
+  text-align: center;
+  font-size: 0.82rem;
+  color: rgba(226, 240, 250, 0.60);
+}
+.auth-foot a { color: rgba(226, 240, 250, 0.90); text-decoration: underline; text-underline-offset: 3px; }
+.auth-foot a:hover { color: var(--teal-400); }
+
+/* ── The shared chrome, on a dark stage ─────────
+   The floating navbar and the mobile dock are LIGHT liquid glass: white
+   translucency with ink-coloured labels, designed for the pale --bg every
+   other page uses. Left alone over this navy desk they turn into milky
+   slabs with barely-legible grey text. These rules re-tint the same glass
+   for a dark backdrop — the geometry, blur and behaviour are untouched, so
+   it is still one navbar, just lit correctly for the surface it is on.
+   (Dark theme is already correct: it ships its own dark glass.) */
+body[data-page='auth']:not([data-theme='dark']) .navbar,
+body[data-page='auth']:not([data-theme='dark']) .mob-tabs {
+  background: rgba(12, 28, 44, 0.52);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 8px 32px -10px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+body[data-page='auth']:not([data-theme='dark']) .navbar.is-scrolled {
+  background: rgba(12, 28, 44, 0.72);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+body[data-page='auth']:not([data-theme='dark']) .nav-brand-text { color: #fff; }
+body[data-page='auth']:not([data-theme='dark']) .nav-links {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.10);
+}
+body[data-page='auth']:not([data-theme='dark']) .nav-item a.nav-link { color: rgba(233, 241, 248, 0.86); }
+body[data-page='auth']:not([data-theme='dark']) .nav-item a.nav-link:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.10);
+  box-shadow: none;
+}
+body[data-page='auth']:not([data-theme='dark']) .nav-item a.nav-link.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+body[data-page='auth']:not([data-theme='dark']) .nav-chevron { color: rgba(233, 241, 248, 0.62); }
+body[data-page='auth']:not([data-theme='dark']) .icon-btn {
+  color: rgba(233, 241, 248, 0.82);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+body[data-page='auth']:not([data-theme='dark']) .icon-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+}
+body[data-page='auth']:not([data-theme='dark']) .btn-ghost { color: rgba(233, 241, 248, 0.86); }
+body[data-page='auth']:not([data-theme='dark']) .btn-ghost:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+body[data-page='auth']:not([data-theme='dark']) .mob-tab { color: rgba(233, 241, 248, 0.72); }
+body[data-page='auth']:not([data-theme='dark']) .mob-tab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+body[data-page='auth']:not([data-theme='dark']) .mob-tab.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.20);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+body[data-page='auth']:not([data-theme='dark']) .mob-tab.active .mob-tab-ic { color: #fff; }
+
+/* ── Log in ↔ Sign up feels like one screen ─────
+   layout.js animates the whole <body> out and in on an internal link. On
+   these pages that is exactly wrong twice over:
+
+     · a transform or filter on <body> makes it the containing block for
+       the position:fixed stage, so a scrolled signup page would yank its
+       own background to the top of the document mid-transition;
+     · fading the body fades the desk, when the whole point is that the
+       desk is the ONE thing that does not move between the two screens.
+
+   So the body-level animation stands down here and the shell alone carries
+   the motion, on the same 230ms budget layout.js waits before navigating.
+   The card flies out, the desk holds, the next card flies in.
+
+   `.auth-stage` is listed too: on the page being LEFT it is a child of the
+   animating body, and a stage that inherits a scale/blur would betray that
+   the background is a per-page element rather than one continuous desk. */
+body[data-page='auth'].sc-page-leave,
+body[data-page='auth'].sc-page-enter,
+body[data-page='auth'].sc-page-leave-fly,
+body[data-page='auth'].sc-page-enter-fly {
+  animation: none;
+  transform: none;
+  filter: none;
+}
+body[data-page='auth'].sc-page-leave .auth-shell,
+body[data-page='auth'].sc-page-leave-fly .auth-shell {
+  animation: auth-shell-out 230ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+/* Chromium/Edge also run a NATIVE cross-document view transition (style.css
+   opts the whole site in with `@view-transition { navigation: auto }`) and
+   style.css gives the root snapshots a slide-and-blur. That snapshot is the
+   ENTIRE page, desk included, so the background would visibly slide and
+   blur on its way to an identical background. Stand it down here and let
+   the shell's own entrance/exit be the whole transition.
+
+   The snapshot pseudo-elements live on the root element, not on <body>, so
+   the page has to be identified through :has(). Browsers old enough to
+   lack :has() also lack view transitions, so dropping the rule costs
+   nothing. mix-blend-mode is reset because the UA's default cross-fade
+   pair composites with plus-lighter, which would flash bright without the
+   fade animation that normally accompanies it. */
+html:has(body[data-page='auth'])::view-transition-old(root),
+html:has(body[data-page='auth'])::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* ── Small screens ──────────────────────────────
+   Less decoration, not smaller decoration: the glyph field thins out in
+   js/auth-stage.js, and the ruling is coarser so it does not read as noise
+   on a 360px screen. */
+@media (max-width: 820px) {
+  .auth-grid {
+    /* One coarser ruling only: the fine inner grid reads as moiré, not as
+       paper, on a 360px screen. The pan still travels one whole square
+       (2 × 38px = the 76px the shared keyframes move), so the loop stays
+       seamless without needing a second @keyframes block. */
+    background-image:
+      linear-gradient(to right, rgba(226, 240, 250, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(226, 240, 250, 0.05) 1px, transparent 1px);
+    background-size: 38px 38px, 38px 38px;
+    animation-duration: 120s;
+  }
+  .auth-mark img { width: 40px; height: 40px; }
+  .auth-mark-text { font-size: 1.16rem; }
+  .auth-rotator { font-size: 0.85rem; }
+  /* The card fills most of a phone screen, and a backdrop-filter that size
+     is re-blurred on every scroll frame — the most expensive thing on the
+     page, for an effect nobody can see behind an opaque card anyway. Drop
+     the blur and make the surface solid instead. */
+  body[data-page='auth'] .auth-card {
+    border-radius: 20px;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: #ffffff;
+  }
+  body[data-theme='dark'][data-page='auth'] .auth-card { background: #0e1e2d; }
+}
+/* A phone in landscape, or a short laptop: the form is the only thing that
+   has to fit, so the lockup stands down. */
+@media (max-height: 640px) {
+  .auth-mark, .auth-rotator { display: none; }
+  .auth-shell { gap: 12px; }
+}
+
+/* ── Reduced motion ─────────────────────────────
+   style.css already freezes every animation globally for this preference.
+   These rules make the frozen frame the INTENDED one — a still, calm desk —
+   rather than whichever keyframe happened to land first. */
+@media (prefers-reduced-motion: reduce) {
+  .auth-aurora, .auth-aurora::after, .auth-grid { transform: none; }
+  .auth-beam, .auth-glyphs { display: none; }
+  .auth-shell { opacity: 1; transform: none; }
+}
