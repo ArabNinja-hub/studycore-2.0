@@ -18,6 +18,7 @@ const { attachResumableUpload, claimResumableUpload } = require('../middleware/r
 const resumableUploads = require('../lib/resumable-uploads');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
+const { ensureAnyoneWithLinkReader } = require('../lib/google-drive');
 const { ROLES } = require('../lib/roles');
 const { resolveCourse, programIncludesCourse, programOwnsCourse } = require('../lib/program-access');
 const { validateLabReportPlacement } = require('../lib/lab-reports');
@@ -74,6 +75,26 @@ function cleanupIncomingFile(req) {
 function uploadError(req, res, status, message) {
   cleanupIncomingFile(req);
   return res.status(status).json({ message });
+}
+
+// ---------------------------------------------------------------------------
+// Google Drive link sharing (additive — the Picker flow itself is unchanged).
+//
+// Runs AFTER the resource row is committed, so the existing document
+// reference is preserved no matter what Google answers. The Drive document is
+// not moved, copied, downloaded or re-stored; only its sharing setting is
+// raised to "Anyone with the link → Viewer", which is what the existing
+// student viewer (Drive's own /preview embed) needs in order to open it.
+//
+// The admin's short-lived Picker token arrives as a normal form field, is used
+// for this one call and is never stored, logged or returned to any client.
+async function shareDriveFileForViewing(req, fileId) {
+  if (!fileId) return null;
+  const accessToken = req.body && (req.body.google_drive_access_token || '');
+  const result = await ensureAnyoneWithLinkReader(fileId, accessToken);
+  if (result.ok || result.state === 'skipped') return null;
+  // A failure is reported to the admin only; it never fails the upload.
+  return result.message || 'The document was saved, but StudyCore could not set it to "Anyone with the link → Viewer" in Google Drive.';
 }
 
 function resourcePrograms(row) {
@@ -516,8 +537,15 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
 
   // Bunny accepted the complete upload before this resource was committed.
 
+  // The Drive reference is now safely saved; make the picked document
+  // link-viewable so the existing student viewer can open it.
+  const driveShareWarning = isDriveFile ? await shareDriveFileForViewing(req, row.google_drive_file_id) : null;
+
   const saved = ownResourceById(id, req.user.id);
-  return res.status(201).json({ resource: serializeOwnResource(saved) });
+  return res.status(201).json({
+    resource: serializeOwnResource(saved),
+    ...(driveShareWarning ? { driveShareWarning } : {})
+  });
 }));
 
 router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) => {
@@ -640,8 +668,16 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     stream.deleteVideo(existing.stream_uid).catch(() => {});
   }
 
+  // Same additive step as on create: only when this request actually carried a
+  // Drive selection. Editing an existing Drive-backed resource without
+  // re-picking sends no token and therefore changes nothing in Drive.
+  const driveShareWarning = isDriveFile ? await shareDriveFileForViewing(req, updated.google_drive_file_id) : null;
+
   const saved = ownResourceById(existing.id, req.user.id);
-  return res.json({ resource: serializeOwnResource(saved) });
+  return res.json({
+    resource: serializeOwnResource(saved),
+    ...(driveShareWarning ? { driveShareWarning } : {})
+  });
 }));
 
 router.delete('/resources/:id', (req, res) => {

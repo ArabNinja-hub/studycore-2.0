@@ -15,7 +15,10 @@
     catalog: { programs: [], topics: [] },
     resources: [],
     selectedFile: null,
-    editingId: null
+    editingId: null,
+    // Short-lived Google Picker OAuth token, in memory for the current
+    // selection only. Never persisted and never sent to students.
+    driveAccessToken: null
   };
 
   const TYPE_META = {
@@ -384,6 +387,7 @@
     state.selectedFile = null;
     $('#caUploadForm').reset();
     $('#caEditingResourceId').value = '';
+    state.driveAccessToken = null;
     $('#caGoogleDriveFileId').value = '';
     $('#caGoogleDriveUrl').value = '';
     $('#caGoogleDriveFileName').value = '';
@@ -431,6 +435,10 @@
       formData.append('file_name', $('#caGoogleDriveFileName').value || '');
       formData.append('mime_type', $('#caGoogleDriveMimeType').value || '');
       formData.append('file_size', $('#caGoogleDriveFileSize').value || '');
+      // Only present when this admin just picked the file in this session.
+      // Editing an existing Drive resource sends no token and leaves Drive
+      // sharing untouched.
+      if (state.driveAccessToken) formData.append('google_drive_access_token', state.driveAccessToken);
     }
     formData.append('publishStatus', $('#caPublishStatus').value);
     if (state.selectedFile) formData.append('file', state.selectedFile);
@@ -444,8 +452,12 @@
   // calls back here with the picked Drive document so this dashboard can
   // populate its hidden form fields.
   // ---------------------------------------------------------------
-  window.onGoogleDriveFilePicked = function (doc) {
+  window.onGoogleDriveFilePicked = function (doc, accessToken) {
     if (!doc || !doc.id) return;
+    // Kept in memory only (never a DOM field, never localStorage) and sent
+    // once with this submit so the server can ensure the picked document is
+    // shared as "Anyone with the link → Viewer".
+    state.driveAccessToken = accessToken || null;
     $('#caGoogleDriveFileId').value = doc.id || '';
     $('#caGoogleDriveUrl').value = doc.url || `https://drive.google.com/file/d/${doc.id}/view`;
     $('#caGoogleDriveFileName').value = doc.name || '';
@@ -530,11 +542,19 @@
       }
       progressBar.style.width = '100%';
       showToast(editingId ? 'Resource updated.' : 'Resource published.', 'success');
+      // The resource itself saved fine; Drive link-sharing is a separate,
+      // best-effort step, so a failure is reported without undoing anything.
+      const driveWarning = result && result.driveShareWarning;
       clearUploadForm();
       await Promise.all([loadDashboard(), loadResources(), loadCatalog()]);
       // Retain a simple local status for keyboard/screen-reader users after
       // the form resets, without relying only on the transient toast.
-      setStatus($('#caUploadStatus'), result && result.resource ? 'Saved successfully.' : 'Saved successfully.', 'success');
+      if (driveWarning) {
+        showToast(driveWarning, 'error');
+        setStatus($('#caUploadStatus'), `Saved. ${driveWarning}`, 'error');
+      } else {
+        setStatus($('#caUploadStatus'), result && result.resource ? 'Saved successfully.' : 'Saved successfully.', 'success');
+      }
     } catch (err) {
       // A paused resumable upload is NOT a lost upload: the chunks that made
       // it are still on the server. Tell the uploader that plainly, so they
@@ -574,6 +594,8 @@
     $('#caCancelEditBtn').hidden = false;
     $('#caFileDropTitle').innerHTML = 'Replace resource file <span style="font-weight:400;color:var(--muted);">(optional)</span>';
     // Restore Drive-backed file info when editing an existing resource.
+    // No token: an already-added document keeps its current Drive sharing.
+    state.driveAccessToken = null;
     const hasDriveFile = Boolean(resource.googleDriveFileId);
     $('#caGoogleDriveFileId').value = resource.googleDriveFileId || '';
     $('#caGoogleDriveUrl').value = resource.googleDriveUrl || '';
@@ -656,6 +678,7 @@
       if (file) {
         // If selecting a regular file upload, clear any previous Drive selection
         // so the server does not treat this as a Drive-backed resource.
+        state.driveAccessToken = null;
         $('#caGoogleDriveFileId').value = '';
         $('#caGoogleDriveUrl').value = '';
         $('#caGoogleDriveFileName').value = '';
