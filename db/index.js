@@ -648,6 +648,35 @@ try {
 // above). The on-site student community room was removed - quizzes replace it
 // as the primary interactive, program-targeted student activity.
 
+// Transactional email ledger (see lib/email/). One row per logical email
+// event - a registration, a payment approval, a payment rejection - claimed
+// BEFORE the message is handed to Resend. The UNIQUE(kind, dedupe_key)
+// constraint is what guarantees a single action can only ever produce a
+// single email, no matter how many times a browser retries the request or a
+// component re-renders. It also doubles as a safe audit trail: it records
+// the template, the Resend message id and any failure reason, and never
+// stores credentials or message bodies.
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS email_log (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      dedupe_key TEXT NOT NULL,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'claimed',
+      provider_id TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      sent_at TEXT,
+      UNIQUE(kind, dedupe_key)
+    )
+  `);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_email_log_user ON email_log(user_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_email_log_created ON email_log(created_at)');
+} catch (err) {
+  // already exists - fine
+}
+
 function generateReferralCode() {
   // Short, easy to read aloud/type on a phone - avoids ambiguous characters
   // like 0/O and 1/I/l.

@@ -92,14 +92,67 @@ Manual mobile-money flow (no merchant API required):
    confirmation** (payment confirmed, Premium active-until date, what it unlocks, and a
    start-watching link). Rejecting leaves the student's plan unchanged.
 
-Emails go out over SMTP configured in `.env` (`SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` /
-`SMTP_PASS` / `EMAIL_FROM`), so any provider works — Gmail app password, Brevo, Mailgun,
-SendGrid, Resend SMTP. When SMTP is not configured (local dev, tests), approving still
-works: the email is rendered to the server console instead, and a mail failure can never
-block or roll back an approval. See `lib/mailer.js`.
+Approving **and** rejecting both email the student automatically — see
+[Transactional email](#transactional-email-resend) below.
 
 The public Pricing page routes logged-out visitors to signup and logged-in students
 straight to the dashboard Premium payment section.
+
+## Transactional email (Resend)
+
+All StudyCore email goes through the **Resend API** via one centralized service,
+`lib/email/`. Routes never talk to Resend directly, never see the API key and never
+build a template — they call one named function with data already read from the
+database.
+
+**Live today** (three emails, all branded *StudyCore — Stay curious and winning*):
+
+| Email | Trigger | Sent from |
+|---|---|---|
+| Welcome | a student successfully registers | `POST /api/auth/register` |
+| Subscription approved | an admin approves a payment | `POST /api/admin/payments/:id/approve` |
+| Subscription rejected | an admin rejects a payment | `POST /api/admin/payments/:id/reject` |
+
+Also implemented and tested, but **not wired to any flow** (no template work needed to
+enable them later): `sendLoginNotificationEmail`, `sendEmailVerificationEmail`,
+`sendPasswordResetEmail`, `sendSubscriptionExpiringEmail`, `sendSubscriptionExpiredEmail`.
+
+**Guarantees**
+
+- **Email never breaks StudyCore.** Every send resolves to a result object and never
+  throws, so a Resend outage cannot fail, delay or roll back a registration or an
+  approval. An approved subscription stays approved; the admin just sees an honest
+  "email could not be sent" note.
+- **One action = one email.** Sends are claimed in the `email_log` table
+  (`UNIQUE(kind, dedupe_key)`) *before* dispatch, keyed on the user id for the welcome
+  email and the payment id for approval/rejection. Frontend retries, double-clicks,
+  duplicate requests and restarts cannot produce a second message.
+- **The recipient always comes from the database**, never from the request body.
+- **The API key is server-side only.** `RESEND_API_KEY` is read exclusively inside
+  `lib/email/` and is never logged, never returned by an API route and never present in
+  any frontend asset. Log lines mask addresses (`ch****@gmail.com`) and record the
+  Resend message id so delivery can be confirmed without exposing personal data.
+
+**Configuration** — `RESEND_API_KEY` and `EMAIL_FROM` (see the table below). Links inside
+emails use `APP_URL`, falling back to `https://studycore.academy`. With
+`RESEND_API_KEY` unset (local dev, tests) nothing is sent: the email is reported on the
+console instead and the underlying action still succeeds.
+
+**Testing**
+
+```bash
+npm test                              # includes scripts/test-emails.js (30 checks)
+node scripts/preview-emails.js ./out  # render every template to HTML - sends nothing
+```
+
+For a real end-to-end check, sign in as Main Admin and use the admin-only endpoints —
+the test send always goes to *your own* stored admin address, so it can never be used as
+an open relay:
+
+```
+GET  /api/admin/email/status                     # is a key configured + last 20 dispatches
+POST /api/admin/email/test?template=welcome      # welcome | approved | rejected
+```
 
 ## Profile pictures
 
@@ -152,7 +205,11 @@ middleware/security.js  security headers + in-memory rate limiting (auth endpoin
 middleware/upload.js    streaming R2 upload (SHA-256) + strict avatar upload config
 lib/r2.js               Cloudflare R2 client (S3-compatible)
 lib/storage.js          R2 + local-disk fallback, range-aware reads (never buffers whole files)
-lib/mailer.js           SMTP email (access-granted confirmation), console fallback when unconfigured
+lib/email/              transactional email service (Resend): index.js = the eight
+                        send* functions + duplicate protection, transport.js = the only
+                        module that touches the API key, templates.js = branded
+                        responsive HTML, config.js = env-driven settings
+lib/mailer.js           legacy SMTP helper (nodemailer); superseded by lib/email/, unused
 routes/auth.routes.js   register/login/me, profile, password, avatar, subscribe, payment-info
 routes/courses.routes.js  public course directory, course home (topics/progress/continue), lesson flow
 routes/resources.routes.js  resource list/detail/view-only stream, search, bookmarks,
@@ -204,8 +261,10 @@ npm start
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET_NAME` | Cloudflare R2 for documents/images/audio only. **Required in production**; videos never use it. |
 | `BUNNY_LIBRARY_ID` / `BUNNY_API_KEY` / `BUNNY_CDN_HOSTNAME` | **Required for video uploads.** Bunny Stream library, server-only API key, and playback CDN hostname. |
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` / `EMAIL_FROM` | SMTP for the access-granted email sent when a payment is approved. Unset = email is logged to console instead of sent. |
-| `APP_URL` | Public base URL of this deployment, used for links inside emails |
+| `RESEND_API_KEY` | **Server-only secret.** Resend API key for the welcome / subscription-approved / subscription-rejected emails. Never exposed to the frontend or any API response. Unset = emails are skipped and logged instead, and every StudyCore action still succeeds. |
+| `EMAIL_FROM` | Sender identity on the Resend-verified domain, e.g. `StudyCore <no-reply@studycore.academy>` |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | Legacy SMTP settings for the older `lib/mailer.js` helper. Not used by the Resend email system; safe to leave empty. |
+| `APP_URL` | Public base URL of this deployment, used for links inside emails (falls back to `https://studycore.academy`) |
 | `WHATSAPP_CHANNEL_URL` | Official academic channel link (community panels, footer) |
 | `WHATSAPP_GROUP_URL` | Official WhatsApp group invite link ("Join the WhatsApp Group" buttons) |
 

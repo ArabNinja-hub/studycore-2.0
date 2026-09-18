@@ -7,6 +7,7 @@ const db = require('../db');
 const { createToken, setAuthCookie, clearAuthCookie, requireAuth, requireRole, attachUser } = require('../middleware/auth');
 const { avatarUpload, resolveMaxUploadMb } = require('../middleware/upload');
 const storage = require('../lib/storage');
+const { sendWelcomeEmail } = require('../lib/email');
 const { validProgramCode } = require('../lib/program-access');
 const {
   ROLES,
@@ -213,6 +214,18 @@ router.post('/register', asyncHandler(async (req, res) => {
   const token = createToken(user);
   setAuthCookie(res, token);
   res.status(201).json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
+
+  // Welcome email. Deliberately dispatched AFTER the response:
+  //   * the account already exists and the session cookie is already set, so
+  //     a mail problem cannot fail, delay or roll back the signup;
+  //   * the address is the normalized one just written to the users table,
+  //     never a raw value echoed back from the request body;
+  //   * lib/email deduplicates on the new user's id, so a retried or
+  //     double-submitted signup can only ever produce one welcome message.
+  // sendWelcomeEmail never rejects; .catch() is belt-and-braces so this can
+  // never surface as an unhandled rejection.
+  sendWelcomeEmail({ userId: user.id, name: user.name, email: user.email })
+    .catch((err) => console.error('[email] welcome: unexpected dispatch error -', err.message));
 }));
 
 // Content Admin registration is deliberately separate from public student
