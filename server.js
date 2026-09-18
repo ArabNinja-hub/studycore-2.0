@@ -193,6 +193,21 @@ if (videoStream.isConfigured()) {
   console.log('StudyCore: Bunny Stream is not configured — video uploads are disabled. Set BUNNY_LIBRARY_ID, BUNNY_API_KEY, and BUNNY_CDN_HOSTNAME in the server environment.');
 }
 
+// Transactional email (Resend). Same rule as Bunny above: never log the
+// credential itself, only whether the server-side integration is available.
+// RESEND_API_KEY is read exclusively inside lib/email/ and is never sent to
+// the browser, returned by an API route, or written to the database.
+const email = require('./lib/email');
+const emailStatus = email.emailStatus();
+if (emailStatus.configured) {
+  console.log(`StudyCore: Resend email is configured — sending as "${emailStatus.from}" with links to ${emailStatus.appUrl}.`);
+  if (!emailStatus.keyFormatValid) {
+    console.warn('StudyCore: RESEND_API_KEY does not look like a Resend key (expected it to start with "re_"). Emails will fail until it is corrected.');
+  }
+} else {
+  console.log('StudyCore: Resend email is not configured — welcome and subscription emails will be skipped and logged instead. Set RESEND_API_KEY and EMAIL_FROM in the server environment to enable them.');
+}
+
 // Public site config. Official WhatsApp links live in .env so the owner can
 // rotate them without touching page code; the marketing panels on every page
 // fetch them here on load. No auth required - nothing in this payload is

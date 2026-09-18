@@ -9,7 +9,8 @@ const { attachResumableUpload, claimResumableUpload } = require('../middleware/r
 const resumableUploads = require('../lib/resumable-uploads');
 const storage = require('../lib/storage');
 const stream = require('../lib/stream');
-const { sendAccessGrantedEmail } = require('../lib/mailer');
+const emailService = require('../lib/email');
+const { sendSubscriptionAcceptedEmail, sendSubscriptionRejectedEmail } = emailService;
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
 const { resourceTypeForCategory, resourceTypeLabel } = require('../lib/resource-types');
@@ -738,24 +739,29 @@ router.post('/payments/:id/approve', asyncHandler(async (req, res) => {
     .run(now, subEnd, payment.user_id);
 
   // The student just paid and is waiting to get in - tell them straight away
-  // that access is granted. This never throws (see lib/mailer.js), so a mail
-  // outage can't roll back or fail an already-approved payment.
+  // that their subscription is approved. The address comes from the users
+  // row read above, never from the request. sendSubscriptionAcceptedEmail
+  // never throws (see lib/email/transport.js) and lib/email deduplicates on
+  // this payment id, so a mail outage - or a double-clicked Approve button -
+  // can neither roll back nor duplicate an already-approved payment.
   let emailResult = { sent: false };
   if (student && student.email) {
-    emailResult = await sendAccessGrantedEmail({
-      to: student.email,
+    emailResult = await sendSubscriptionAcceptedEmail({
+      userId: student.id,
       name: student.name,
-      subscriptionEnd: subEnd,
-      method: payment.method,
-      amount: payment.amount
+      email: student.email,
+      paymentId: payment.id,
+      subscriptionEnd: subEnd
     });
   }
 
   let message = 'Payment approved - the student now has 30 days of premium access.';
   if (emailResult.sent) {
-    message += ` An access-granted email was sent to ${student.email}.`;
+    message += ` An approval email was sent to ${student.email}.`;
   } else if (emailResult.simulated) {
-    message += ' (No email sent - SMTP is not configured. Add SMTP_HOST/SMTP_USER/SMTP_PASS to .env to enable emails.)';
+    message += ' (No email sent - RESEND_API_KEY is not configured on this server. The subscription is still active.)';
+  } else if (emailResult.skipped) {
+    message += ' (No email sent - it had already been sent for this payment.)';
   } else {
     message += ` (Email could not be sent: ${emailResult.error || 'unknown error'} - the subscription is still active.)`;
   }
@@ -763,16 +769,94 @@ router.post('/payments/:id/approve', asyncHandler(async (req, res) => {
   res.json({ message, emailSent: emailResult.sent });
 }));
 
-router.post('/payments/:id/reject', (req, res) => {
+router.post('/payments/:id/reject', asyncHandler(async (req, res) => {
   const payment = db.prepare('SELECT * FROM payments WHERE id = ?').get(req.params.id);
   if (!payment) return res.status(404).json({ message: 'Payment request not found.' });
   if (payment.status !== 'PENDING') return res.status(400).json({ message: 'This payment has already been reviewed.' });
 
+  const student = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(payment.user_id);
+
   db.prepare(`UPDATE payments SET status = 'REJECTED', reviewed_at = ?, reviewed_by = ? WHERE id = ?`)
     .run(new Date().toISOString(), req.user.id, payment.id);
 
-  res.json({ message: 'Payment marked as rejected.' });
+  // Rejection is a real outcome the student is waiting on, so tell them what
+  // happened and how to reach the administrator. The subscription itself is
+  // untouched (rejecting never changes the student's plan), and as with
+  // approval this can never throw or duplicate: the address is read from the
+  // users row and lib/email deduplicates on this payment id.
+  let emailResult = { sent: false };
+  if (student && student.email) {
+    emailResult = await sendSubscriptionRejectedEmail({
+      userId: student.id,
+      name: student.name,
+      email: student.email,
+      paymentId: payment.id
+    });
+  }
+
+  let message = 'Payment marked as rejected.';
+  if (emailResult.sent) {
+    message += ` The student was notified by email at ${student.email}.`;
+  } else if (emailResult.simulated) {
+    message += ' (No email sent - RESEND_API_KEY is not configured on this server.)';
+  } else if (emailResult.skipped) {
+    message += ' (No email sent - it had already been sent for this payment.)';
+  } else {
+    message += ` (Email could not be sent: ${emailResult.error || 'unknown error'} - the rejection was still recorded.)`;
+  }
+
+  res.json({ message, emailSent: emailResult.sent });
+}));
+
+// ---- Transactional email diagnostics ---------------------------------------
+//
+// Main Admin only (the whole router is behind requireAuth + ADMIN above).
+//
+// SECURITY: neither endpoint can leak or send the API key, and neither can
+// send to an arbitrary address:
+//   * /email/status reports only whether a key is present - never its value.
+//   * /email/test ignores the request body entirely and sends to the
+//     authenticated administrator's OWN address as stored in the users
+//     table, so this can never be used as an open relay.
+
+router.get('/email/status', (req, res) => {
+  const recent = db.prepare(`
+    SELECT kind, status, provider_id, error, created_at, sent_at
+    FROM email_log
+    ORDER BY created_at DESC
+    LIMIT 20
+  `).all();
+  // Note the deliberate absence of any recipient address or key material.
+  res.json({ email: emailService.emailStatus(), recent });
 });
+
+router.post('/email/test', asyncHandler(async (req, res) => {
+  const admin = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.user.id);
+  if (!admin || !admin.email) return res.status(400).json({ message: 'Your admin account has no email address on file.' });
+
+  // The recipient is ALWAYS the signed-in admin's stored address. Any
+  // address supplied by the client is ignored on purpose.
+  const template = String(req.query.template || 'welcome');
+  const allowed = ['welcome', 'approved', 'rejected'];
+  if (!allowed.includes(template)) {
+    return res.status(400).json({ message: `Unknown template. Use one of: ${allowed.join(', ')}.` });
+  }
+
+  const result = await emailService.sendTestEmailToAdmin({
+    userId: admin.id,
+    name: admin.name,
+    email: admin.email,
+    template
+  });
+
+  if (result.sent) {
+    return res.json({ message: `Test "${template}" email sent to ${admin.email}.`, sent: true, id: result.id || null });
+  }
+  if (result.simulated) {
+    return res.json({ message: 'RESEND_API_KEY is not configured on this server, so nothing was sent. The email was logged to the server console instead.', sent: false });
+  }
+  return res.status(502).json({ message: `The test email could not be sent: ${result.error || 'unknown error'}`, sent: false });
+}));
 
 // ---- Analytics -------------------------------------------------------------
 
