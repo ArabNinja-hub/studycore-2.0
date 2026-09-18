@@ -158,3 +158,47 @@ The numeric prefix of `GOOGLE_CLIENT_ID` (before the first `-`) must equal
 Google Cloud → APIs & Services → Credentials (the one ending in
 `.apps.googleusercontent.com`), and its authorized JavaScript origins must
 include the site origin.
+
+## Automatic link sharing (added — the Picker flow is unchanged)
+
+After the Picker hands StudyCore a file ID and **after the resource row is
+committed**, the backend ensures the selected document carries
+
+```
+type = "anyone"   role = "reader"     →  General access → Anyone with the link → Viewer
+```
+
+This is required by the *existing* student viewer: `viewer.js` embeds Drive's
+own `…/preview` frame and `/api/resources/:id/stream` redirects to Drive, so a
+still-private file shows "Request access" to every student.
+
+| File | Change |
+| --- | --- |
+| `lib/google-drive.js` | **New.** `ensureAnyoneWithLinkReader(fileId, accessToken)` — lists permissions, and creates `{type:'anyone', role:'reader'}` only if no `anyone` permission is already readable. Never throws. |
+| `routes/content-admin.routes.js` | Calls it from `POST /resources` and `PUT /resources/:id` — the endpoints that already receive `google_drive_file_id` — after the commit. |
+| `public/js/google-picker.js` | `onGoogleDriveFilePicked(doc, accessToken)` — one **optional** extra argument. |
+| `public/js/content-admin.js` | Holds that token in memory and sends it as `google_drive_access_token` with the submit it belongs to. |
+
+Behaviour:
+
+- **Already shared → nothing happens.** No `permissions.create` is issued, and
+  broader access (e.g. `anyone/writer`) is never downgraded.
+- **Nothing is moved, copied, downloaded or re-stored.** Only the sharing
+  setting changes; `storage_provider` stays `google_drive` and the file ID
+  stays the reference.
+- **Failure never breaks the upload.** The resource saves with its Drive
+  reference either way; the admin gets a specific message (toast + status
+  line) and the server logs one warning. A Workspace policy block reads:
+  *"Google Workspace policy blocks 'Anyone with the link' sharing for this
+  file (shareOutNotPermitted). Ask your Google Workspace administrator…"*
+- **Existing documents are untouched.** Opening or editing a resource added
+  before this change makes no Drive API call at all.
+
+### Credentials
+
+No new environment variable, and **no Google credential on the server**. The
+call uses the picking admin's own short-lived Picker token (`drive.file`
+scope, which grants per-file access to exactly the files that admin selected).
+It is used once, never stored in the database, never logged, never returned by
+an API, and never sent to a student — pinned by
+`scripts/test-drive-link-sharing.js`.

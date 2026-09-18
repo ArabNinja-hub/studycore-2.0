@@ -449,8 +449,13 @@
     if (!doc) return;
     console.info('[StudyCore][GooglePicker] file picked:', doc.id, doc.name);
     // Hand the Drive file off to the existing Content Admin dashboard code.
+    // The access token is passed as an OPTIONAL second argument (older
+    // handlers simply ignore it): StudyCore's backend uses the picking
+    // admin's own drive.file token, once, to ensure the selected document is
+    // shared as "Anyone with the link → Viewer" so the student viewer can
+    // open it. It is never persisted and never reaches a student.
     if (typeof window.onGoogleDriveFilePicked === 'function') {
-      window.onGoogleDriveFilePicked(doc);
+      window.onGoogleDriveFilePicked(doc, state.accessToken);
     } else {
       console.warn('[StudyCore][GooglePicker] onGoogleDriveFilePicked handler missing');
     }
