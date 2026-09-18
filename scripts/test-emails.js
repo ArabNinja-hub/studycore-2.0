@@ -220,6 +220,44 @@ test('transport: addresses are masked in logs', () => {
   assert.equal(transport.maskEmail(''), '(invalid address)');
 });
 
+test('transport: a provider error that echoes a credential is redacted', async () => {
+  // Defence in depth. A provider (or a proxy in front of it) can echo the
+  // submitted key back in an error string; that text reaches the admin UI and
+  // the email_log table, so it must be scrubbed at the transport chokepoint.
+  const leaky = [
+    'API key is invalid: re_leakedkey_9999999999999999 rejected',
+    'Authorization: Bearer abcdef1234567890 was refused',
+    'secret sk_live_abcdef123456 rejected'
+  ];
+  for (const message of leaky) {
+    transport.__setTestSender(async () => { throw Object.assign(new Error(message), { name: 'validation_error' }); });
+    const result = await transport.send({ to: 'a@b.com', subject: 's', html: 'h', text: 't', kind: 'redact' });
+    assert.equal(result.sent, false);
+    assert.ok(!/re_[A-Za-z0-9]{6,}/.test(result.error), `Resend key redacted in: ${result.error}`);
+    assert.ok(!/Bearer\s+[A-Za-z0-9._-]{8,}/i.test(result.error), `bearer token redacted in: ${result.error}`);
+    assert.ok(!/sk_[A-Za-z0-9]{6,}/.test(result.error), `secret key redacted in: ${result.error}`);
+    assert.match(result.error, /\[redacted\]/, 'the redaction marker is present');
+  }
+  transport.__setTestSender(null);
+});
+
+test('transport: the live RESEND_API_KEY is redacted verbatim even if its shape changes', async () => {
+  const previous = process.env.RESEND_API_KEY;
+  // A key that none of the shape-based patterns would match.
+  process.env.RESEND_API_KEY = 'totally-different-shape-secret-value-123';
+  try {
+    transport.__setTestSender(async () => {
+      throw new Error(`rejected credential ==> ${process.env.RESEND_API_KEY} <== end`);
+    });
+    const result = await transport.send({ to: 'a@b.com', subject: 's', html: 'h', text: 't', kind: 'redact2' });
+    assert.ok(!result.error.includes('totally-different-shape-secret-value-123'), 'the live key never survives into the error');
+    assert.match(result.error, /\[redacted\]/);
+  } finally {
+    transport.__setTestSender(null);
+    process.env.RESEND_API_KEY = previous;
+  }
+});
+
 test('emailStatus() never exposes the API key', () => {
   process.env.RESEND_API_KEY = 're_test_supersecretvalue_1234567890';
   try {
@@ -726,6 +764,44 @@ test('the email ledger records a safe audit trail (no addresses, no key)', async
   } finally {
     uninstallCapture();
   }
+});
+
+test('the email ledger never persists credential-like text from a provider error', async () => {
+  const { student, paymentId } = makeStudentWithPendingPayment();
+  transport.__setTestSender(async () => {
+    throw Object.assign(
+      new Error('API key is invalid: re_ledgerleak_1234567890123456 rejected'),
+      { name: 'validation_error' }
+    );
+  });
+  try {
+    await emailService.sendSubscriptionAcceptedEmail({
+      userId: student.id, name: student.name, email: student.email, paymentId, subscriptionEnd: IN_30_DAYS
+    });
+  } finally {
+    transport.__setTestSender(null);
+  }
+
+  const row = db.prepare('SELECT * FROM email_log WHERE dedupe_key = ?').get(`payment:${paymentId}`);
+  assert.equal(row.status, 'failed', 'the failure is recorded');
+  assert.ok(!/re_[A-Za-z0-9]{6,}/.test(JSON.stringify(row)), 'no key-like text is stored in email_log');
+  assert.match(row.error, /\[redacted\]/, 'the stored error is redacted');
+});
+
+test('the email ledger stores no message bodies, addresses or credentials in any row', () => {
+  const columns = db.prepare('PRAGMA table_info(email_log)').all().map((c) => c.name).sort();
+  assert.deepEqual(
+    columns,
+    ['created_at', 'dedupe_key', 'error', 'id', 'kind', 'provider_id', 'sent_at', 'status', 'user_id'].sort(),
+    'email_log has exactly the expected non-sensitive columns'
+  );
+  // No column for html/text/subject/to - bodies and addresses are never stored.
+  for (const forbidden of ['html', 'text', 'subject', 'to', 'recipient', 'email', 'api_key', 'key']) {
+    assert.ok(!columns.includes(forbidden), `email_log must not have a "${forbidden}" column`);
+  }
+
+  const everything = JSON.stringify(db.prepare('SELECT * FROM email_log').all());
+  assert.ok(!/re_[A-Za-z0-9]{6,}/.test(everything), 'no credential-like text anywhere in the ledger');
 });
 
 test.after(() => {
