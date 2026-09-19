@@ -38,31 +38,60 @@
             ]'
           ><span>Your program. Your courses. Right where you left them.</span></p>
           <div class="card auth-card">
-            <h1>Welcome back</h1>
-            <p class="auth-sub">Log in to continue exactly where you left off.</p>
-            <div class="auth-trial-note" id="referralBanner" style="display:none;"></div>
-            <form id="loginForm" novalidate>
-              <div class="form-group">
-                <label for="email">Email</label>
-                <input id="email" name="email" type="email" required autocomplete="email" />
-              </div>
-              <div class="form-group">
-                <label for="password">Password</label>
-                <div class="password-field-wrap">
-                  <input id="password" name="password" type="password" required autocomplete="current-password" minlength="6" />
-                  <button type="button" class="password-toggle-btn" data-toggle-password="password" aria-label="Show password">
-                    <svg class="pw-eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
-                    <svg class="pw-eye-closed" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18M10.6 10.7a3.2 3.2 0 0 0 4.5 4.5M7.4 7.5C4.7 9 2.9 12 2.9 12s3.5 7 9.1 7c1.7 0 3.2-.5 4.4-1.2M12.2 5c6.4-.2 9.9 7 9.9 7a15 15 0 0 1-2.5 3.3"/></svg>
-                  </button>
+            <div id="loginSection">
+              <h1>Welcome back</h1>
+              <p class="auth-sub">Log in to continue exactly where you left off.</p>
+              <div class="auth-trial-note" id="sessionNotice" style="display:none;"></div>
+              <div class="auth-trial-note" id="referralBanner" style="display:none;"></div>
+              <form id="loginForm" novalidate>
+                <div class="form-group">
+                  <label for="email">Email</label>
+                  <input id="email" name="email" type="email" required autocomplete="email" />
                 </div>
+                <div class="form-group">
+                  <label for="password">Password</label>
+                  <div class="password-field-wrap">
+                    <input id="password" name="password" type="password" required autocomplete="current-password" minlength="6" />
+                    <button type="button" class="password-toggle-btn" data-toggle-password="password" aria-label="Show password">
+                      <svg class="pw-eye-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12Z"/><circle cx="12" cy="12" r="3.2"/></svg>
+                      <svg class="pw-eye-closed" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" style="display:none;"><path d="M3 3l18 18M10.6 10.7a3.2 3.2 0 0 0 4.5 4.5M7.4 7.5C4.7 9 2.9 12 2.9 12s3.5 7 9.1 7c1.7 0 3.2-.5 4.4-1.2M12.2 5c6.4-.2 9.9 7 9.9 7a15 15 0 0 1-2.5 3.3"/></svg>
+                    </button>
+                  </div>
+                </div>
+                <div id="loginError" style="color:var(--red-600);display:none;font-size:0.88rem;margin-bottom:12px;"></div>
+                <button class="btn btn-primary btn-block btn-lg" type="submit" id="loginSubmitBtn">Log In</button>
+              </form>
+              <p style="margin-top:16px;text-align:center;font-size:0.92rem;">
+                New to StudyCore? <a href="/signup.html">Create a free account</a>
+              </p>
+              <p class="auth-legal">By logging in you agree to the <a href="/pages/terms.html">Terms &amp; Conditions</a> and <a href="/pages/privacy.html">Privacy Policy</a>.</p>
+            </div>
+
+            <!-- Single-active-device verification: shown only after the server
+                 reports an active session on another device. Everything here is
+                 plain HTML + fetch; the server remains the sole authority. -->
+            <div id="deviceVerifySection" style="display:none;">
+              <h1>One device at a time</h1>
+              <p class="auth-sub">This account is currently active on another device.</p>
+              <p id="deviceVerifyIntro" style="font-size:0.92rem;color:var(--muted);margin:4px 0 14px;"></p>
+              <p id="deviceVerifyMailNote" style="font-size:0.92rem;color:var(--muted);margin:0 0 14px;"></p>
+              <div class="form-group">
+                <label for="deviceCode">Verification code from your email</label>
+                <input id="deviceCode" type="text" inputmode="numeric" autocomplete="one-time-code"
+                       placeholder="6-digit code" maxlength="6" pattern="\d{6}"
+                       style="letter-spacing:6px;font-size:1.15rem;text-align:center;" />
               </div>
-              <div id="loginError" style="color:var(--red-600);display:none;font-size:0.88rem;margin-bottom:12px;"></div>
-              <button class="btn btn-primary btn-block btn-lg" type="submit" id="loginSubmitBtn">Log In</button>
-            </form>
-            <p style="margin-top:16px;text-align:center;font-size:0.92rem;">
-              New to StudyCore? <a href="/signup.html">Create a free account</a>
-            </p>
-            <p class="auth-legal">By logging in you agree to the <a href="/pages/terms.html">Terms &amp; Conditions</a> and <a href="/pages/privacy.html">Privacy Policy</a>.</p>
+              <div id="deviceVerifyError" style="color:var(--red-600);display:none;font-size:0.88rem;margin-bottom:12px;"></div>
+              <div id="deviceVerifyInfo" style="color:var(--teal-600);display:none;font-size:0.88rem;margin-bottom:12px;"></div>
+              <button class="btn btn-primary btn-block btn-lg" type="button" id="deviceVerifyBtn">Verify &amp; continue</button>
+              <div style="display:flex;justify-content:space-between;gap:12px;margin-top:14px;font-size:0.9rem;">
+                <button type="button" id="deviceResendBtn"
+                        style="background:none;border:none;color:var(--teal-600);cursor:pointer;padding:4px 0;font:inherit;text-decoration:underline;">Resend code</button>
+                <button type="button" id="deviceCancelBtn"
+                        style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px 0;font:inherit;text-decoration:underline;">Use the other device instead</button>
+              </div>
+              <p id="deviceVerifyCountdown" style="text-align:center;font-size:0.8rem;color:var(--muted);margin:12px 0 0;"></p>
+            </div>
           </div>
           <p class="auth-foot">
             Need a publishing account? <a href="/content-admin-signup.html">Create Admin Account</a>
@@ -84,11 +113,32 @@
     <script>
       document.addEventListener('DOMContentLoaded', () => {
         // Referral invite landing
-        const refCode = new URLSearchParams(window.location.search).get('ref');
+        const params = new URLSearchParams(window.location.search);
+        const refCode = params.get('ref');
         if (refCode) {
           const banner = document.getElementById('referralBanner');
           banner.style.display = 'flex';
           banner.innerHTML = `${SC.icon('sparkles', { size: 18 })}<span>You were invited by a friend — sign up with their code so they get their 7 bonus days.</span>`;
+        }
+
+        // Server-driven session messages: the /?session=... reason comes from
+        // middleware/auth.js (page gate) and js/api.js (API gate). A fixed
+        // allowlist is used instead of rendering the raw parameter.
+        const SESSION_NOTICES = {
+          'signed-in-elsewhere': 'Your StudyCore account was signed in on another device. This device was logged out — log in here again to continue.',
+          'session-superseded': 'Your session is no longer valid on this device — please log in again.',
+          'signed-out': 'You were signed out. Log in again to continue.',
+          'session-expired': 'Your session ended. Please log in again.'
+        };
+        const sessionReason = params.get('session');
+        const notice = document.getElementById('sessionNotice');
+        const showNotice = (text) => {
+          notice.style.display = 'flex';
+          notice.innerHTML = `${SC.icon('info', { size: 18 })}<span>${text}</span>`;
+        };
+        if (sessionReason && SESSION_NOTICES[sessionReason]) showNotice(SESSION_NOTICES[sessionReason]);
+        else if (sessionReason === 'disabled' || params.get('disabled') === '1') {
+          showNotice('This account has been disabled. Please contact StudyCore support.');
         }
 
         document.querySelectorAll('[data-toggle-password]').forEach((btn) => {
@@ -119,6 +169,10 @@
           btn.textContent = 'Logging in…';
           try {
             const data = await StudyCoreAPI.login({ email, password });
+            if (data && data.requiresDeviceVerification) {
+              enterDeviceVerification(data);
+              return;
+            }
             StudyCoreAuth.setWelcomeFlag(data.user.name, 'login');
             window.location.href = StudyCoreAuth.getDashboardPage(data.user);
           } catch (err) {
@@ -127,6 +181,153 @@
             btn.disabled = false;
             btn.textContent = 'Log In';
           }
+        });
+
+        /* ── Single-active-device verification UI ─────────────
+           These handlers only ever talk to /api/auth/device-verify/*. The
+           server owns every decision: which session is active, whether the
+           code matches, when it expires, and how many attempts remain. */
+        const verifyState = { challengeId: null, expiresAt: 0, timer: null, resendTimer: null };
+
+        const verifySection = document.getElementById('deviceVerifySection');
+        const loginSection = document.getElementById('loginSection');
+        const verifyError = document.getElementById('deviceVerifyError');
+        const verifyInfo = document.getElementById('deviceVerifyInfo');
+        const codeInput = document.getElementById('deviceCode');
+
+        const setVerifyError = (text) => {
+          verifyError.textContent = text || '';
+          verifyError.style.display = text ? 'block' : 'none';
+        };
+        const setVerifyInfo = (text) => {
+          verifyInfo.textContent = text || '';
+          verifyInfo.style.display = text ? 'block' : 'none';
+        };
+
+        function tickCountdown() {
+          const el = document.getElementById('deviceVerifyCountdown');
+          const left = verifyState.expiresAt - Date.now();
+          if (left <= 0) {
+            clearInterval(verifyState.timer);
+            el.textContent = 'That verification code has expired — log in again to get a new one.';
+            document.getElementById('deviceVerifyBtn').disabled = true;
+            return;
+          }
+          const mins = Math.floor(left / 60000);
+          const secs = Math.floor((left % 60000) / 1000);
+          el.textContent = `Code expires in ${mins}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function armCountdown(expiresAtIso) {
+          verifyState.expiresAt = new Date(expiresAtIso).getTime();
+          if (!Number.isFinite(verifyState.expiresAt)) verifyState.expiresAt = Date.now() + 10 * 60 * 1000;
+          document.getElementById('deviceVerifyBtn').disabled = false;
+          if (verifyState.timer) clearInterval(verifyState.timer);
+          tickCountdown();
+          verifyState.timer = setInterval(tickCountdown, 4000);
+        }
+
+        function startResendCooldown(seconds) {
+          const btn = document.getElementById('deviceResendBtn');
+          let left = seconds;
+          btn.disabled = true;
+          const render = () => {
+            btn.textContent = left > 0 ? `Resend code (${left}s)` : 'Resend code';
+            if (left <= 0) {
+              btn.disabled = false;
+              if (verifyState.resendTimer) clearInterval(verifyState.resendTimer);
+              verifyState.resendTimer = null;
+              return;
+            }
+            left -= 1;
+          };
+          if (verifyState.resendTimer) clearInterval(verifyState.resendTimer);
+          render();
+          verifyState.resendTimer = setInterval(render, 1000);
+        }
+
+        function enterDeviceVerification(data) {
+          verifyState.challengeId = data.challengeId;
+          loginSection.style.display = 'none';
+          verifySection.style.display = 'block';
+          codeInput.value = '';
+          setVerifyError('');
+          setVerifyInfo('');
+          const emailNote = document.getElementById('deviceVerifyMailNote');
+          const intro = document.getElementById('deviceVerifyIntro');
+          intro.textContent = 'Verify by email to move your account to this device. Your other device will be signed out only after you verify.';
+          emailNote.innerHTML = '';
+          const strong = document.createElement('strong');
+          strong.textContent = data.maskedEmail || 'your registered email';
+          emailNote.append('We\'ve sent a 6-digit verification code to ', strong,
+            data.emailSent ? '.' : ' (check spam too, and give it a moment).');
+          armCountdown(data.expiresAt);
+          startResendCooldown(60);
+          codeInput.focus();
+        }
+
+        document.getElementById('deviceVerifyBtn').addEventListener('click', async () => {
+          const code = codeInput.value.replace(/\D/g, '').slice(0, 6);
+          codeInput.value = code;
+          setVerifyError('');
+          setVerifyInfo('');
+          if (code.length !== 6) {
+            setVerifyError('Enter the 6-digit code from your email.');
+            return;
+          }
+          const btn = document.getElementById('deviceVerifyBtn');
+          btn.disabled = true;
+          btn.textContent = 'Verifying…';
+          try {
+            const data = await StudyCoreAPI.deviceVerifyCode({ challengeId: verifyState.challengeId, code });
+            if (verifyState.timer) clearInterval(verifyState.timer);
+            StudyCoreAuth.setWelcomeFlag(data.user.name, 'login');
+            window.location.href = StudyCoreAuth.getDashboardPage(data.user);
+          } catch (err) {
+            setVerifyError(err.message);
+            btn.disabled = false;
+            btn.textContent = 'Verify & continue';
+          }
+        });
+
+        codeInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            document.getElementById('deviceVerifyBtn').click();
+          }
+        });
+
+        document.getElementById('deviceResendBtn').addEventListener('click', async () => {
+          setVerifyError('');
+          setVerifyInfo('');
+          const btn = document.getElementById('deviceResendBtn');
+          btn.disabled = true;
+          try {
+            const data = await StudyCoreAPI.deviceVerifyResend({ challengeId: verifyState.challengeId });
+            // A resend replaces the challenge server-side: follow the new id
+            // (and reset the 10-minute window) when one comes back.
+            if (data && data.challengeId) {
+              verifyState.challengeId = data.challengeId;
+              if (data.expiresAt) armCountdown(data.expiresAt);
+            }
+            setVerifyInfo(data && data.resent
+              ? 'A new verification code is on its way to your email.'
+              : (data && data.message) || 'If that verification is still pending, a new email is on its way.');
+          } catch (err) {
+            setVerifyError(err.message);
+          }
+          startResendCooldown(60);
+        });
+
+        document.getElementById('deviceCancelBtn').addEventListener('click', async () => {
+          try { await StudyCoreAPI.deviceVerifyCancel({ challengeId: verifyState.challengeId }); } catch { /* best effort */ }
+          if (verifyState.timer) clearInterval(verifyState.timer);
+          verifySection.style.display = 'none';
+          loginSection.style.display = 'block';
+          const btn = document.getElementById('loginSubmitBtn');
+          btn.disabled = false;
+          btn.textContent = 'Log In';
+          showNotice('Verification cancelled — your account stays signed in on the other device.');
         });
       });
     </script>

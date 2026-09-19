@@ -192,6 +192,16 @@
           error.locked = Boolean(data && data.locked);
           error.lockReason = data && data.lockReason ? data.lockReason : null;
 
+          // Single-active-device enforcement: the server reports a revoked or
+          // superseded student session with a stable machine code. Every API
+          // call in the app flows through here, so this is the chokepoint that
+          // sends the old device back to the login screen with the reason -
+          // not on page load, on the very first request after revocation.
+          if (data && data.code === 'SESSION_REVOKED' && global.location && !/\/login\.html/.test(global.location.pathname)) {
+            global.location.assign(`/login.html?session=${encodeURIComponent(data.reason || 'session-expired')}`);
+            throw error;
+          }
+
           // Server-side hiccups are worth one more shot for safe reads only.
           const backoff = NET.BACKOFF_MS * Math.pow(2, i) + Math.random() * 250;
           if (safe && RETRYABLE_STATUS.has(res.status) && i < maxAttempts - 1 && budgetLeft() > backoff + 1500) {
@@ -268,6 +278,11 @@
     registerContentAdmin: (payload) => request('/api/auth/register-content-admin', { method: 'POST', body: JSON.stringify(payload) }),
     login: (payload) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
     logout: () => request('/api/auth/logout', { method: 'POST' }),
+    // Single-active-device verification (email code, magic link, resend, cancel)
+    deviceVerifyCode: (payload) => request('/api/auth/device-verify/code', { method: 'POST', body: JSON.stringify(payload) }),
+    deviceVerifyLink: (payload) => request('/api/auth/device-verify/link', { method: 'POST', body: JSON.stringify(payload) }),
+    deviceVerifyResend: (payload) => request('/api/auth/device-verify/resend', { method: 'POST', body: JSON.stringify(payload) }),
+    deviceVerifyCancel: (payload) => request('/api/auth/device-verify/cancel', { method: 'POST', body: JSON.stringify(payload) }),
     // The whole account UI waits on this one, so it gets a tighter budget
     // than a content fetch: better a fast "not signed in" that self-corrects
     // on reconnect than a nav bar frozen for half a minute.
@@ -438,6 +453,10 @@
     adminListPayments: (status) => request(`/api/admin/payments${status ? `?status=${status}` : ''}`),
     adminApprovePayment: (id) => request(`/api/admin/payments/${id}/approve`, { method: 'POST' }),
     adminRejectPayment: (id) => request(`/api/admin/payments/${id}/reject`, { method: 'POST' }),
+    // Single-active-device security audit (Main Admin only)
+    adminDeviceSecurity: () => request('/api/admin/device-security'),
+    adminDeviceSecurityDetail: (userId) => request(`/api/admin/device-security/${encodeURIComponent(userId)}`),
+    adminRevokeStudentSessions: (userId) => request(`/api/admin/device-security/${encodeURIComponent(userId)}/revoke`, { method: 'POST' }),
 
     // Content Admin: deliberately scoped to the authenticated uploader's own
     // resources. The server independently enforces this ownership boundary.

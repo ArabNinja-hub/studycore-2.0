@@ -13,7 +13,7 @@ process.env.CONTENT_ADMIN_ACCESS_CODE = 'content-admin-test-access-code';
 
 const db = require('../db');
 const app = require('../server');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 const { canUseLabReports, validateLabReportPlacement } = require('../lib/lab-reports');
 
 let server;
@@ -57,7 +57,7 @@ function makeStudent(programCode) {
 }
 
 function cookieFor(user) {
-  return `${COOKIE_NAME}=${createToken(user)}`;
+  return `${COOKIE_NAME}=${createSessionBackedToken(user)}`;
 }
 
 function addLabReport(id, courseCode, programs) {

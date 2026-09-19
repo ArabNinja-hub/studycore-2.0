@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 // own fixed, test-only secret.
 process.env.JWT_SECRET = 'test-only-studycore-jwt-secret-0123456789';
 const db = require('../db');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -229,7 +229,7 @@ test('HTTP API: /api/notifications endpoints and session auth', async () => {
     VALUES (?, 'Test HTTP Announcement', 'Announcement details here.', 'announcement', 0, 0, 'published', ?, ?, ?)
   `).run(annId, studentUser.id, new Date().toISOString(), new Date().toISOString());
 
-  const token = createToken(studentUser);
+  const token = createSessionBackedToken(studentUser);
   const authHeader = `${COOKIE_NAME}=${token}`;
 
   try {

@@ -60,7 +60,7 @@ const db = require('../db');
 const app = require('../server');
 const storage = require('../lib/storage');
 const resumable = require('../lib/resumable-uploads');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 const { ROLES } = require('../lib/roles');
 
 let server;
@@ -93,7 +93,7 @@ function makeUser(role = ROLES.CONTENT_ADMIN) {
 }
 
 function cookieFor(user) {
-  return `${COOKIE_NAME}=${createToken(user)}`;
+  return `${COOKIE_NAME}=${createSessionBackedToken(user)}`;
 }
 
 async function api(method, pathname, { cookie, json, body, headers = {} } = {}) {

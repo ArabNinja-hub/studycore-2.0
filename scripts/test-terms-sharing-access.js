@@ -38,7 +38,7 @@ Object.assign(process.env, {
 
 const db = require('../db');
 const app = require('../server');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 const { resolveCourse, coursesForProgram, programIncludesCourse } = require('../lib/program-access');
 const sharing = require('../lib/program-sharing');
 const terms = require('../lib/terms');
@@ -64,7 +64,7 @@ test.after(async () => {
 });
 
 function cookieFor(user) {
-  return `${COOKIE_NAME}=${createToken(user)}`;
+  return `${COOKIE_NAME}=${createSessionBackedToken(user)}`;
 }
 
 async function call(method, pathname, { user, body } = {}) {

@@ -19,7 +19,7 @@ process.env.JWT_SECRET = 'test-only-studycore-jwt-secret-0123456789';
 
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 const { ROLES } = require('../lib/roles');
 // server.js exports its production app without binding a port when required,
 // so this suite covers the real API middleware, static files, and page gates.
@@ -35,7 +35,7 @@ function cookieFrom(response) {
 }
 
 function cookieFor(user) {
-  return `${COOKIE_NAME}=${createToken(user)}`;
+  return `${COOKIE_NAME}=${createSessionBackedToken(user)}`;
 }
 
 async function call(baseUrl, method, pathname, { cookie, body, manualRedirect = false } = {}) {

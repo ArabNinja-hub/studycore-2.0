@@ -29,7 +29,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../../db');
 const app = require('../../server');
 const storage = require('../../lib/storage');
-const { createToken, COOKIE_NAME } = require('../../middleware/auth');
+const { createToken, createSessionBackedToken, COOKIE_NAME } = require('../../middleware/auth');
 const passwordHash = bcrypt.hashSync('regression-password', 4);
 let server;
 let baseUrl;
@@ -51,8 +51,12 @@ test.after(async () => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
+// Session cookies minted here go through the same server-side session
+// binding as a real login (see lib/device-sessions.js): for STUDENT users a
+// device_sessions row backs the token; admin/content-admin users are exempt
+// from the single-device rule and get a plain signed JWT.
 function cookieFor(user) {
-  return `${COOKIE_NAME}=${createToken(user)}`;
+  return `${COOKIE_NAME}=${createSessionBackedToken(user)}`;
 }
 
 async function call(method, pathname, { user, cookie, body, headers = {} } = {}) {
