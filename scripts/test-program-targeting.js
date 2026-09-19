@@ -153,6 +153,48 @@ test('content targeted at an admin-created program stays hidden from other progr
   assert.equal(moved.status, 200, JSON.stringify(moved.data));
 });
 
+test('programs teaching the same course automatically share its uploads', async () => {
+  const admin = await adminCookie();
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT OR IGNORE INTO courses (id, code, slug, name, icon, subject, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run('course-shared-anatomy', 'AN100', 'an100', 'Shared Anatomy', 'book-open', 'Anatomy', now);
+  for (const code of ['MED', 'ENG']) {
+    db.prepare(`
+      INSERT OR IGNORE INTO program_courses (program_code, course_id, sort_order)
+      VALUES (?, 'course-shared-anatomy', 0)
+    `).run(code);
+  }
+
+  const upload = await call('POST', '/api/admin/resources', {
+    cookie: admin,
+    body: {
+      title: 'One Anatomy Upload',
+      category: 'document',
+      courseId: 'course-shared-anatomy',
+      programs: ['MED'],
+      targetAll: false,
+      semester: 'Term 1'
+    }
+  });
+  assert.equal(upload.status, 201, JSON.stringify(upload.data));
+  assert.deepEqual(upload.data.resource.targetPrograms, ['MED'],
+    'the stored upload remains explicitly owned/targeted once');
+
+  const engStudent = await makeStudent('Engineer Shared', 'engineer-shared@targeting-test.com', 'ENG');
+  const engRow = db.prepare('SELECT * FROM users WHERE email = ?').get(engStudent.email);
+  const list = await call('GET', '/api/resources?search=One+Anatomy', { cookie: cookieFor(engRow) });
+  assert.ok(list.data.resources.some((resource) => resource.title === 'One Anatomy Upload'),
+    'a student in another program teaching the same course should receive the upload');
+
+  const lawStudent = await makeStudent('Law Shared', 'law-shared@targeting-test.com', 'LAW');
+  const lawRow = db.prepare('SELECT * FROM users WHERE email = ?').get(lawStudent.email);
+  const lawList = await call('GET', '/api/resources?search=One+Anatomy', { cookie: cookieFor(lawRow) });
+  assert.ok(!lawList.data.resources.some((resource) => resource.title === 'One Anatomy Upload'),
+    'programs which do not teach the course must remain excluded');
+});
+
 test('a targeting selection that matches no real program is refused, not broadcast', async () => {
   const admin = await adminCookie();
   const res = await call('POST', '/api/admin/resources', {
