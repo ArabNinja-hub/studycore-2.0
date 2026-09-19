@@ -13,10 +13,17 @@ test('same-origin browser requests work on local and reverse-proxied hosts', asy
   const local = await call('POST', '/api/auth/login', { body, headers: { Origin: baseUrl() } });
   assert.equal(local.status, 200, local.text);
 
+  // A real browser re-presents the session cookie it just received: that is
+  // what tells the server "same device" (single-active-device login). Mirror
+  // that on the second request, exactly like the actual login page does.
+  const sessionCookie = local.headers.get('set-cookie');
+  assert.ok(sessionCookie && sessionCookie.includes('sc_token='), 'login sets the session cookie');
+  const cookiePair = sessionCookie.split(';')[0];
+
   const previewOrigin = 'https://3000-regression.e2b.app';
   const preview = await call('POST', '/api/auth/login', {
     body,
-    headers: { Host: '3000-regression.e2b.app', 'X-Forwarded-Proto': 'https', Origin: previewOrigin }
+    headers: { Host: '3000-regression.e2b.app', 'X-Forwarded-Proto': 'https', Origin: previewOrigin, Cookie: cookiePair }
   });
   assert.equal(preview.status, 200, preview.text);
   assert.equal(preview.headers.get('access-control-allow-origin'), previewOrigin);
@@ -80,6 +87,10 @@ test('listing resources does not spend the resource upload allowance', async () 
 
 test('malformed authentication fields return validation errors rather than hanging', async () => {
   const user = createUser();
+  // Staff cookies are plain JWTs; a student one would mint a device_sessions
+  // row (see cookieFor) and make the later cookie-less login open a
+  // second-device verification challenge instead of succeeding.
+  const staff = createUser({ role: 'content_admin' });
   const invalid = [
     ['POST', '/api/auth/login', { email: {}, password: 'regression-password' }],
     ['POST', '/api/auth/login', { email: user.email, password: ['regression-password'] }],
@@ -94,16 +105,25 @@ test('malformed authentication fields return validation errors rather than hangi
       name: 'Invalid', email: 'invalid-publisher@studycore.test', password: {}, confirmPassword: '[object Object]',
       adminAccessCode: process.env.CONTENT_ADMIN_ACCESS_CODE
     }],
-    ['PUT', '/api/auth/password', { currentPassword: {}, newPassword: 'new-password' }],
-    ['PUT', '/api/auth/password', { currentPassword: 'regression-password', newPassword: {} }]
+    ['PUT', '/api/auth/password', { currentPassword: {}, newPassword: 'new-password' }, true],
+    ['PUT', '/api/auth/password', { currentPassword: 'regression-password', newPassword: {} }, true]
   ];
-  for (const [method, pathname, body] of invalid) {
-    const result = await call(method, pathname, { user, body });
+  for (const [method, pathname, body, authed] of invalid) {
+    const result = await call(method, pathname, authed ? { user: staff, body } : { body });
     assert.equal(result.status, 400, `${pathname}: ${result.text}`);
   }
-  assert.equal((await call('POST', '/api/auth/login', {
+  // Invalid inputs must not poison the session state either. Like a real
+  // browser, repeat logins carry the cookie from the first successful one
+  // (single-active-device rule: cookie-less repeats open email verification).
+  const firstLogin = await call('POST', '/api/auth/login', {
     body: { email: user.email, password: 'regression-password' }
-  })).status, 200, 'valid credentials still work after rejected input');
+  });
+  assert.equal(firstLogin.status, 200, 'valid credentials still work after rejected input');
+  const secondLogin = await call('POST', '/api/auth/login', {
+    body: { email: user.email, password: 'regression-password' },
+    headers: { Cookie: firstLogin.headers.get('set-cookie').split(';')[0] }
+  });
+  assert.equal(secondLogin.status, 200, 'same-device re-login works after rejected input');
 });
 
 test('concurrent registrations of the same email return one success and one conflict', async () => {

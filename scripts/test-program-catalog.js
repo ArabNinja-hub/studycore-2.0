@@ -34,7 +34,7 @@ process.env.CONTENT_ADMIN_ACCESS_CODE = 'content-admin-test-access-code';
 
 const db = require('../db');
 const { PROGRAM_CATALOG, COURSE_CATALOG, courseCodeToSlug, pruneLegacySeedCourses } = require('../lib/programs');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 // server.js exports its production app without binding a port when required,
 // so this suite exercises the real API middleware end to end.
 const app = require('../server');
@@ -73,7 +73,7 @@ async function call(method, pathname, { cookie, body } = {}) {
 }
 
 function cookieFor(user) {
-  return `${COOKIE_NAME}=${createToken(user)}`;
+  return `${COOKIE_NAME}=${createSessionBackedToken(user)}`;
 }
 
 async function makeStudent(name, email, program) {

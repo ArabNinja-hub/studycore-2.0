@@ -13,6 +13,7 @@ const emailService = require('../lib/email');
 const { sendSubscriptionAcceptedEmail, sendSubscriptionRejectedEmail } = emailService;
 const { resolveCourse, targetingForResource, validProgramCode } = require('../lib/program-access');
 const { ROLES, normalizeRole, isStudent, isContentAdmin } = require('../lib/roles');
+const deviceSessions = require('../lib/device-sessions');
 const { resourceTypeForCategory, resourceTypeLabel } = require('../lib/resource-types');
 const { validateLabReportPlacement } = require('../lib/lab-reports');
 const accessPolicy = require('../lib/access-policy');
@@ -703,6 +704,48 @@ router.delete('/users/:id', (req, res) => {
   if (!isStudent(user)) return res.status(400).json({ message: 'Only student accounts can be removed here. Use the Content Admin controls for Content Admin accounts.' });
   db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
   res.json({ message: 'Student account removed.' });
+});
+
+// ---- Single-active-device security audit -----------------------------------
+// Read-only Main Admin visibility into student login sessions and
+// new-device verification events. Everything shown here comes from the
+// server-side device_sessions / device_login_challenges tables (see
+// lib/device-sessions.js): login/session creation, pending new-device
+// attempts, successful switches, revocations and failed verifications.
+// Session tokens, code hashes and full IP addresses are never returned.
+router.get('/device-security', (req, res) => {
+  const activeSessions = db.prepare(`
+    SELECT COUNT(*) AS c FROM device_sessions WHERE revoked_at IS NULL AND expires_at > ?
+  `).get(new Date().toISOString()).c;
+  const pendingChallenges = db.prepare(`
+    SELECT COUNT(*) AS c FROM device_login_challenges
+    WHERE used_at IS NULL AND superseded_by IS NULL AND expires_at > ?
+  `).get(new Date().toISOString()).c;
+  res.json({
+    activeSessions,
+    pendingChallenges,
+    events: deviceSessions.auditFeed(100)
+  });
+});
+
+router.get('/device-security/:userId', (req, res) => {
+  const user = db.prepare('SELECT id, name, email, role FROM users WHERE id = ?').get(req.params.userId);
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  res.json({
+    user: { id: user.id, name: user.name, email: user.email, role: normalizeRole(user.role) || user.role },
+    sessions: deviceSessions.sessionsForUser(user.id, 25),
+    challenges: deviceSessions.challengesForUser(user.id, 25)
+  });
+});
+
+// Force-sign-out for a student: revokes every active server-side session, so
+// the device holding the old cookie is rejected on its very next request.
+router.post('/device-security/:userId/revoke', (req, res) => {
+  const user = db.prepare('SELECT id, role FROM users WHERE id = ?').get(req.params.userId);
+  if (!user) return res.status(404).json({ message: 'User not found.' });
+  if (!isStudent(user)) return res.status(400).json({ message: 'Only student accounts have single-device sessions.' });
+  deviceSessions.revokeAllUserSessions(user.id, deviceSessions.REVOKED.ADMIN);
+  res.json({ message: `${user.id}'s active login session was revoked. They will be asked to log in again.` });
 });
 
 // ---- Subscription payments (manual mobile-money confirmation) -----------

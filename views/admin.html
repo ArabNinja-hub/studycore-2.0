@@ -304,6 +304,28 @@
             </div>
             <div id="usersList"><p class="loading-text">Loading…</p></div>
           </div>
+
+          <!-- Single-active-device security audit -->
+          <div class="card card-pad" style="margin-top:28px;">
+            <h3 style="margin-bottom:6px;">Session security (one device per student)</h3>
+            <p style="margin-bottom:14px;">
+              Every student account can be signed in on exactly <strong>one device at a time</strong>. A sign-in from
+              another device stays pending until the student verifies it from their registered email — then the
+              previous device is signed out. The timeline below shows sign-ins, pending verifications, switches
+              and revocations recorded by the server.
+            </p>
+            <div id="deviceSecuritySummary" style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;"></div>
+            <div class="table-wrap">
+              <table class="table" style="width:100%;">
+                <thead>
+                  <tr><th>When</th><th>Student</th><th>Event</th><th>Device</th><th>Outcome</th></tr>
+                </thead>
+                <tbody id="deviceSecurityTbody">
+                  <tr><td colspan="5"><p class="loading-text">Loading security timeline…</p></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </section>
     </main>

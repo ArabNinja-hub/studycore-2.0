@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Verify Your Device | StudyCore</title>
+    <meta name="description" content="Confirm that you want to move your StudyCore account to this device." />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="/css/style.css" />
+    <link rel="stylesheet" href="/css/auth.css" />
+  </head>
+  <body data-page="auth">
+    <main>
+      <div class="auth-wrap">
+        <div class="auth-shell">
+          <a href="/" class="auth-mark" aria-label="StudyCore home">
+            <img src="/assets/logo-icon.jpg" alt="" width="46" height="46" />
+            <span class="auth-mark-text"><em>Study</em>Core</span>
+          </a>
+          <div class="card auth-card">
+            <div id="pendingSection">
+              <h1>Move your account to this device?</h1>
+              <p class="auth-sub">
+                You opened the secure verification link from your email. Confirming signs
+                StudyCore in on <strong>this browser/device</strong> and signs out the device
+                that was previously active.
+              </p>
+              <p style="font-size:0.9rem;color:var(--muted);">
+                If you typed the 6-digit code on the screen where you logged in instead,
+                you can ignore this page.
+              </p>
+              <div id="verifyMessage" style="display:none;margin-bottom:12px;font-size:0.9rem;"></div>
+              <button class="btn btn-primary btn-block btn-lg" type="button" id="confirmBtn">
+                Yes, move my account here
+              </button>
+              <p style="margin-top:14px;text-align:center;font-size:0.9rem;">
+                <a href="/login.html">Back to log in</a> &middot; <a href="/">StudyCore home</a>
+              </p>
+            </div>
+            <div id="doneSection" style="display:none;">
+              <h1 id="doneTitle">Verification complete</h1>
+              <p id="doneBody" class="auth-sub"></p>
+              <a class="btn btn-primary btn-block btn-lg" href="/dashboard.html" id="doneAction" style="display:none;">Continue to StudyCore</a>
+              <a class="btn btn-outline btn-block btn-lg" href="/login.html" id="doneLoginAction" style="display:none;margin-top:10px;">Go to log in</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <script src="/js/icons.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/auth.js"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const token = new URLSearchParams(window.location.search).get('t') || '';
+        const pending = document.getElementById('pendingSection');
+        const done = document.getElementById('doneSection');
+        const messageBox = document.getElementById('verifyMessage');
+        const confirmBtn = document.getElementById('confirmBtn');
+
+        function finish(title, body, ok) {
+          pending.style.display = 'none';
+          done.style.display = 'block';
+          document.getElementById('doneTitle').textContent = title;
+          document.getElementById('doneBody').textContent = body;
+          document.getElementById('doneAction').style.display = ok ? 'block' : 'none';
+          document.getElementById('doneLoginAction').style.display = ok ? 'none' : 'block';
+        }
+
+        function showMessage(text, isError) {
+          messageBox.style.display = 'block';
+          messageBox.style.color = isError ? 'var(--red-600)' : 'var(--teal-600)';
+          messageBox.textContent = text;
+        }
+
+        if (!/^[a-f0-9]{96}$/i.test(token)) {
+          finish('That link is incomplete',
+            'This verification link looks incomplete. Open the full link from your email, or type the 6-digit code on the device you logged in from.',
+            false);
+          return;
+        }
+
+        confirmBtn.addEventListener('click', async () => {
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = 'Verifying…';
+          try {
+            const data = await StudyCoreAPI.deviceVerifyLink({ token });
+            StudyCoreAuth.setWelcomeFlag(data.user.name, 'login');
+            window.location.href = StudyCoreAuth.getDashboardPage(data.user);
+          } catch (err) {
+            // The token is single-use: a second click, an expired challenge or a
+            // newer login attempt all land here with the server-supplied reason.
+            finish('Could not verify this link', err.message, false);
+          }
+        });
+      });
+    </script>
+    <script src="/js/scroll-reveal.js"></script>
+  </body>
+</html>

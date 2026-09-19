@@ -95,6 +95,14 @@ app.use('/api/auth/subscribe', paymentLimit);
 // Profile changes: 20 per hour is plenty for a real user correcting details.
 const profileLimit = rateLimit({ windowMs: 60 * 60 * 1000, max: 20 });
 app.use('/api/auth/profile', profileLimit);
+// Single-active-device verification: the shared 5-wrong-attempts budget per
+// challenge is the real brute-force wall; this per-IP layer stops scripted
+// guessing across many challenges, and the tighter resend limit stops inbox
+// floods aimed at a specific student.
+const deviceVerifyLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 60 });
+const deviceResendLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 10 });
+app.use('/api/auth/device-verify/resend', authRateLimit, deviceResendLimit);
+app.use('/api/auth/device-verify', deviceVerifyLimit);
 // Uploads are the most expensive request type (large bodies, storage I/O):
 // 30 per 15 minutes per IP is generous for a Content Admin publishing a
 // batch of notes and hostile to an automated upload flood.
@@ -207,6 +215,17 @@ if (emailStatus.configured) {
 } else {
   console.log('StudyCore: Resend email is not configured — welcome and subscription emails will be skipped and logged instead. Set RESEND_API_KEY and EMAIL_FROM in the server environment to enable them.');
 }
+
+// Single-active-device sessions (students only). Expired sessions/challenges
+// are swept in place at boot and hourly so they stay auditable without
+// lingering as stale "active" state.
+const deviceSessions = require('./lib/device-sessions');
+deviceSessions.purgeExpired();
+setInterval(() => {
+  try { deviceSessions.purgeExpired(); } catch (err) {
+    console.error('[sessions] periodic expiry sweep failed -', err.message);
+  }
+}, 60 * 60 * 1000).unref();
 
 // Public site config. Official WhatsApp links live in .env so the owner can
 // rotate them without touching page code; the marketing panels on every page

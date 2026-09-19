@@ -677,6 +677,76 @@ try {
   // already exists - fine
 }
 
+// ---------------------------------------------------------------------------
+// Single-active-device sessions (see lib/device-sessions.js).
+//
+// device_sessions is the SERVER-SIDE, authoritative record of who is logged
+// in where. One STUDENT account can have at most ONE active session row; the
+// partial UNIQUE index (user_id WHERE revoked_at IS NULL) is the hard backstop
+// that no code path, race, or crash can bypass. Admin and Content Admin
+// accounts deliberately never get rows here: the single-device rule applies
+// to student accounts only (security vs. publishing workflow).
+//
+// device_login_challenges holds pending second-device logins: a new device
+// must prove access to the account's registered email (6-digit code or the
+// one-time magic link) BEFORE it can replace the current session. Only hashes
+// of the proofs are ever stored.
+//
+// Both tables are append-mostly audit logs. Sessions/challenges are never
+// deleted; they are revoked/expired in place, preserving the timeline the
+// Main Admin security view reads from.
+// ---------------------------------------------------------------------------
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS device_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      device_id TEXT NOT NULL,
+      device_label TEXT,
+      ip_hint TEXT,
+      session_token_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      revoked_at TEXT,
+      revocation_reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_device_sessions_user ON device_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_device_sessions_expires ON device_sessions(expires_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_device_sessions_active_user
+      ON device_sessions(user_id) WHERE revoked_at IS NULL;
+  `);
+} catch (err) {
+  // already exists - fine
+}
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS device_login_challenges (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      pending_device_id TEXT NOT NULL,
+      pending_device_label TEXT,
+      code_hash TEXT NOT NULL,
+      magic_token_hash TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      email_sent_at TEXT,
+      email_attempts INTEGER NOT NULL DEFAULT 0,
+      request_ip TEXT,
+      used_at TEXT,
+      used_reason TEXT,
+      new_session_id TEXT,
+      superseded_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_device_challenges_user ON device_login_challenges(user_id);
+    CREATE INDEX IF NOT EXISTS idx_device_challenges_expires ON device_login_challenges(expires_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_device_challenges_magic ON device_login_challenges(magic_token_hash);
+  `);
+} catch (err) {
+  // already exists - fine
+}
+
 function generateReferralCode() {
   // Short, easy to read aloud/type on a phone - avoids ambiguous characters
   // like 0/O and 1/I/l.

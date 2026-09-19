@@ -23,7 +23,7 @@ process.env.JWT_SECRET = 'test-only-studycore-jwt-secret-0123456789';
 process.env.CONTENT_ADMIN_ACCESS_CODE = 'content-admin-test-access-code';
 
 const db = require('../db');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 const { ROLES } = require('../lib/roles');
 // server.js exports its production app without binding a port when required,
 // so this suite exercises the real API middleware end to end.
@@ -63,7 +63,7 @@ async function call(method, pathname, { cookie, body } = {}) {
 }
 
 function cookieFor(user) {
-  return `${COOKIE_NAME}=${createToken(user)}`;
+  return `${COOKIE_NAME}=${createSessionBackedToken(user)}`;
 }
 
 async function adminCookie() {

@@ -53,7 +53,7 @@ const db = require('../db');
 const emailService = require('../lib/email');
 const templates = require('../lib/email/templates');
 const transport = require('../lib/email/transport');
-const { createToken, COOKIE_NAME } = require('../middleware/auth');
+const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 
 const NOW = new Date().toISOString();
 const IN_30_DAYS = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -443,7 +443,7 @@ test('TEST 2: approving a payment sends exactly one approval email to that stude
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
       const { student, paymentId } = makeStudentWithPendingPayment();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const res = await fetch(`${baseUrl}/api/admin/payments/${paymentId}/approve`, {
         method: 'POST', headers: { Cookie: cookie }
@@ -476,7 +476,7 @@ test('TEST 2 (duplicate protection): a second approve click cannot send a second
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
       const { student, paymentId } = makeStudentWithPendingPayment();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const first = await fetch(`${baseUrl}/api/admin/payments/${paymentId}/approve`, { method: 'POST', headers: { Cookie: cookie } });
       assert.equal(first.status, 200);
@@ -516,7 +516,7 @@ test('approval is NOT rolled back when Resend fails', async () => {
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
       const { student, paymentId } = makeStudentWithPendingPayment();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const res = await fetch(`${baseUrl}/api/admin/payments/${paymentId}/approve`, { method: 'POST', headers: { Cookie: cookie } });
       assert.equal(res.status, 200, 'the request still succeeds');
@@ -542,7 +542,7 @@ test('TEST 3: rejecting a payment sends exactly one rejection email to that stud
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
       const { student, paymentId } = makeStudentWithPendingPayment();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const res = await fetch(`${baseUrl}/api/admin/payments/${paymentId}/reject`, {
         method: 'POST', headers: { Cookie: cookie }
@@ -575,7 +575,7 @@ test('TEST 3 (duplicate protection): a second reject click cannot send a second 
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
       const { student, paymentId } = makeStudentWithPendingPayment();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const first = await fetch(`${baseUrl}/api/admin/payments/${paymentId}/reject`, { method: 'POST', headers: { Cookie: cookie } });
       assert.equal(first.status, 200);
@@ -596,7 +596,7 @@ test('rejection is still recorded when Resend fails', async () => {
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
       const { paymentId } = makeStudentWithPendingPayment();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const res = await fetch(`${baseUrl}/api/admin/payments/${paymentId}/reject`, { method: 'POST', headers: { Cookie: cookie } });
       assert.equal(res.status, 200);
@@ -616,7 +616,7 @@ test('security: the admin email endpoints never expose the API key', async () =>
   try {
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const res = await fetch(`${baseUrl}/api/admin/email/status`, { headers: { Cookie: cookie } });
       assert.equal(res.status, 200);
@@ -636,7 +636,7 @@ test('security: students cannot reach the admin email endpoints', async () => {
   try {
     await withServer(async (baseUrl) => {
       const { student } = makeStudentWithPendingPayment();
-      const cookie = `${COOKIE_NAME}=${createToken({ ...student, role: 'student' })}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken({ ...student, role: 'student' })}`;
 
       const status = await fetch(`${baseUrl}/api/admin/email/status`, { headers: { Cookie: cookie } });
       assert.equal(status.status, 403, 'a student cannot read email status');
@@ -659,7 +659,7 @@ test('security: the admin test email ignores any client-supplied recipient', asy
   try {
     await withServer(async (baseUrl) => {
       const admin = makeAdmin();
-      const cookie = `${COOKIE_NAME}=${createToken(admin)}`;
+      const cookie = `${COOKIE_NAME}=${createSessionBackedToken(admin)}`;
 
       const res = await fetch(`${baseUrl}/api/admin/email/test?template=welcome`, {
         method: 'POST',

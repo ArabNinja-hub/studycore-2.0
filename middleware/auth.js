@@ -1,6 +1,9 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const deviceSessions = require('../lib/device-sessions');
 const {
+  ROLES,
   normalizeRole,
   dashboardPathForRole
 } = require('../lib/roles');
@@ -40,12 +43,35 @@ function createToken(user) {
     // A token is only a convenience; every protected request re-reads this
     // role from SQLite below. Keeping the claim canonical avoids old uppercase
     // values leaking back to the browser during a rolling upgrade.
-    role: normalizeRole(user.role) || 'student'
+    role: normalizeRole(user.role) || 'student',
+    // Random per-mint claim: two tokens signed for the same account in the
+    // same second are still distinct, so a re-login always rotates the value
+    // the server-side device session binds to.
+    jti: crypto.randomUUID()
   }, JWT_SECRET, {
     expiresIn: '7d',
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE
   });
+}
+
+// A student JWT is a credential only half the story. The other half is the
+// server-side device_sessions row (see lib/device-sessions.js): revocation
+// there takes effect immediately, even if the cookie itself still looks
+// valid. This helper is the full round trip used whenever a NEW session is
+// legitimately established server-side (fresh session row, or rebinding to
+// the existing active row when the owner re-authenticates on the same
+// device) - it signs the token and stamps its hash on the session row.
+//
+// Admin / Content Admin accounts are exempt from the single-device rule, so
+// for them this is exactly the old behaviour: sign, no session bookkeeping.
+function createSessionBackedToken(user) {
+  if (normalizeRole(user.role) !== ROLES.STUDENT) return createToken(user);
+  const active = deviceSessions.getActiveSession(user.id);
+  const sessionId = active ? active.id : deviceSessions.forceCreateSession(user.id).sessionId;
+  const token = createToken(user);
+  deviceSessions.bindSessionToJwt(sessionId, token);
+  return token;
 }
 
 function setAuthCookie(res, token) {
@@ -110,6 +136,16 @@ function isActive(user) {
   return Boolean(user) && Number(user.is_active) !== 0;
 }
 
+// Enforce the single-active-device rule for student accounts on every
+// request that reaches this middleware. Admin and Content Admin sessions are
+// deliberately exempt (their publishing workflows must never be locked out).
+// Returns { ok: true } or { ok: false, reason, message } from the authoritative
+// device_sessions table - never the client.
+function studentSessionGate(req, freshUser) {
+  if (normalizeRole(freshUser.role) !== ROLES.STUDENT) return { ok: true };
+  return deviceSessions.checkRequestSession(freshUser.id, getTokenFromRequest(req));
+}
+
 function attachFreshUser(payload, freshUser) {
   return {
     ...payload,
@@ -123,14 +159,16 @@ function attachFreshUser(payload, freshUser) {
 
 // Populates req.user if a valid, active token is present, but never blocks the
 // request. A disabled/deleted account is deliberately treated as logged out
-// here so public pages do not keep presenting an old session as usable.
+// here so public pages do not keep presenting an old session as usable; a
+// student whose server-side session was revoked (another device verified, or
+// an explicit logout elsewhere) is treated the same way.
 function attachUser(req, res, next) {
   const token = getTokenFromRequest(req);
   if (token) {
     const payload = verifyToken(token);
     if (payload) {
       const freshUser = freshSessionUser(payload.id);
-      if (isActive(freshUser)) {
+      if (isActive(freshUser) && studentSessionGate(req, freshUser).ok) {
         req.user = attachFreshUser(payload, freshUser);
       } else {
         req.user = null;
@@ -145,6 +183,9 @@ function attachUser(req, res, next) {
 
 // Blocks the request unless a valid token belongs to a current, active user.
 // Role and account state always come from the database, never from the JWT.
+// For students, the token must ALSO still match the server-side session row:
+// a revoked or superseded session is rejected here immediately - deleting the
+// cookie elsewhere is not what ends the session.
 function requireAuth(req, res, next) {
   const token = getTokenFromRequest(req);
   if (!token) return res.status(401).json({ message: 'Please log in to continue.' });
@@ -158,6 +199,15 @@ function requireAuth(req, res, next) {
   if (!isActive(freshUser)) {
     clearAuthCookie(res);
     return res.status(403).json({ message: 'This account has been disabled. Please contact StudyCore support.' });
+  }
+  const gate = studentSessionGate(req, freshUser);
+  if (!gate.ok) {
+    clearAuthCookie(res);
+    return res.status(401).json({
+      message: gate.message,
+      code: 'SESSION_REVOKED',
+      reason: gate.reason
+    });
   }
   req.user = attachFreshUser(payload, freshUser);
   return next();
@@ -190,9 +240,20 @@ function requirePageAuth(...requestedRoles) {
     const payload = verifyToken(token);
     if (!payload) return res.redirect('/login.html');
     const freshUser = freshSessionUser(payload.id);
-    if (!freshUser || !isActive(freshUser)) {
+    if (!freshUser) {
+      clearAuthCookie(res);
+      return res.redirect('/login.html');
+    }
+    if (!isActive(freshUser)) {
       clearAuthCookie(res);
       return res.redirect('/login.html?disabled=1');
+    }
+    // Full page navigation for a student whose server-side session is gone
+    // lands on the login screen with the reason visible in the banner.
+    const gate = studentSessionGate(req, freshUser);
+    if (!gate.ok) {
+      clearAuthCookie(res);
+      return res.redirect(`/login.html?session=${encodeURIComponent(gate.reason || 'session-expired')}`);
     }
     const role = normalizeRole(freshUser.role);
     if (!role) {
@@ -209,6 +270,7 @@ function requirePageAuth(...requestedRoles) {
 
 module.exports = {
   createToken,
+  createSessionBackedToken,
   setAuthCookie,
   clearAuthCookie,
   verifyToken,

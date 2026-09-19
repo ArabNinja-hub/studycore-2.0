@@ -773,6 +773,51 @@
     sel.onchange = () => loadUsers();
   }
 
+  /* ── Single-active-device security timeline ─────────────────
+     Server-side record of student sign-ins, pending new-device verifications,
+     device switches and revocations (one device per student). */
+  async function loadDeviceSecurity() {
+    const tbody = document.getElementById('deviceSecurityTbody');
+    const summary = document.getElementById('deviceSecuritySummary');
+    if (!tbody || !summary) return;
+    try {
+      const data = await StudyCoreAPI.adminDeviceSecurity();
+      summary.innerHTML = `
+        <div style="background:var(--bg-alt);border-radius:10px;padding:10px 16px;">
+          <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Active student sessions</div>
+          <div style="font-size:1.3rem;font-weight:700;color:var(--ink);">${data.activeSessions}</div>
+        </div>
+        <div style="background:var(--bg-alt);border-radius:10px;padding:10px 16px;">
+          <div style="font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Pending device verifications</div>
+          <div style="font-size:1.3rem;font-weight:700;color:var(--ink);">${data.pendingChallenges}</div>
+        </div>`;
+      const events = data.events || [];
+      if (!events.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:18px;">No session activity recorded yet.</td></tr>';
+        return;
+      }
+      const describe = (ev) => {
+        if (ev.kind === 'session') {
+          return ev.outcome === 'active' || ev.outcome === 'ended' ? 'Sign-in (session created)' : `Session ended (${ev.outcome})`;
+        }
+        return 'New-device verification attempt';
+      };
+      tbody.innerHTML = events.map((ev) => `
+        <tr>
+          <td style="white-space:nowrap;font-size:0.82rem;">${timeAgo(ev.event_time)}</td>
+          <td>
+            <strong style="color:var(--ink);display:block;max-width:220px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(ev.user_name || '')}</strong>
+            <span style="font-size:0.75rem;color:var(--muted);">${escapeHtml(ev.user_email || '')}</span>
+          </td>
+          <td style="font-size:0.85rem;">${describe(ev)}${ev.kind === 'challenge' && ev.detail ? ` <span style="font-size:0.72rem;color:var(--muted);">(${escapeHtml(ev.detail)})</span>` : ''}</td>
+          <td style="font-size:0.85rem;">${escapeHtml(ev.device_label || 'Unknown device')}</td>
+          <td><span style="font-size:0.72rem;padding:3px 8px;border-radius:999px;background:var(--bg-alt);">${escapeHtml(ev.outcome || '')}</span></td>
+        </tr>`).join('');
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="5" style="color:var(--red-600);padding:18px;">${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
   async function loadUsers() {
     const target = document.getElementById('usersList');
     const filterSel = document.getElementById('userProgramFilter');
@@ -921,6 +966,7 @@
     loadContentAdmins();
     loadUsers();
     loadTopicSuggest();
+    loadDeviceSecurity();
   }
 
   document.addEventListener('DOMContentLoaded', initAdminPage);

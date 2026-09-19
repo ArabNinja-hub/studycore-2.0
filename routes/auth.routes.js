@@ -4,10 +4,12 @@ const asyncHandler = require('../lib/async-handler');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../db');
-const { createToken, setAuthCookie, clearAuthCookie, requireAuth, requireRole, attachUser } = require('../middleware/auth');
+const { createToken, createSessionBackedToken, setAuthCookie, clearAuthCookie, requireAuth, requireRole, attachUser, verifyToken, COOKIE_NAME } = require('../middleware/auth');
 const { avatarUpload, resolveMaxUploadMb } = require('../middleware/upload');
 const storage = require('../lib/storage');
-const { sendWelcomeEmail } = require('../lib/email');
+const emailService = require('../lib/email');
+const { sendWelcomeEmail, sendDeviceLoginVerificationEmail } = emailService;
+const deviceSessions = require('../lib/device-sessions');
 const { validProgramCode } = require('../lib/program-access');
 const {
   ROLES,
@@ -211,7 +213,11 @@ router.post('/register', asyncHandler(async (req, res) => {
     // days once the cap is reached.
   }
 
-  const token = createToken(user);
+  // A brand-new account logs in immediately. Students get a server-side
+  // session row alongside the token so the single-device rule applies from
+  // the very first request (a second login elsewhere will need email
+  // verification). Content Admins never go through this route.
+  const token = createSessionBackedToken(user);
   setAuthCookie(res, token);
   res.status(201).json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
 
@@ -298,14 +304,233 @@ router.post('/login', asyncHandler(async (req, res) => {
     return res.status(403).json({ message: 'This account has been disabled. Please contact StudyCore support.' });
   }
 
-  const token = createToken(user);
-  setAuthCookie(res, token);
-  res.json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
+  // Admin and Content Admin accounts are EXEMPT from the single-active-device
+  // rule (otherwise publishing workflows could lock each other out). They
+  // continue exactly as before: stateless JWT, no device_sessions bookkeeping.
+  if (normalizeRole(user.role) !== ROLES.STUDENT) {
+    const token = createToken(user);
+    setAuthCookie(res, token);
+    return res.json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
+  }
+
+  // -----------------------------------------------------------------------
+  // Student login: ONE active device session at a time.
+  //
+  // Same-device re-login: if this request already carries the cookie bound
+  // to the account's active session row, this IS the current device -
+  // re-verification via email would be pure friction. The cookie's hash is
+  // compared against the server-side row, so this path cannot be forged by
+  // claiming to be the same device.
+  // -----------------------------------------------------------------------
+  if (existingSessionCookieMatches(req, user)) {
+    const active = deviceSessions.getActiveSession(user.id);
+    const freshToken = createToken(user);
+    deviceSessions.bindSessionToJwt(active.id, freshToken);
+    setAuthCookie(res, freshToken);
+    return res.json({ token: freshToken, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
+  }
+
+  // No proof this is the current device: let the server-side state machine
+  // decide - create the session when none is active, otherwise open an
+  // email-verification challenge while the existing device stays signed in.
+  const outcome = deviceSessions.loginOrChallenge(user.id, req.get('User-Agent'), req.ip);
+
+  if (outcome.action === 'login') {
+    // No active session existed: ordinary login. The token is bound to the
+    // fresh server-side session row before the cookie goes out.
+    const token = createToken(user);
+    deviceSessions.bindSessionToJwt(outcome.sessionId, token);
+    setAuthCookie(res, token);
+    return res.json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
+  }
+
+  const ch = outcome.challenge;
+  let emailSent = false;
+  if (deviceSessions.emailDispatchAllowed(user.id).allowed) {
+    const verifyUrl = emailService.config.siteLink(`/device-verify.html?t=${encodeURIComponent(ch.magicToken)}`);
+    const result = await sendDeviceLoginVerificationEmail({
+      userId: user.id,
+      name: user.name,
+      email: user.email, // always the stored address, never request input
+      challengeId: ch.id,
+      attempt: 1,
+      code: ch.code,
+      verifyUrl,
+      newDeviceLabel: ch.deviceLabel,
+      currentDeviceLabel: ch.currentDeviceLabel,
+      expiresInMinutes: Math.round(deviceSessions.CHALLENGE_TTL_MS / 60000)
+    }).catch(() => ({ sent: false }));
+    if (result && (result.sent || result.simulated)) {
+      deviceSessions.markChallengeEmailed(ch.id);
+      emailSent = true;
+    }
+  }
+  // Whether the email actually went out (cooldown, hourly cap) is never
+  // surfaced precisely - the response is the same either way, so this route
+  // cannot be probed for the account's mail state.
+  return res.status(202).json({
+    requiresDeviceVerification: true,
+    challengeId: ch.id,
+    expiresAt: new Date(ch.expiresAtMs).toISOString(),
+    maskedEmail: emailService.transport.maskEmail(user.email),
+    emailSent,
+    currentDeviceLabel: ch.currentDeviceLabel,
+    newDeviceLabel: ch.deviceLabel,
+    message: 'This account is currently active on another device. We have sent a verification code to your registered email to confirm you want to move your account to this device.'
+  });
 }));
 
+// True when the request already carries the cookie belonging to the user's
+// ACTIVE server-side session - i.e. this really is the device that is
+// currently signed in. Hash-compared against the device_sessions row, so a
+// cookie invented client-side cannot claim the fast path.
+function existingSessionCookieMatches(req, user) {
+  const raw = req.cookies && req.cookies[COOKIE_NAME];
+  if (!raw) return false;
+  const payload = verifyToken(raw);
+  if (!payload || payload.id !== user.id) return false;
+  if (normalizeRole(payload.role) !== ROLES.STUDENT) return false;
+  const active = deviceSessions.getActiveSession(user.id);
+  if (!active) return false;
+  return deviceSessions.__internal.hashesEqual(
+    active.session_token_hash,
+    deviceSessions.__internal.hash(raw)
+  );
+}
+
 router.post('/logout', (req, res) => {
+  // Server-side revocation first: after this, the old cookie is unusable on
+  // ANY request, not merely forgotten by this browser. Logout must stay safe
+  // and idempotent even for invalid or legacy tokens.
+  const raw = req.cookies && req.cookies[COOKIE_NAME];
+  if (raw) {
+    const payload = verifyToken(raw);
+    if (payload && normalizeRole(payload.role) === ROLES.STUDENT) {
+      try {
+        deviceSessions.revokeAllUserSessions(payload.id, deviceSessions.REVOKED.LOGOUT);
+      } catch (err) {
+        console.error('[auth] logout: could not revoke server-side session -', err.message);
+      }
+    }
+  }
   clearAuthCookie(res);
   res.json({ message: 'Logged out.' });
+});
+
+// ---------------------------------------------------------------------------
+// Single-active-device verification endpoints
+//
+// POST /api/auth/device-verify/code   { challengeId, code }   - typed code path
+// POST /api/auth/device-verify/link   { token }               - magic-link path
+// POST /api/auth/device-verify/resend { challengeId }         - re-send the email
+// POST /api/auth/device-verify/cancel { challengeId }         - stay on current device
+//
+// None of these ever reveal more than the requester already proved they know
+// (the challenge id is only issued after a correct password), and every
+// failure path stays generic for the same reason. The proofs themselves are
+// single-use, hashed in the DB, and burned at 5 wrong attempts.
+// ---------------------------------------------------------------------------
+
+const VERIFY_FAILURES = {
+  'wrong-proof': { status: 400, message: 'That verification code is not correct. Check the email and try again.' },
+  'too-many-attempts': { status: 429, message: 'Too many incorrect attempts. That verification has been cancelled - log in again to get a new code.' },
+  'expired': { status: 400, message: 'That verification code has expired. Log in again to get a new one.' },
+  'consumed': { status: 400, message: 'That verification has already been used. Log in again to continue.' },
+  'superseded': { status: 400, message: 'A newer sign-in attempt replaced that code. Log in again to get a fresh one.' },
+  'cancelled': { status: 400, message: 'That verification was cancelled. Log in again if you still want to switch devices.' },
+  'verified': { status: 400, message: 'That verification code was already used. Log in again to continue.' },
+  'unknown': { status: 400, message: 'That verification link or code is no longer valid. Log in again to get a new one.' }
+};
+
+function verifyFailure(res, reason) {
+  const failure = VERIFY_FAILURES[reason] || VERIFY_FAILURES.unknown;
+  return res.status(failure.status).json({ message: failure.message, reason: String(reason || 'unknown') });
+}
+
+async function completeVerifiedLogin(res, result) {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.userId);
+  if (!user || Number(user.is_active) === 0) {
+    return res.status(403).json({ message: 'This account can no longer sign in. Please contact StudyCore support.' });
+  }
+  const token = createToken(user);
+  deviceSessions.bindSessionToJwt(result.sessionId, token);
+  setAuthCookie(res, token);
+  return res.json({ token, user: { ...publicUser(user), subscriptionStatus: subscriptionStatus(user) } });
+}
+
+router.post('/device-verify/code', asyncHandler(async (req, res) => {
+  const { challengeId, code } = req.body || {};
+  if (typeof challengeId !== 'string' || !challengeId.trim() || typeof code !== 'string' || !code.trim()) {
+    return res.status(400).json({ message: 'A verification code is required.' });
+  }
+  const result = deviceSessions.verifyChallengeByCode(challengeId.trim(), code);
+  if (!result.ok) return verifyFailure(res, result.reason);
+  return completeVerifiedLogin(res, result);
+}));
+
+router.post('/device-verify/link', asyncHandler(async (req, res) => {
+  const { token } = req.body || {};
+  if (typeof token !== 'string' || !token.trim()) {
+    return res.status(400).json({ message: 'That verification link is incomplete. Check the email and try again.' });
+  }
+  // The magic token is 96 hex characters - anything else is malformed, so
+  // reject before touching the database.
+  if (!/^[a-f0-9]{96}$/i.test(token.trim())) return verifyFailure(res, 'unknown');
+  const result = deviceSessions.verifyChallengeByToken(token.trim());
+  if (!result.ok) return verifyFailure(res, result.reason);
+  return completeVerifiedLogin(res, result);
+}));
+
+router.post('/device-verify/resend', asyncHandler(async (req, res) => {
+  const { challengeId } = req.body || {};
+  const generic = { message: 'If that verification is still pending, a new email is on its way to your registered address.' };
+  if (typeof challengeId !== 'string' || !challengeId.trim()) return res.json(generic);
+
+  const challenge = deviceSessions.getChallengeById(challengeId.trim());
+  if (!challenge || !deviceSessions.canResendChallenge(challenge)) {
+    return res.json({ ...generic, resent: false });
+  }
+  if (!deviceSessions.emailDispatchAllowed(challenge.user_id).allowed) {
+    return res.json({ ...generic, resent: false });
+  }
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(challenge.user_id);
+  if (!user || Number(user.is_active) === 0) return res.json({ ...generic, resent: false });
+
+  // Resend safety: instead of reusing the old proofs, the resend mints a
+  // FRESH challenge (new code, new link, new 10-minute window) and
+  // supersedes the old one - a delayed inbox copy can never compete with the
+  // email just sent. rotateChallengeForUser can never mint a session, so a
+  // resend can never be twisted into a login. Device metadata comes from
+  // THIS request (the new device is the one asking).
+  const replacement = deviceSessions.rotateChallengeForUser(user.id, req.get('User-Agent'), req.ip);
+  if (!replacement) {
+    return res.json({ ...generic, resent: false });
+  }
+  const result = await sendDeviceLoginVerificationEmail({
+    userId: user.id,
+    name: user.name,
+    email: user.email,
+    challengeId: replacement.id,
+    attempt: (Number(challenge.email_attempts) || 0) + 1,
+    code: replacement.code,
+    verifyUrl: emailService.config.siteLink(`/device-verify.html?t=${encodeURIComponent(replacement.magicToken)}`),
+    newDeviceLabel: replacement.deviceLabel,
+    currentDeviceLabel: replacement.currentDeviceLabel,
+    expiresInMinutes: Math.round(deviceSessions.CHALLENGE_TTL_MS / 60000)
+  }).catch(() => ({ sent: false }));
+  if (result && (result.sent || result.simulated)) {
+    deviceSessions.markChallengeEmailed(replacement.id);
+    return res.json({ ...generic, resent: true, challengeId: replacement.id, expiresAt: new Date(replacement.expiresAtMs).toISOString() });
+  }
+  return res.json({ ...generic, resent: false });
+}));
+
+router.post('/device-verify/cancel', (req, res) => {
+  const { challengeId } = req.body || {};
+  if (typeof challengeId === 'string' && challengeId.trim()) {
+    try { deviceSessions.cancelChallenge(challengeId.trim()); } catch { /* already settled - fine */ }
+  }
+  res.json({ message: 'No problem. Your account stays active on the other device.' });
 });
 
 // Returns the current user when logged in, or `{ user: null }` for anonymous
