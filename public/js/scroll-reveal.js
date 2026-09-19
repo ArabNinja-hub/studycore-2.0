@@ -28,6 +28,7 @@
     '.resource-grid > .resource-card',
     '.topic-grid > .topic-card',
     '.video-term-grid > .video-term-card',
+    '.video-lesson-grid > .video-lesson-card',
     '.announcement-list > .announcement-card',
     '.achievement',
     '.premium-card'
@@ -40,6 +41,7 @@
     '.resource-grid',
     '.topic-grid',
     '.video-term-grid',
+    '.video-lesson-grid',
     '.announcement-list',
     '#myCoursesList',
     '.achievement-grid'
@@ -100,7 +102,7 @@
     const direction = element.getAttribute('data-scroll-reveal');
     if (direction === 'fade-left' || direction === 'fade-right' || direction === 'fly-in') return direction;
     if (element.matches('img') || element.hasAttribute('data-scroll-reveal-image')) return 'fade-right';
-    if (element.matches('.course-card, .course-mini, .resource-card, .topic-card, .video-term-card, .announcement-card, .achievement, .premium-card, .feature-grid > .card')) {
+    if (element.matches('.course-card, .course-mini, .resource-card, .topic-card, .video-term-card, .video-lesson-card, .announcement-card, .achievement, .premium-card, .feature-grid > .card')) {
       const group = element.closest(STAGGER_SELECTORS);
       const siblings = group
         ? candidatesIn(group).filter((candidate) => candidate !== group && isCandidateVisible(candidate))

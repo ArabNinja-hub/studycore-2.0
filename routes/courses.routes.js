@@ -4,7 +4,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const { resourceVisibilityClause, programCanSeeResource } = require('../lib/program-access');
 const accessPolicy = require('../lib/access-policy');
-const { TERMS: VIDEO_TERMS, groupByTerm } = require('../lib/terms');
+const { TERMS: VIDEO_TERMS, groupByTerm, videoTermShelves } = require('../lib/terms');
 const stream = require('../lib/stream');
 const { issueTicket } = require('../lib/content-tickets');
 
@@ -328,10 +328,10 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
       subject,
       slug: COURSES.find((c) => c.subject === subject)?.slug || key,
       term,
-      videoTerms: VIDEO_TERMS.map((t) => ({
-        term: t,
-        lessons: term === null || t === term ? lessons.filter((l) => l.term === t) : []
-      })),
+      // Every video on its designated term shelf: Term 1/2/3 (kept even when
+      // empty) plus "Other" for legacy rows with no term, so nothing is left
+      // without a shelf. With a focus term only that shelf is populated.
+      videoTerms: videoTermShelves(lessons, term),
       lectures: lessons,
       continueLearning,
       access: { premium: access.premium, trial: access.trial }
@@ -496,10 +496,10 @@ router.get('/:subject', requireAuth, requireStudentLearningAccount, (req, res) =
   }
 
   const lectures = flatLessons.filter((l) => l.category === 'video');
-  const videoTerms = VIDEO_TERMS.map((term) => ({
-    term,
-    lessons: lectures.filter((lesson) => lesson.term === term)
-  }));
+  // Term cards for the course home: same shelves the Video Lessons page
+  // renders, so an unfiled legacy video gets an "Other" card instead of
+  // being unreachable.
+  const videoTerms = videoTermShelves(lectures, null);
 
   const notes = flatLessons.filter((l) => l.category === 'document');
   const tutorials = flatLessons.filter((l) => l.category === 'tutorial');

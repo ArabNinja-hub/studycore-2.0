@@ -207,6 +207,64 @@ test('playback progress reporting accepts sub-second precision differences at vi
 });
 
 // ---------------------------------------------------------------------------
+// 2b. Every video on its designated term shelf
+// ---------------------------------------------------------------------------
+
+test('the all-terms video payload shelves every video under its designated term', async () => {
+  const student = createUser({ program_code: 'SMMS' });
+  const t1 = createVideo({ title: 'Shelf T1 lecture', semester: 'Term 1' });
+  const t2 = createVideo({ title: 'Shelf T2 lecture', semester: 'Term 2' });
+  const t3 = createVideo({ title: 'Shelf T3 lecture', semester: 'Term 3' });
+  // A legacy row uploaded before terms were required, plus a non-canonical
+  // term string — both must still land on a visible shelf, never disappear.
+  const unfiled = createVideo({ title: 'Shelf unfiled lecture', semester: null });
+  const sloppy = createVideo({ title: 'Shelf sloppy term lecture', semester: 't2' });
+
+  const res = await call('GET', '/api/programs/course/MA110?view=videos', { user: student });
+  assert.equal(res.status, 200, res.text);
+
+  const shelves = res.data.videoTerms;
+  const titlesOn = (term) => shelves.find((g) => g.term === term).lessons.map((l) => l.title);
+
+  assert.deepEqual(shelves.map((g) => g.term), ['Term 1', 'Term 2', 'Term 3', 'Other'],
+    'the three teaching terms lead, in order, and unfiled videos get an Other shelf');
+  assert.ok(titlesOn('Term 1').includes(t1.title));
+  assert.ok(titlesOn('Term 3').includes(t3.title));
+  assert.ok(titlesOn('Other').includes(unfiled.title),
+    'a video with no term gets the Other shelf instead of disappearing');
+  assert.ok(titlesOn('Term 2').includes(t2.title));
+  assert.ok(titlesOn('Term 2').includes(sloppy.title),
+    'a non-canonical term string ("t2") is normalized onto the Term 2 shelf');
+  // Nothing leaks onto a shelf it does not belong to…
+  for (const other of ['Term 1', 'Term 3', 'Other']) {
+    assert.ok(!titlesOn(other).includes(t2.title));
+    assert.ok(!titlesOn(other).includes(sloppy.title));
+  }
+  assert.ok(!titlesOn('Term 1').includes(unfiled.title));
+  // …and every video in the payload sits on exactly one shelf.
+  const shelvedIds = shelves.flatMap((g) => g.lessons.map((l) => l.id)).sort();
+  assert.deepEqual(shelvedIds, [...res.data.lectures.map((l) => l.id)].sort(),
+    'every lecture is shelved exactly once');
+});
+
+test('the course home exposes an Other video card when unfiled videos exist', async () => {
+  const student = createUser({ program_code: 'SMMS' });
+  const legacy = createVideo({ title: 'Home legacy lecture', semester: null });
+
+  const res = await call('GET', '/api/programs/course/MA110', { user: student });
+  assert.equal(res.status, 200, res.text);
+  const shelves = res.data.videoTerms;
+  assert.deepEqual(shelves.map((g) => g.term), ['Term 1', 'Term 2', 'Term 3', 'Other']);
+  assert.ok(
+    shelves.find((g) => g.term === 'Other').lessons.map((l) => l.title).includes(legacy.title),
+    'an unfiled video is reachable from the course home, not just counted in the hero stats'
+  );
+  const shelvedIds = shelves.flatMap((g) => g.lessons.map((l) => l.id)).sort();
+  assert.deepEqual(shelvedIds, [...res.data.lectures.map((l) => l.id)].sort(),
+    'every video on the course home sits on a term shelf');
+});
+
+// ---------------------------------------------------------------------------
 // 3. Upload: video container signature detection
 // ---------------------------------------------------------------------------
 

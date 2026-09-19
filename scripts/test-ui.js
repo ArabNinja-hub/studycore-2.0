@@ -76,6 +76,45 @@ test('course terms open a single-course video page', () => {
   assert.doesNotMatch(layout, /whatsapp-group-qr|communityQrHtml|qr-frame/);
 });
 
+test('video lessons render as cards on per-term shelves', () => {
+  const videoJs = read('public/js/video.js');
+  const videosHtml = read('public/pages/videos.html');
+  const css = read('public/css/style.css');
+  const scrollReveal = read('public/js/scroll-reveal.js');
+
+  // The page hosts one shelf per term (Term 1/2/3 + Other), each with its own
+  // card grid — not the old flat one-term row list.
+  assert.match(videosHtml, /id="videoTermShelves"/);
+  assert.doesNotMatch(videosHtml, /id="videoList"/, 'the old one-term row list is gone');
+  assert.match(videoJs, /video-lesson-grid/);
+  assert.match(videoJs, /video-lesson-card/);
+  assert.match(videoJs, /term-group/);
+  assert.match(videoJs, /videoTermShelves/);
+
+  // Cards carry the video affordances: thumbnail stage, play button, watched
+  // flag, resume pill, and the Premium overlay for locked lessons.
+  assert.match(videoJs, /video-lesson-thumb/);
+  assert.match(videoJs, /video-lesson-play/);
+  assert.match(videoJs, /video-lesson-flag/);
+  assert.match(videoJs, /video-lesson-resume/);
+  assert.match(videoJs, /lockOverlayHtml/);
+
+  // The term strip is an in-page anchor nav with per-term counts (all shelves
+  // render from one payload — no per-term re-download).
+  assert.match(videoJs, /subnav-count/);
+  assert.match(videoJs, /data-term=/);
+  assert.doesNotMatch(videoJs, /pushState/, 'term switching is a scroll, not a history rewrite');
+
+  // The card system is part of the shared design language…
+  assert.match(css, /\.video-lesson-grid \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.video-lesson-card \{/);
+  assert.match(css, /\.video-lesson-card\.locked \.video-lesson-thumb/);
+  // …including its responsive columns and the scroll-reveal flight.
+  assert.match(css, /\.video-lesson-grid \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.video-lesson-grid \{[^}]*grid-template-columns: 1fr; \}/);
+  assert.match(scrollReveal, /video-lesson-grid > \.video-lesson-card/);
+});
+
 test('global navigation keeps videos within the course hierarchy', () => {
   const layout = read('public/js/layout.js');
   const navBlock = layout.match(/const NAV_LINKS = \[(.*?)\n  \];/s)?.[1] || '';
