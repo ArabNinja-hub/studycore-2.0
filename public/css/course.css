@@ -39,5 +39,8 @@ body[data-theme='dark'] .term-group-heading { color: #fff; }
    The section container stacks the shelves; each shelf keeps its own
    .resource-grid so the cards still lay out in the usual columns. */
 .term-shelves { display: block; }
+/* One term at a time: only the chosen shelf is shown, so Term 1 is seen on
+   its own and never runs into Term 2 while scrolling. */
+.term-shelves .term-group[hidden] { display: none; }
 .term-shelves .term-group:last-child { margin-bottom: 0; }
 .term-shelves .resource-grid { margin-bottom: 0; }

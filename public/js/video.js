@@ -15,13 +15,13 @@
 //                    GET /api/programs/course/:key.
 //
 // Students reach this page from a course home term
-// card. The page shows ALL terms at once — Term 1 /
+// card. The page holds a shelf for every term — Term 1 /
 // Term 2 / Term 3, plus an "Other" shelf for videos
-// uploaded before terms existed — so every video
-// lesson is visible in the term it belongs to and
-// nothing is ever mixed in from another term. The
-// term strip under the hero scrolls between shelves
-// and doubles as a per-term counter.
+// uploaded before terms existed — but shows only ONE
+// term at a time. The term strip under the hero switches
+// between shelves (Term 1 alone, then Term 2 alone) and
+// doubles as a per-term counter, so a term is never seen
+// running into the next one while scrolling.
 // =============================================
 
 (function () {
@@ -74,12 +74,17 @@
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
   }
 
+  // Which term shelf is on screen right now. The page shows exactly one term
+  // at a time (Term 1 alone, then Term 2 alone, …); this remembers the choice
+  // so the strip and the shelves stay in agreement.
+  let activeTerm = null;
+
   // ── Term strip ──────────────────────────────
-  // One link per shelf, carrying its video count so a student can see at a
-  // glance which term actually has material. The links are in-page anchors:
-  // every shelf is already on the page, so switching terms is a scroll, not
-  // another download. While loading (or signed out) the strip renders
-  // without counts rather than guessing zeros.
+  // One button per shelf, carrying its video count so a student can see at a
+  // glance which term actually has material. The buttons are a term switcher,
+  // not scroll anchors: only the chosen term's shelf is shown, so a term is
+  // never seen running into the next one while scrolling. While loading (or
+  // signed out) the strip renders without counts rather than guessing zeros.
   function renderTermNav(shelves) {
     const host = $('#termSubnavLinks');
     if (!host) return;
@@ -88,36 +93,44 @@
       const count = Array.isArray(shelf.lessons)
         ? ` <span class="subnav-count">${shelf.lessons.length}</span>`
         : '';
-      return `<li><a href="#${shelfId(shelf.term)}" data-term="${escapeHtml(shelf.term)}"${shelf.term === focusTerm ? ' class="active" aria-current="page"' : ''}>${escapeHtml(shelf.term)}${count}</a></li>`;
+      const active = shelf.term === activeTerm;
+      return `<li><button type="button" class="subnav-term${active ? ' active' : ''}" data-term="${escapeHtml(shelf.term)}"${active ? ' aria-current="page"' : ''}>${escapeHtml(shelf.term)}${count}</button></li>`;
     }).join('');
   }
 
-  // Keep the active term in the strip in sync with the shelf the student is
-  // actually looking at, the same way the course home highlights its sections.
-  function wireShelfSpy() {
-    const links = [...document.querySelectorAll('#termSubnavLinks a[data-term]')];
-    const shelves = [...document.querySelectorAll('#videoTermShelves .term-group')];
-    if (!links.length || !shelves.length) return;
-    const setActive = (id) => links.forEach((link) => {
-      const active = link.getAttribute('href') === `#${id}`;
-      link.classList.toggle('active', active);
-      if (active) link.setAttribute('aria-current', 'page');
-      else link.removeAttribute('aria-current');
+  // Reflect the chosen term in both the strip and the shelves: the matching
+  // button lights up and every shelf except the chosen one is hidden, so the
+  // student sees Term 1 on its own, then Term 2 on its own.
+  function showTerm(term) {
+    activeTerm = term;
+    document.querySelectorAll('#termSubnavLinks .subnav-term').forEach((btn) => {
+      const active = btn.getAttribute('data-term') === term;
+      btn.classList.toggle('active', active);
+      if (active) btn.setAttribute('aria-current', 'page');
+      else btn.removeAttribute('aria-current');
     });
-    if ('IntersectionObserver' in window) {
-      const io = new IntersectionObserver((entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-        if (visible) setActive(visible.target.id);
-      }, { rootMargin: '-30% 0px -60% 0px', threshold: [0, 0.01, 0.25] });
-      shelves.forEach((shelf) => io.observe(shelf));
+    document.querySelectorAll('#videoTermShelves .term-group').forEach((shelf) => {
+      shelf.hidden = shelf.getAttribute('data-term') !== term;
+    });
+  }
+
+  // Turn the term strip into a switcher: clicking a term reveals only that
+  // term's shelf. Keyboard and the back button move it through the URL hash.
+  function wireTermSwitch(shelves) {
+    const host = $('#termSubnavLinks');
+    if (host) {
+      host.addEventListener('click', (e) => {
+        const btn = e.target.closest('.subnav-term');
+        if (!btn) return;
+        const term = btn.getAttribute('data-term');
+        showTerm(term);
+        history.replaceState(null, '', `#${shelfId(term)}`);
+      });
     }
-    // Plain hash navigation (keyboard, back button) must also move the
-    // highlight, not just the viewport.
     window.addEventListener('hashchange', () => {
       const id = decodeURIComponent(location.hash.slice(1));
-      if (shelves.some((shelf) => shelf.id === id)) setActive(id);
+      const match = (shelves || []).find((shelf) => shelfId(shelf.term) === id);
+      if (match) showTerm(match.term);
     });
   }
 
@@ -177,7 +190,7 @@
           })
     }</div>`;
     return `
-      <div class="term-group" id="${shelfId(shelf.term)}" style="scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 96px);">
+      <div class="term-group" id="${shelfId(shelf.term)}" data-term="${escapeHtml(shelf.term)}" style="scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 96px);">
         <h3 class="term-group-heading">${heading}</h3>
         ${grid}
       </div>`;
@@ -185,23 +198,30 @@
 
   function renderShelves(shelves) {
     const host = $('#videoTermShelves');
-    host.innerHTML = shelves.length
-      ? shelves.map(shelfHtml).join('')
-      : emptyState({
-          icon: 'video',
-          title: 'No videos yet',
-          body: `Video lessons for ${escapeHtml(courseSubject())} will appear here as soon as they are published.`
-        });
-    wireShelfSpy();
-
-    // A ?term= deep link (the course home term cards) scrolls straight to
-    // that shelf once the page has rendered.
-    if (focusTerm) {
-      const target = document.getElementById(shelfId(focusTerm));
-      if (target && typeof target.scrollIntoView === 'function') {
-        setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
-      }
+    if (!shelves.length) {
+      host.innerHTML = emptyState({
+        icon: 'video',
+        title: 'No videos yet',
+        body: `Video lessons for ${escapeHtml(courseSubject())} will appear here as soon as they are published.`
+      });
+      return;
     }
+    host.innerHTML = shelves.map(shelfHtml).join('');
+
+    // Pick the term to open on first paint: a ?term= deep link (or #hash) when
+    // it names a real shelf, otherwise the first shelf. Only that one shelf is
+    // shown — the rest stay hidden until the student switches to them.
+    const hashTerm = (() => {
+      const id = decodeURIComponent((location.hash || '').slice(1));
+      const match = shelves.find((shelf) => shelfId(shelf.term) === id);
+      return match ? match.term : null;
+    })();
+    const initial = (isShelfTerm(focusTerm) && shelves.some((s) => s.term === focusTerm) && focusTerm)
+      || hashTerm
+      || shelves[0].term;
+
+    wireTermSwitch(shelves);
+    showTerm(initial);
   }
 
   function setPageChrome(data) {
@@ -229,7 +249,7 @@
     const total = (shelves || []).reduce((sum, shelf) => sum + (shelf.lessons || []).length, 0);
     $('#videosSub').textContent = total === 0
       ? `No ${courseSubject()} videos have been published yet.`
-      : `${total} ${courseSubject()} video ${total === 1 ? 'lesson' : 'lessons'} — each one on its designated term shelf.`;
+      : `${total} ${courseSubject()} video ${total === 1 ? 'lesson' : 'lessons'} — pick a term to view it on its own.`;
   }
 
   function renderContinue(cont) {
