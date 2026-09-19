@@ -2674,21 +2674,28 @@ body[data-theme='dark'] .course-subnav-back { background: rgba(255,255,255,0.06)
 body[data-theme='dark'] .course-subnav-back:hover { background: rgba(255,255,255,0.10); }
 .course-subnav .subnav-links { display: flex; gap: 2px; list-style: none; align-items: center; overflow-x: auto; scrollbar-width: none; }
 .course-subnav .subnav-links::-webkit-scrollbar { display: none; }
-.course-subnav .subnav-links a {
+.course-subnav .subnav-links a,
+.course-subnav .subnav-links .subnav-term {
   display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
   padding: 8px 13px; border-radius: 9999px; font-size: 0.86rem; font-weight: 600; color: var(--muted);
   border: 1px solid transparent;
   transition: all 0.2s cubic-bezier(0.16,1,0.3,1);
 }
-.course-subnav .subnav-links a:hover { background: rgba(255,255,255,0.52); color: var(--teal-600); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-.course-subnav .subnav-links a.active {
+.course-subnav .subnav-links .subnav-term {
+  font-family: inherit; background: transparent; cursor: pointer;
+}
+.course-subnav .subnav-links a:hover,
+.course-subnav .subnav-links .subnav-term:hover { background: rgba(255,255,255,0.52); color: var(--teal-600); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.course-subnav .subnav-links a.active,
+.course-subnav .subnav-links .subnav-term.active {
   color: var(--teal-700);
   background: rgba(255,255,255,0.84);
   border: 1px solid rgba(255,255,255,0.58);
   box-shadow: 0 2px 10px rgba(11,32,51,0.08), inset 0 1px 0 rgba(255,255,255,0.8);
   backdrop-filter: blur(12px) saturate(150%); -webkit-backdrop-filter: blur(12px) saturate(150%);
 }
-body[data-theme='dark'] .course-subnav .subnav-links a.active {
+body[data-theme='dark'] .course-subnav .subnav-links a.active,
+body[data-theme='dark'] .course-subnav .subnav-links .subnav-term.active {
   background: rgba(255,255,255,0.12);
   border-color: rgba(255,255,255,0.14);
   color: var(--teal-300);
@@ -2702,7 +2709,8 @@ body[data-theme='dark'] .course-subnav .subnav-links a.active {
   background: var(--bg-alt); color: var(--muted);
   font-size: 0.7rem; font-weight: 700; line-height: 1;
 }
-.course-subnav .subnav-links a.active .subnav-count { background: var(--teal-100); color: var(--teal-700); }
+.course-subnav .subnav-links a.active .subnav-count,
+.course-subnav .subnav-links .subnav-term.active .subnav-count { background: var(--teal-100); color: var(--teal-700); }
 body[data-theme='dark'] .course-subnav .subnav-links .subnav-count { background: rgba(255,255,255,0.10); color: inherit; }
 .course-jump { display: none; }
 body[data-page='course'] main > section[id] { scroll-margin-top: calc(var(--nav-h) + var(--nav-float) + 78px); }
