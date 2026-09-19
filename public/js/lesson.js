@@ -59,12 +59,12 @@
       const label = lesson.courseCode ? `${lesson.courseCode} — ${lesson.subject || ''}` : (lesson.subject || 'Course');
       html += `${sep}<a href="${programHref}">${escapeHtml(label.trim())}</a>`;
       if (lesson.topic && lesson.topic !== 'General') {
-        html += `${sep}<a href="${programHref}#lesson-topic-${String(lesson.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(lesson.topic)}</a>`;
+        html += `${sep}<a href="${programHref}#topics">${escapeHtml(lesson.topic)}</a>`;
       }
     } else if (slug) {
       html += `${sep}<a href="/pages/subjects/${slug}.html">${escapeHtml(lesson.subject || subjectParam)}</a>`;
       if (lesson.topic && lesson.topic !== 'General') {
-        html += `${sep}<a href="/pages/subjects/${slug}.html#lesson-topic-${String(lesson.topic).toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${escapeHtml(lesson.topic)}</a>`;
+        html += `${sep}<a href="/pages/subjects/${slug}.html#topics">${escapeHtml(lesson.topic)}</a>`;
       }
     }
     html += `${sep}<span class="current">${escapeHtml(lesson.title)}</span>`;

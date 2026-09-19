@@ -24,8 +24,6 @@
   SC.Hero.init($('#courseHero'), slug);
   $('#courseHeroIcon').innerHTML = SC.icon(SC.courseIcon(slug), { size: 30 });
 
-  const topicAnchor = (name) => `lesson-topic-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-
   function setStats(values) {
     document.querySelectorAll('[data-stat]').forEach((el) => {
       el.textContent = values[el.getAttribute('data-stat')] ?? '0';
@@ -38,14 +36,6 @@
     if (streak > 0) {
       slot.innerHTML = `<span class="course-streak-pill">${SC.icon('flame', { size: 16 })} ${streak} day study streak</span>`;
     }
-  }
-
-  // lessonRowHtml now lives in main.js (shared with the Video Lessons
-  // pages). The course page wraps it so rows carry a topic anchor for
-  // in-page deep linking to each topic header.
-  function courseLessonRow(item) {
-    const anchor = `data-topic-anchor="${escapeHtml(topicAnchor(item.topic || 'General'))}"`;
-    return lessonRowHtml(item, subject, anchor);
   }
 
   function termVideosHref(term) {
@@ -90,11 +80,6 @@
     $('#videoTermGrid').innerHTML = ['Term 1', 'Term 2', 'Term 3'].map((term) =>
       termCardHtml(term, 'Open this term to watch video lessons for this course.')
     ).join('');
-    $('#lessonList').innerHTML = emptyState({
-      icon: 'play', title: 'Lessons appear when you log in',
-      body: `Create a free account to open ${escapeHtml(subject)} lessons, notes and past papers — your 30-day trial starts immediately.`,
-      cta: '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;"><a class="btn btn-primary" href="/signup.html">Start Free Trial</a><a class="btn btn-outline" href="/login.html">Log In</a></div>'
-    });
     $('#resourceGrid').innerHTML = studyTermCardsHtml(null, null, termStudyHref,
       'Log in to open this term\u2019s notes and tutorial sheets.');
     $('#paperGrid').innerHTML = emptyState({ icon: 'file', title: 'Past papers', body: 'Log in to open this course\u2019s past papers.' });
@@ -152,25 +137,15 @@
     // Topics
     $('#topicGrid').innerHTML = data.topics.length
       ? data.topics.map((t) => `
-          <a class="topic-card" href="#${topicAnchor(t.name)}">
+          <div class="topic-card topic-card-static">
             <span class="card-icon">${SC.icon('layers', { size: 20 })}</span>
             <span class="topic-card-body"><h4>${escapeHtml(t.name)}</h4><p>${t.completed} of ${t.total} lessons complete</p></span>
             <span class="topic-card-progress">
               <div class="progress-labels"><span>${t.percent}%</span></div>
               <div class="progress progress-thin"><span style="width:${t.percent}%"></span></div>
             </span>
-          </a>`).join('')
-      : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
-
-    // Lessons (grouped under topic headers for a clear hierarchy)
-    const groups = data.topics.length ? data.topics : [{ name: 'All lessons', lessons: data.lessons }];
-    $('#lessonList').innerHTML = groups.length
-      ? groups.map((g) => `
-          <div class="term-group" id="${topicAnchor(g.name)}" style="scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 80px);">
-            <h3 class="term-group-heading">${escapeHtml(g.name)} <span class="resource-meta">${g.completed} / ${g.total} complete</span></h3>
-            ${g.lessons.map(courseLessonRow).join('')}
           </div>`).join('')
-      : emptyState({ icon: 'play', title: 'No lessons yet', body: 'Lessons for this course will appear here as soon as they are published.' });
+      : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
 
     // Resources — one card per term. Clicking a term opens the term page,
     // where notes and tutorial sheets sit in their own separate slots.
@@ -222,7 +197,7 @@
           <div><div class="num">${data.streak}</div><div class="label">Day streak</div></div>
         </div>
         <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
-          <a class="btn btn-amber" href="#lessons">Review Course</a>
+          <a class="btn btn-amber" href="#topics">Review Course</a>
           <a class="btn btn-on-dark" href="/pages/courses.html">Explore Another Course</a>
         </div>`;
     }
@@ -263,7 +238,7 @@
     // Course navigation: five clear desktop links and one native mobile
     // section picker. The picker avoids a long, horizontally scrolling row
     // of tiny links on phones and remains fully keyboard/screen-reader usable.
-    const sectionIds = ['overview', 'topics', 'video-lessons', 'lessons', 'resources', 'past-papers', 'progress'];
+    const sectionIds = ['overview', 'topics', 'video-lessons', 'resources', 'past-papers', 'progress'];
     const sections = sectionIds.map((id) => document.getElementById(id)).filter(Boolean);
     const links = [...document.querySelectorAll('#courseSubnav a')];
     const jump = $('#courseJump');
@@ -309,7 +284,7 @@
         try { id = decodeURIComponent(id); } catch { return; }
         const target = document.getElementById(id);
         if (target) {
-          setCurrentSection(sectionIds.includes(id) ? id : 'lessons');
+          setCurrentSection(sectionIds.includes(id) ? id : 'topics');
           target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       }, 250);

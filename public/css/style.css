@@ -1572,6 +1572,11 @@ body[data-theme='dark'] .mob-tab.active .mob-tab-ic { background: transparent; c
   background: var(--card); transition: all 0.18s ease; text-decoration: none; color: var(--ink);
 }
 .topic-card:hover { border-color: var(--teal-400); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
+/* Topic cards are a progress summary, not a link: the course home no longer
+   has a per-topic lesson list to jump to, so static cards drop the hover
+   affordances that promise navigation. */
+.topic-card-static { cursor: default; }
+.topic-card-static:hover { border-color: var(--border); box-shadow: none; transform: none; }
 .topic-card .card-icon { width: 42px; height: 42px; }
 .topic-card-body { flex: 1; min-width: 0; }
 .topic-card-body h4 { font-size: 1rem; margin-bottom: 2px; }
