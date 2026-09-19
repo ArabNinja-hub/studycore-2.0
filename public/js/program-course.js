@@ -26,17 +26,6 @@
     });
   }
 
-  function topicAnchor(name) {
-    return `lesson-topic-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-  }
-
-  function rowHtml(item, course) {
-    // Tag lessons with their course code so the lesson flow stays inside
-    // this program course.
-    const withCourse = { ...item, courseCode: course.code, courseSlug: course.slug };
-    return lessonRowHtml(withCourse, course.name, `data-topic-anchor="${escapeHtml(topicAnchor(item.topic || 'General'))}"`);
-  }
-
   function termVideosHref(term) {
     return `/pages/videos.html?course=${encodeURIComponent(courseKey())}&term=${encodeURIComponent(term)}&program=1`;
   }
@@ -124,25 +113,15 @@
     // Topics
     $('#topicGrid').innerHTML = data.topics.length
       ? data.topics.map((t) => `
-          <a class="topic-card" href="#${topicAnchor(t.name)}">
+          <div class="topic-card topic-card-static">
             <span class="card-icon">${SC.icon('layers', { size: 20 })}</span>
             <span class="topic-card-body"><h4>${escapeHtml(t.name)}</h4><p>${t.completed} of ${t.total} lessons complete</p></span>
             <span class="topic-card-progress">
               <div class="progress-labels"><span>${t.percent}%</span></div>
               <div class="progress progress-thin"><span style="width:${t.percent}%"></span></div>
             </span>
-          </a>`).join('')
-      : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
-
-    // Lessons grouped by topic
-    const groups = data.topics.length ? data.topics : [{ name: 'All lessons', lessons: data.lessons }];
-    $('#lessonList').innerHTML = groups.length
-      ? groups.map((g) => `
-          <div class="term-group" id="${topicAnchor(g.name)}" style="scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 80px);">
-            <h3 class="term-group-heading">${escapeHtml(g.name)} <span class="resource-meta">${g.completed} / ${g.total} complete</span></h3>
-            ${g.lessons.map((l) => rowHtml(l, course)).join('')}
           </div>`).join('')
-      : emptyState({ icon: 'play', title: 'No lessons yet', body: 'Lessons for this course will appear here as soon as they are published.' });
+      : emptyState({ icon: 'layers', title: 'Topics coming soon', body: 'Lessons for this course are being organised into topics.' });
 
     // Resources — one card per term. Clicking a term opens the term page,
     // where notes and tutorial sheets sit in their own separate slots, so a
@@ -240,7 +219,7 @@
           <div><div class="num">${data.streak}</div><div class="label">Day streak</div></div>
         </div>
         <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;">
-          <a class="btn btn-amber" href="#lessons">Review Course</a>
+          <a class="btn btn-amber" href="#topics">Review Course</a>
           <a class="btn btn-on-dark" href="/pages/courses.html">Explore Another Course</a>
         </div>`;
     }
@@ -256,7 +235,7 @@
   }
 
   function wireSectionNav() {
-    const sectionIds = ['topics', 'video-lessons', 'lessons', 'resources', 'lab-reports', 'past-papers', 'progress'];
+    const sectionIds = ['topics', 'video-lessons', 'resources', 'lab-reports', 'past-papers', 'progress'];
     const sections = sectionIds.map((id) => document.getElementById(id)).filter(Boolean);
     const links = [...document.querySelectorAll('#courseSubnav a')];
     const jump = $('#courseJump');

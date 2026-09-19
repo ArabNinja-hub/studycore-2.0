@@ -22,7 +22,7 @@ function occurrences(source, pattern) {
 
 test('all six course homes expose the same compact navigation', () => {
   assert.equal(subjectPages.length, 6);
-  const targets = ['topics', 'video-lessons', 'lessons', 'resources', 'past-papers', 'progress'];
+  const targets = ['topics', 'video-lessons', 'resources', 'past-papers', 'progress'];
 
   for (const file of subjectPages) {
     const html = fs.readFileSync(path.join(SUBJECT_DIR, file), 'utf8');
@@ -40,6 +40,37 @@ test('all six course homes expose the same compact navigation', () => {
 
     const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(new Set(ids).size, ids.length, `${file}: duplicate HTML id`);
+  }
+});
+
+test('course homes no longer carry the flat "all lessons" list', () => {
+  // Lessons are reached through Topics, Video lessons, Study materials and
+  // Past papers. The old catch-all list duplicated all four, so the section,
+  // its nav entries and every anchor into it are gone.
+  const pages = [
+    ...subjectPages.map((file) => path.join('public', 'pages', 'subjects', file)),
+    'views/course.html'
+  ];
+
+  for (const file of pages) {
+    const html = read(file);
+    assert.doesNotMatch(html, /All lessons in this course/, `${file}: lessons heading removed`);
+    assert.doesNotMatch(html, /id="lessons"/, `${file}: lessons section removed`);
+    assert.doesNotMatch(html, /id="lessonList"/, `${file}: lesson list container removed`);
+    assert.doesNotMatch(html, /href="#lessons"|value="#lessons"/, `${file}: no nav entry for the removed section`);
+  }
+
+  // The renderers must not write to the removed container, and nothing may
+  // link to a #lessons / #lesson-topic-* anchor that no longer exists.
+  for (const script of ['public/js/course.js', 'public/js/program-course.js']) {
+    const source = read(script);
+    assert.doesNotMatch(source, /lessonList/, `${script}: no write to the removed container`);
+    assert.doesNotMatch(source, /#lessons\b/, `${script}: no link to the removed section`);
+    assert.doesNotMatch(source, /lesson-topic-/, `${script}: no dead topic anchors`);
+  }
+
+  for (const script of ['public/js/layout.js', 'public/js/lesson.js', 'public/pages/search.html']) {
+    assert.doesNotMatch(read(script), /lesson-topic-/, `${script}: topic links target a live section`);
   }
 });
 
