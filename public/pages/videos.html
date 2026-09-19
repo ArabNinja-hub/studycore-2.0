@@ -36,7 +36,7 @@
             </span>
             <div style="min-width:0;">
               <h1 id="videosTitle" style="font-size:clamp(1.5rem,3.4vw,2.2rem);">Video Lessons</h1>
-              <p id="videosSub" style="margin-top:4px;">Video lessons for this course and term.</p>
+              <p id="videosSub" style="margin-top:4px;">Every video lesson for this course, each in its designated term.</p>
             </div>
           </div>
         </div>
@@ -58,12 +58,23 @@
         </div>
       </section>
 
+      <!-- Every video lesson on its designated term shelf. One compact
+           payload serves the whole page; each shelf below renders its videos
+           as cards, so Term 1/2/3 (and "Other" for videos uploaded before
+           terms existed) each keep their own grid. -->
       <section class="section" id="termVideos" style="scroll-margin-top:calc(var(--nav-h) + var(--nav-float) + 80px);">
         <div class="container">
-          <div class="lesson-list" id="videoList" style="max-width:860px;">
-            <div class="skeleton skeleton-row"></div>
-            <div class="skeleton skeleton-row"></div>
-            <div class="skeleton skeleton-row"></div>
+          <div class="section-heading">
+            <span class="eyebrow">Video lessons</span>
+            <h2>Every video in its term</h2>
+            <p>Video lessons sit on the shelf of the term they belong to — nothing is mixed in from another term, and nothing is hidden.</p>
+          </div>
+          <div class="term-shelves" id="videoTermShelves">
+            <div class="video-lesson-grid">
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+              <div class="skeleton skeleton-card"></div>
+            </div>
           </div>
         </div>
       </section>

@@ -40,7 +40,7 @@ const {
 } = require('../lib/program-access');
 const { canUseLabReports } = require('../lib/lab-reports');
 const accessPolicy = require('../lib/access-policy');
-const { TERMS: VIDEO_TERMS, groupByTerm } = require('../lib/terms');
+const { TERMS: VIDEO_TERMS, groupByTerm, videoTermShelves } = require('../lib/terms');
 const { sharedProgramCodes, isShareableCourse } = require('../lib/program-sharing');
 
 const router = express.Router();
@@ -303,10 +303,10 @@ function videoTermPayload({ user, access, term, rows, extra }) {
   return {
     ...(extra || {}),
     term,
-    videoTerms: VIDEO_TERMS.map((t) => ({
-      term: t,
-      lessons: term === null || t === term ? lessons.filter((l) => l.term === t) : []
-    })),
+    // Every video on its designated term shelf: Term 1/2/3 (kept even when
+    // empty) plus "Other" for legacy rows with no term, so nothing is left
+    // without a shelf. With a focus term only that shelf is populated.
+    videoTerms: videoTermShelves(lessons, term),
     lectures: lessons,
     continueLearning,
     access: { premium: access.premium, trial: access.trial }
@@ -578,10 +578,10 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
 
   const flatLessons = topics.flatMap((t) => t.lessons.map((l) => ({ ...l, topic: t.name })));
   const lectures = flatLessons.filter((l) => l.category === 'video');
-  const videoTerms = VIDEO_TERMS.map((term) => ({
-    term,
-    lessons: lectures.filter((l) => l.term === term)
-  }));
+  // Term cards for the course home: same shelves the Video Lessons page
+  // renders, so an unfiled legacy video gets an "Other" card instead of
+  // being unreachable.
+  const videoTerms = videoTermShelves(lectures, null);
 
   const completedCount = learn.filter((r) => completedById.has(r.id)).length;
   const totalCount = learn.length;

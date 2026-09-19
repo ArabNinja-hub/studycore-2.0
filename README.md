@@ -26,9 +26,12 @@ StudyCore
   (lightweight canvas, respects `prefers-reduced-motion`, loaded only on course pages),
   continue-learning card, topics with per-topic progress, all lessons, notes, past papers
   (grouped by year) and overall progress.
-- **Video Lessons page** (`/pages/videos.html?course=<slug>&term=<Term N>`): videos
-  for **one course and one term only**. Each course home shows Term 1 / Term 2 /
-  Term 3 as cards; clicking a term opens that course's videos for that term.
+- **Video Lessons page** (`/pages/videos.html?course=<slug>`): every video lesson for
+  one course, rendered as **cards on term shelves** — Term 1 / Term 2 / Term 3, plus an
+  "Other" shelf for videos uploaded before terms existed, so each video sits in its
+  designated term and nothing is hidden. Each course home shows the terms as cards;
+  clicking one deep-links (`&term=<Term N>`) straight to that term's shelf. The term
+  strip on the page scrolls between shelves and shows per-term counts.
 - **Lesson experience** (`/pages/lesson.html?id=…&subject=…`): breadcrumbs, the StudyCore
   video player (resume position, speed, fullscreen, progress + completion tracking) or the
   StudyCore document viewer, key concepts, related resources, mark-complete, and
@@ -231,7 +234,7 @@ public/js/auth-stage.js animated backdrop behind login / signup / admin signup, 
                         works unchanged if it never loads)
 public/css/auth.css     the auth "study desk" stage: navy gradient, drifting graph paper,
                         aurora, course glyphs, and the glass card that sits on it
-public/js/video.js      Video Lessons page (/pages/videos.html) — per-course, per-term
+public/js/video.js      Video Lessons page (/pages/videos.html) — per-course video cards on term shelves
 public/pages/community.html  the community room UI (chat column + members rail + composer)
 public/js/community.js  room logic: SSE + catch-up polling, bubbles, replies, reactions, pins
 public/css/community.css   chat layout, bubbles, day/unread dividers, typing dots (light + dark)
