@@ -69,6 +69,17 @@
       return initStream(container, o);
     }
 
+    // Lessons a Content Admin selected from Google Drive (instead of
+    // uploading to Bunny Stream) play back inside Drive's own embedded
+    // preview player. Drive exposes no scriptable player API, so — unlike
+    // the Bunny branch above — StudyCore cannot read playback position or
+    // report watch progress here: no resume, no progress bar, no
+    // auto-complete-at-90%. The lesson can still be marked complete
+    // manually via the "Mark as complete" control elsewhere on the page.
+    if (o.driveVideoPlayback) {
+      return initDriveVideo(container, o);
+    }
+
     /* ── Build the player shell ───────────── */
     container.innerHTML = `
       <div class="player-shell" id="scPlayerShell">
@@ -888,6 +899,35 @@
       .replaceAll('"', '&quot;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;');
+  }
+
+  /* ── Google Drive video (no resume/progress — see init() above) ────────── */
+  function initDriveVideo(container, o) {
+    const dp = o.driveVideoPlayback;
+    if (!dp || !dp.embed) {
+      container.innerHTML = '<div class="player-shell"><div class="player-state"><h3>Video unavailable</h3><p>This video could not be loaded from Google Drive.</p></div></div>';
+      return { destroy() {} };
+    }
+    // Reuses the exact same cross-origin embed StudyCore already shows for
+    // Drive-backed documents (see public/js/viewer.js) — Drive's own player
+    // chrome (play/pause, seek, volume, fullscreen, speed) is what students
+    // get here, not StudyCore's custom controls.
+    container.innerHTML = `
+      <div class="player-shell stream-shell" id="scDriveVideoShell">
+        <div class="player-title">${SC.icon('video', { size: 17 })}<span>${escapeHtml(o.title || 'Video lesson')}</span></div>
+        <iframe id="scDriveVideoFrame"
+          src="${escapeAttr(dp.embed)}"
+          title="${escapeAttr(o.title || 'Video lesson')}"
+          loading="eager"
+          allow="accelerated-2d-canvas; autoplay; encrypted-media; fullscreen;"
+          allowfullscreen></iframe>
+      </div>
+    `;
+    return {
+      destroy() {
+        container.innerHTML = '';
+      }
+    };
   }
 
   /* ── Premium lock wall ──────────────────── */

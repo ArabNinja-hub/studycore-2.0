@@ -176,6 +176,7 @@ async function bootPicker({ coop = 'same-origin-allow-popups', userActivation = 
     constructor(viewId) { this.viewId = viewId; }
     setIncludeFolders() { return this; }
     setSelectFolderEnabled() { return this; }
+    setMimeTypes(mimeTypes) { this.mimeTypes = mimeTypes; return this; }
   }
   class FakeDocsUploadView {}
   class FakePickerBuilder {

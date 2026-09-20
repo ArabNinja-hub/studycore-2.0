@@ -4,7 +4,19 @@ const db = require('../db');
 const { requireAuth, requireRole, attachUser } = require('../middleware/auth');
 const { ROLES, isAdmin, isStudent } = require('../lib/roles');
 const stream = require('../lib/stream');
+const { videoEmbedUrl } = require('../lib/google-drive');
 const { issueTicket } = require('../lib/content-tickets');
+
+// Playback fields for a video lesson a Content Admin selected from Google
+// Drive instead of uploading to Bunny. Uses Drive's own embedded preview
+// player, so there is no resume position or watch-progress tracking for
+// these lessons (see lib/google-drive.js#videoEmbedUrl).
+function driveVideoPlaybackFor(row) {
+  if (!row || row.category !== 'video' || !row.google_drive_file_id) return null;
+  const embed = videoEmbedUrl(row.google_drive_file_id);
+  if (!embed) return null;
+  return { fileId: row.google_drive_file_id, embed, ready: true };
+}
 
 // Bunny Stream playback fields for a video row (null unless it has a
 // Stream video and Stream is configured). Carries the adaptive-bitrate iframe
@@ -273,7 +285,8 @@ function videoTermPayload({ user, access, term, rows, extra }) {
       createdAt: row.created_at,
       completed: completedById.has(row.id),
       completedAt: completedById.get(row.id) || null,
-      streamPlayback: streamPlaybackFor(row)
+      streamPlayback: streamPlaybackFor(row),
+      driveVideoPlayback: driveVideoPlaybackFor(row)
     };
     const reason = canAccess(row, access) ? null : lockReason(row, access);
     if (reason) item.locked = reason;
@@ -533,6 +546,10 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
       completed: completedById.has(row.id),
       completedAt: completedById.get(row.id) || null
     };
+    if (row.category === 'video') {
+      item.streamPlayback = streamPlaybackFor(row);
+      item.driveVideoPlayback = driveVideoPlaybackFor(row);
+    }
     const reason = canAccess(row, access) ? null : lockReason(row, access);
     if (reason) item.locked = reason;
     if (row.category === 'video' && videoPositions.has(row.id)) {
@@ -709,7 +726,12 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
           completed: completedById.has(l.id)
         };
         // Only videos need playback info; harmless (null) for other types.
-        if (l.category === 'video') item.streamPlayback = streamPlaybackFor(l);
+        if (l.category === 'video') {
+          item.streamPlayback = streamPlaybackFor(l);
+          item.driveVideoPlayback = driveVideoPlaybackFor(l);
+          item.googleDriveFileId = l.google_drive_file_id || null;
+          item.googleDriveUrl = l.google_drive_url || null;
+        }
         const reason = canAccess(l, access) ? null : lockReason(l, access);
         if (reason) item.locked = reason;
         return item;
@@ -722,8 +744,12 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
   const current = flat[idx];
   // Piggyback the short-lived viewing ticket on the already-authorized lesson
   // response. Otherwise the player has to stop and mint it in a second request
-  // before it can attach the progressive video source.
-  if (!current.locked && current.category === 'video' && !current.streamPlayback && row.stored_name) {
+  // before it can attach the progressive video source. Drive-backed videos
+  // are excluded even though `stored_name` is set for them too (it carries
+  // the Drive file id, not a Bunny/local storage key) — they stream through
+  // Drive's own /preview embed, never through /api/resources/:id/stream.
+  if (!current.locked && current.category === 'video' && !current.streamPlayback &&
+    !current.driveVideoPlayback && row.stored_name && !row.google_drive_file_id) {
     const { ticket } = issueTicket({ resourceId: row.id, userId: user.id });
     current.protectedStreamUrl = `/api/resources/${encodeURIComponent(row.id)}/stream?t=${encodeURIComponent(ticket)}`;
   }
