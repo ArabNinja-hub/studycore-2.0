@@ -6,9 +6,21 @@ const { resourceVisibilityClause, programCanSeeResource } = require('../lib/prog
 const accessPolicy = require('../lib/access-policy');
 const { TERMS: VIDEO_TERMS, groupByTerm, videoTermShelves } = require('../lib/terms');
 const stream = require('../lib/stream');
+const { videoEmbedUrl } = require('../lib/google-drive');
 const { issueTicket } = require('../lib/content-tickets');
 
 const router = express.Router();
+
+// Playback fields for a video lesson a Content Admin selected from Google
+// Drive instead of uploading to Bunny. Uses Drive's own embedded preview
+// player, so there is no resume position or watch-progress tracking for
+// these lessons (see lib/google-drive.js#videoEmbedUrl).
+function driveVideoPlaybackFor(row) {
+  if (!row || row.category !== 'video' || !row.google_drive_file_id) return null;
+  const embed = videoEmbedUrl(row.google_drive_file_id);
+  if (!embed) return null;
+  return { fileId: row.google_drive_file_id, embed, ready: true };
+}
 
 // Bunny Stream playback fields for a video row (null unless it has a
 // Stream video and Stream is configured). Carries the adaptive-bitrate iframe
@@ -127,11 +139,14 @@ function serializeResource(row, extra = {}) {
     semester: row.semester,
     term: row.semester,
     tags: row.tags ? row.tags.split(',').map((t) => t.trim()).filter(Boolean) : [],
-    hasFile: Boolean(row.stored_name || row.stream_uid),
+    hasFile: Boolean(row.stored_name || row.stream_uid || row.google_drive_file_id),
     fileName: row.file_name,
     fileSize: row.file_size,
     mimeType: mime,
+    googleDriveFileId: row.google_drive_file_id || null,
+    googleDriveUrl: row.google_drive_url || null,
     streamPlayback: streamPlaybackFor(row),
+    driveVideoPlayback: driveVideoPlaybackFor(row),
     dueDate: row.due_date,
     isPremium: Boolean(row.is_premium),
     downloadCount: row.download_count,
@@ -262,8 +277,11 @@ router.get('/lesson/:id', requireAuth, requireStudentLearningAccount, (req, res)
     // The lesson request has already authenticated the student and checked
     // both program visibility and Premium access. Mint the progressive-video
     // ticket here so opening the player does not need a second API round trip
-    // before the browser can request its first media byte.
-    if (allowed && r.category === 'video' && !s.streamPlayback && r.stored_name) {
+    // before the browser can request its first media byte. Drive-backed
+    // videos are excluded — `stored_name` carries the Drive file id for
+    // them too, but they stream through Drive's own /preview embed, never
+    // through /api/resources/:id/stream.
+    if (allowed && r.category === 'video' && !s.streamPlayback && !s.driveVideoPlayback && r.stored_name && !r.google_drive_file_id) {
       const { ticket } = issueTicket({ resourceId: r.id, userId: user.id });
       s.protectedStreamUrl = `/api/resources/${encodeURIComponent(r.id)}/stream?t=${encodeURIComponent(ticket)}`;
     }

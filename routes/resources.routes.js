@@ -10,6 +10,7 @@ const { programCanSeeResource, resourceVisibilityClause, resolveCourse } = requi
 const { isAdmin, isStudent } = require('../lib/roles');
 const accessPolicy = require('../lib/access-policy');
 const stream = require('../lib/stream');
+const { videoEmbedUrl } = require('../lib/google-drive');
 const { issueTicket, verifyTicket, DEFAULT_TTL_SECONDS } = require('../lib/content-tickets');
 
 const router = express.Router();
@@ -41,6 +42,19 @@ function streamPlaybackFor(row, opts) {
   };
 }
 
+// Playback fields for a video lesson a Content Admin selected from Google
+// Drive instead of uploading to Bunny. Returns null unless the row is a
+// video AND actually has a Drive file. Uses Drive's own embedded preview
+// player — the same one StudyCore already uses for Drive-backed documents —
+// so there is no scriptable resume position or watch-progress tracking for
+// these lessons (see docs on lib/google-drive.js#videoEmbedUrl).
+function driveVideoPlaybackFor(row) {
+  if (!row || row.category !== 'video' || !row.google_drive_file_id) return null;
+  const embed = videoEmbedUrl(row.google_drive_file_id);
+  if (!embed) return null;
+  return { fileId: row.google_drive_file_id, embed, ready: true };
+}
+
 function serializeResource(row, user) {
   return {
     id: row.id,
@@ -63,6 +77,7 @@ function serializeResource(row, user) {
     googleDriveUrl: row.google_drive_url || null,
     storageProvider: row.storage_provider || 'local',
     streamPlayback: streamPlaybackFor(row),
+    driveVideoPlayback: driveVideoPlaybackFor(row),
     // Generic list/detail/bookmark responses are not quiz authoring APIs.
     // Students get questions without answers from /api/quiz/:id; answer keys
     // are revealed only by server-side grading, never by this serializer.

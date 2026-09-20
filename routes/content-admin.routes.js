@@ -188,7 +188,7 @@ function currentProgramForResource(resourceId) {
   return row ? row.program_code : null;
 }
 
-function validateFileForType(type, file) {
+function validateFileForType(type, file, { isDriveFile = false } = {}) {
   if (!file) return 'Choose a file to upload.';
   const originalExt = path.extname(String(file.originalname || '')).toLowerCase();
   // Multer's storage adapter exposes a newly-uploaded object as `key`, while
@@ -196,7 +196,17 @@ function validateFileForType(type, file) {
   // picker that supplies a UUID-only filename can still use its inferred
   // storage extension (for example, .mp4) during Content Admin validation.
   const storedExt = path.extname(String(file.stored_name || file.key || '')).toLowerCase();
-  const ext = originalExt || storedExt || (String(file.mimetype || '').toLowerCase().startsWith('video/') ? '.mp4' : '');
+  const mimeIsVideo = String(file.mimetype || '').toLowerCase().startsWith('video/');
+  const ext = originalExt || storedExt || (mimeIsVideo ? '.mp4' : '');
+
+  // A Google Drive video keeps its bytes on Drive — there is no uploaded
+  // extension to check, and Drive file names legitimately have none. Trust
+  // the mime type the Picker reported instead of the (often absent) file
+  // extension. Everything else about a Drive video is otherwise identical:
+  // it still needs a real video, just verified a different way.
+  if (isDriveFile && type.category === 'video') {
+    return mimeIsVideo ? null : 'The selected Google Drive file is not a video. Choose a video file from Drive for a Video resource.';
+  }
   if (type.category === 'video' && !VIDEO_EXTENSIONS.has(ext)) {
     return 'Video resources must use a supported video file (.mp4, .m4v, .mov, .webm, .mkv, or .avi).';
   }
@@ -432,19 +442,17 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   if (!req.file && !isDriveFile) return uploadError(req, res, 400, 'Choose a file to upload or select from Google Drive.');
   const parsed = parseResourceInput(req.body);
   if (parsed.error) return uploadError(req, res, 400, parsed.error);
-  if (isDriveFile && parsed.value.type.category === 'video') {
-    return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
-  }
 
   const dummyFile = isDriveFile ? {
     originalname: req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document',
-    mimetype: req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf',
+    mimetype: req.body.mime_type || req.body.google_drive_mime_type ||
+      (parsed.value.type.category === 'video' ? 'video/mp4' : 'application/pdf'),
     size: Number(req.body.file_size) || 0,
     key: req.body.google_drive_file_id,
     stored_name: req.body.google_drive_file_id
   } : null;
   const fileForValidation = req.file || dummyFile;
-  const fileError = validateFileForType(parsed.value.type, fileForValidation);
+  const fileError = validateFileForType(parsed.value.type, fileForValidation, { isDriveFile });
   if (fileError) {
     cleanupIncomingFile(req);
     return uploadError(req, res, 400, fileError);
@@ -459,7 +467,10 @@ router.post('/resources', conditionalUpload, asyncHandler(async (req, res) => {
   const fileName = isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || 'Google Drive Document') : req.file.originalname;
   const storedName = isDriveFile ? (req.body.google_drive_file_id || null) : (req.file.key || null);
   const fileSizeVal = isDriveFile ? (Number(req.body.file_size) || 0) : req.file.size;
-  const mimeTypeVal = isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || 'application/pdf') : req.file.mimetype;
+  const mimeTypeVal = isDriveFile
+    ? (req.body.mime_type || req.body.google_drive_mime_type ||
+      (parsed.value.type.category === 'video' ? 'video/mp4' : 'application/pdf'))
+    : req.file.mimetype;
   const contentHashVal = isDriveFile ? null : (req.file.contentHash || null);
 
   const row = {
@@ -561,19 +572,17 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
   if (parsed.error) return uploadError(req, res, 400, parsed.error);
 
   const isDriveFile = Boolean(req.body && req.body.google_drive_file_id);
-  if (isDriveFile && parsed.value.type.category === 'video') {
-    return uploadError(req, res, 400, 'Video lessons must be uploaded to Bunny Stream, not selected from Google Drive.');
-  }
   const fileForValidation = req.file || (isDriveFile ? {
     originalname: req.body.file_name || req.body.google_drive_file_name || existing.file_name || 'Google Drive Document',
     stored_name: req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name,
-    mimetype: req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type
+    mimetype: req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type ||
+      (parsed.value.type.category === 'video' ? 'video/mp4' : 'application/pdf')
   } : {
     originalname: existing.file_name,
     stored_name: existing.stored_name,
     mimetype: existing.mime_type
   });
-  const fileError = validateFileForType(parsed.value.type, fileForValidation);
+  const fileError = validateFileForType(parsed.value.type, fileForValidation, { isDriveFile });
   if (fileError) return uploadError(req, res, 400, fileError);
 
   const replacingFile = Boolean(req.file);
@@ -602,7 +611,8 @@ router.put('/resources/:id', conditionalUpload, asyncHandler(async (req, res) =>
     file_name: replacingFile ? req.file.originalname : (isDriveFile ? (req.body.file_name || req.body.google_drive_file_name || existing.file_name) : existing.file_name),
     stored_name: replacingFile ? (req.file.key || null) : (isDriveFile ? (req.body.google_drive_file_id || existing.google_drive_file_id || existing.stored_name || null) : existing.stored_name),
     file_size: replacingFile ? req.file.size : (isDriveFile ? (Number(req.body.file_size) || existing.file_size || 0) : existing.file_size),
-    mime_type: replacingFile ? req.file.mimetype : (isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type || 'application/pdf') : existing.mime_type),
+    mime_type: replacingFile ? req.file.mimetype : (isDriveFile ? (req.body.mime_type || req.body.google_drive_mime_type || existing.mime_type ||
+      (parsed.value.type.category === 'video' ? 'video/mp4' : 'application/pdf')) : existing.mime_type),
     content_hash: replacingFile ? (req.file.contentHash || null) : (isDriveFile ? null : existing.content_hash),
     // Replacing the file invalidates any Stream video encoded from the old
     // bytes; clear the fields (and delete the old Stream video below) so a

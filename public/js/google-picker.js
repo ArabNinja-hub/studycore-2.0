@@ -411,11 +411,31 @@
 
   // ---- Picker --------------------------------------------------------------
 
+  // Video mime types Drive actually stores for common formats. Filtering the
+  // Picker's view to these when the dashboard's resource-type selector is
+  // set to "Video" keeps a Content Admin from accidentally picking a
+  // document for a video lesson. ViewId.DOCS_VIDEOS is deliberately NOT used
+  // here — it has known gaps for some video containers — a plain DocsView
+  // with an explicit mime allowlist is the more reliable filter.
+  const VIDEO_MIME_TYPES = [
+    'video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo',
+    'video/x-matroska', 'video/x-m4v', 'video/mpeg', 'video/3gpp', 'video/ogg'
+  ].join(',');
+
+  // Content Admin scopes this Picker to whichever resource type is currently
+  // selected in the upload form; every other dashboard (there is only one,
+  // this one) leaves it undefined and gets the unfiltered view.
+  function currentResourceType() {
+    const el = document.getElementById('caResourceType');
+    return el ? String(el.value || '').trim().toLowerCase() : '';
+  }
+
   function createPicker(accessToken) {
     try {
       const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
         .setIncludeFolders(true)
         .setSelectFolderEnabled(false);
+      if (currentResourceType() === 'video') view.setMimeTypes(VIDEO_MIME_TYPES);
 
       const builder = new google.picker.PickerBuilder()
         .addView(view)

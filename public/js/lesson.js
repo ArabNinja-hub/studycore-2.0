@@ -106,6 +106,11 @@
       // adaptive-bitrate iframe URL (with a native 1080p/720p/Auto quality
       // selector). Absent → the player uses the classic progressive stream.
       streamPlayback: lesson.streamPlayback || null,
+      // When the lesson was selected from Google Drive instead, this carries
+      // Drive's own embedded preview player URL. Resume position and watch
+      // progress are not tracked for these lessons (Drive has no
+      // scriptable player API) — see public/js/player.js#initDriveVideo.
+      driveVideoPlayback: lesson.driveVideoPlayback || null,
       onComplete: async () => {
         setCompleted(true);
         showToast('Lesson complete — nicely done.', 'success');

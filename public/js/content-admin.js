@@ -328,10 +328,10 @@
       ? '.mp4,.m4v,.mov,.webm,.mkv,.avi,video/*'
       : '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.zip,.rar,.jpg,.jpeg,.png,.gif,.webp,.mp3,.wav';
     $('#caFileDropHint').textContent = isVideo
-      ? 'Choose a supported video file: .mp4, .m4v, .mov, .webm, .mkv, or .avi'
+      ? 'Upload a supported video file (.mp4, .m4v, .mov, .webm, .mkv, or .avi) or select one from Google Drive'
       : 'PDF, office document, image, archive or audio file';
     $('#caFileHelp').textContent = isVideo
-      ? 'Video resources must be assigned to Term 1, Term 2, or Term 3.'
+      ? 'Video resources must be assigned to Term 1, Term 2, or Term 3. Upload directly to Bunny Stream, or use "Select from Google Drive" to pick a video already stored in Drive — Drive videos play back in Google\u2019s own player, without StudyCore\u2019s resume position or watch-progress tracking.'
       : 'To upload a video, select the Video resource type first.';
 
     // Tell the uploader which student-facing shelf this type lands on. The
@@ -490,6 +490,12 @@
     const driveFileId = $('#caGoogleDriveFileId').value || '';
     if (!state.editingId && !state.selectedFile && !driveFileId) {
       return 'Choose a file to upload or select from Google Drive.';
+    }
+    if (driveFileId && category === 'video') {
+      const driveMime = ($('#caGoogleDriveMimeType').value || '').toLowerCase();
+      if (driveMime && !driveMime.startsWith('video/')) {
+        return 'The selected Google Drive file is not a video. Choose a video file from Drive for a Video resource.';
+      }
     }
     return null;
   }
