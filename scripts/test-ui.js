@@ -164,35 +164,46 @@ test('mobile course controls and tab bar styles are present', () => {
   assert.match(css, /body\[data-page='courses'\] \.course-card/);
 });
 
-test('mobile navigation is one tab bar and one account sheet', () => {
+test('mobile navigation uses a phone drawer and preserves the tablet account sheet', () => {
   const layout = read('public/js/layout.js');
   const auth = read('public/js/auth.js');
   const css = read('public/css/style.css');
 
-  // The hamburger drawer and its accordions are gone for good.
+  // The legacy accordion/navBackdrop implementation is still gone, but phones
+  // now get the requested right-side pop-out drawer from the shared layout.
   assert.doesNotMatch(layout, /hamburgerBtn|mobile-accordion|mobileSubjectLinks|navBackdrop/);
   assert.doesNotMatch(auth, /initMobileNav/);
-  assert.doesNotMatch(css, /\.mobile-nav|\.hamburger|\.mob-dock/);
+  assert.match(layout, /id="navMenuBtn"/);
+  assert.match(layout, /function renderMobileDrawer\(user\) \{/);
+  assert.match(layout, /id="mobileNavDrawer"/);
+  assert.match(layout, /id="mobileNavBackdrop"/);
+  assert.match(layout, /data-mobile-theme-toggle/);
+  assert.match(layout, /data-mobile-search/);
+  assert.match(layout, /e\.key === 'Escape'/);
 
-  // One bottom tab bar, rendered for every visitor (no signed-in gate).
+  // The drawer is phone-only, slides from the right, and the backdrop closes it.
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.nav-menu-btn \{ display: inline-flex; \}/);
+  assert.match(css, /\.mobile-nav-drawer \{[\s\S]*?transform:\s*translateX\(105%\) scale\(0\.985\)/);
+  assert.match(css, /\.mobile-nav-drawer\.open \{[\s\S]*?transform:\s*translateX\(0\) scale\(1\)/);
+  assert.match(css, /\.mobile-nav-backdrop/);
+  assert.match(css, /border-radius:\s*28px 0 0 28px/);
+  assert.match(css, /body\.has-mobtabs \{ padding-bottom: 0; \}/);
+  assert.match(css, /body\.has-mobtabs \.mob-tabs \{ display: none !important; \}/);
+
+  // The tablet tab bar and Account bottom sheet still exist for the wider
+  // mobile/tablet breakpoint and keep their focus/visibility contract.
   assert.match(layout, /function renderMobileTabs\(user\) \{/);
   assert.match(layout, /host\.id = 'mobTabsHost'/);
   assert.match(layout, /id="mobTabAccount"/);
   assert.match(layout, /teardownMobileTabs\(\); return;/);
   const renderTabs = layout.match(/function renderMobileTabs\(user\) \{[\s\S]*?\n  \}/)?.[0] || '';
   assert.doesNotMatch(renderTabs, /if \(!user/, 'guests get the tab bar too');
-
-  // The Account tab opens a compact bottom sheet, not another page.
   assert.match(layout, /function renderAccountSheet\(user\) \{/);
   assert.match(layout, /function openAccountSheet\(\) \{/);
   assert.match(css, /\.account-sheet\.open \{[^}]*transform:\s*translateY\(0\)/);
   assert.match(css, /\.account-sheet\.open \{[^}]*visibility:\s*visible/);
   assert.match(css, /\.sc-backdrop\.open \{[^}]*opacity:\s*1[^}]*pointer-events:\s*auto/);
-
-  // The tab bar is phone/tablet only and always above the content offsets.
-  assert.match(css, /@media \(min-width: 1181px\) \{\s*\.mob-tabs, \.sc-backdrop, \.account-sheet \{ display: none !important; \}/);
-  // Content must reserve room for the bottom dock plus the home indicator.
-  // The exact height changes with the dock design, so assert the shape.
+  assert.match(css, /@media \(min-width: 1181px\) \{\s*\.mob-tabs, \.sc-backdrop, \.account-sheet, \.mobile-nav-drawer \{ display: none !important; \}/);
   assert.match(css, /body\.has-mobtabs \{ padding-bottom: calc\(\d+px \+ env\(safe-area-inset-bottom, 0px\)\); \}/);
 });
 
@@ -315,6 +326,25 @@ test('hero has no decorative StudyCore logo', () => {
   // Hero foreground content layering is untouched.
   assert.match(css, /\.hero \.container\s*\{[^}]*position:\s*relative/);
   assert.match(css, /\.hero \.container\s*\{[^}]*z-index:\s*2/);
+});
+
+test('mobile home hero has a full-cover SVG discovery scene', () => {
+  const html = read('public/index.html');
+  const css = read('public/css/style.css');
+
+  assert.match(html, /class="hero-map-scene"/);
+  assert.match(html, /<svg class="hero-map-svg"[^>]+preserveAspectRatio="xMidYMid slice"/);
+  assert.match(html, /class="hero-route hero-route-main"/);
+  assert.match(html, /class="hero-home-marker"/);
+  assert.match(html, /class="hero-floating-card"/);
+
+  // Hidden on desktop so the existing desktop hero remains unchanged; full
+  // bleed on phones so there is no separate lower animation box.
+  assert.match(css, /\.hero-map-scene \{ display: none; \}/);
+  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.hero-map-scene \{[\s\S]*?position: absolute;[\s\S]*?inset: 0;[\s\S]*?display: block;/);
+  assert.match(css, /\.hero-map-svg \{[\s\S]*?inset: -4% -8%;[\s\S]*?width: 116%;[\s\S]*?height: 108%;/);
+  assert.match(css, /min-height: min\(860px, 100dvh\);/);
+  assert.match(css, /body\[data-page='home'\]:not\(\[data-theme='dark'\]\) \{ --bg: #ffffff; --bg-alt: #ffffff; \}/);
 });
 
 test('hero photography renders as an aged archive print, cheaply', () => {
