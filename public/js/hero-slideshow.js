@@ -19,8 +19,10 @@
 //     is given up on and skipped like any bad frame, so one stall
 //     can never latch the crossfade and freeze the hero on a frame.
 //   · Fully pauses off-screen and on tab hide.
-//   · Honors prefers-reduced-motion and Save-Data /
-//     2G: a single static frame, no rotation, no drift.
+//   · Works on mobile and constrained connections too: only the next
+//     frame is fetched at a time, so every declared photo can be shown
+//     without downloading the whole set up front.
+//   · Honors prefers-reduced-motion with a single calm frame.
 //   · If a photo fails, the remaining frames are tried before
 //     falling back to the plain navy hero — one stale URL never
 //     takes the whole slideshow down.
@@ -42,16 +44,6 @@
 
   function prefersReducedMotion() {
     return Boolean(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  }
-
-  // Respect the student's data plan. On Save-Data or a 2G-class link we
-  // show one frame and stop — no background downloads for decoration.
-  function isFrugalConnection() {
-    const nav = global.navigator;
-    const c = nav && (nav.connection || nav.mozConnection || nav.webkitConnection);
-    if (!c) return false;
-    if (c.saveData) return true;
-    return ['slow-2g', '2g'].includes(c.effectiveType);
   }
 
   function readImages(host) {
@@ -135,11 +127,12 @@
     host.dataset.heroReady = 'true';
 
     const reduced = prefersReducedMotion();
-    const frugal = isFrugalConnection();
-    // Reduced motion and constrained connections deliberately receive one
-    // calm, static frame. The CSS also stops the drift, but this gate avoids
-    // downloading or crossfading additional decorative images at all.
-    const canRotate = images.length > 1 && !frugal && !reduced;
+    // Do not gate the slideshow on connection type or device capabilities.
+    // Mobile browsers and Save-Data connections still get all five frames;
+    // the A/B layers and sequential loading keep the memory and bandwidth
+    // footprint bounded. Reduced-motion remains the one intentional static
+    // mode for accessibility.
+    const canRotate = images.length > 1 && !reduced;
 
     // Aged-print treatment layers. Purely decorative, always behind the copy.
     const patina = document.createElement('div');
