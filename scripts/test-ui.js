@@ -360,7 +360,9 @@ test('home hero uses the photographic slideshow across every viewport', () => {
   assert.match(slideshow, /if \(img\.complete\) \{[\s\S]*?img\.naturalWidth > 0/);
   assert.match(slideshow, /async function showFirstAvailableFrame\(\)/);
   assert.match(slideshow, /for \(let candidate = 0; candidate < images\.length; candidate \+= 1\)/);
-  assert.match(slideshow, /const canRotate = images\.length > 1 && !frugal && !reduced/);
+  // Every connection type can rotate through the complete declared set;
+  // reduced motion remains the only intentional static mode.
+  assert.match(slideshow, /const canRotate = images\.length > 1 && !reduced/);
 });
 
 test('hero slideshow advances cached and recycled frames without waiting for a load event', async () => {
@@ -480,9 +482,9 @@ test('hero photography renders as an aged archive print, cheaply', () => {
     /@media \(min-width: 900px\) and \(prefers-reduced-motion: no-preference\)\s*\{\s*\.hero-shot\.is-drifting img/
   );
 
-  // Two recycled layers only, data-plan aware, pauses when unseen.
+  // Two recycled layers only, connection-agnostic, pauses when unseen.
   assert.match(js, /const a = makeLayer\(\);\s*const b = makeLayer\(\);/);
-  assert.match(js, /saveData/);
+  assert.doesNotMatch(js, /isFrugalConnection|saveData/, 'connection type does not disable the slideshow');
   assert.match(js, /prefers-reduced-motion/);
   assert.match(js, /IntersectionObserver/);
   assert.match(js, /visibilitychange/);
