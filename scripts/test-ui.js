@@ -328,23 +328,130 @@ test('hero has no decorative StudyCore logo', () => {
   assert.match(css, /\.hero \.container\s*\{[^}]*z-index:\s*2/);
 });
 
-test('mobile home hero has a full-cover SVG discovery scene', () => {
+test('home hero uses the photographic slideshow across every viewport', () => {
   const html = read('public/index.html');
   const css = read('public/css/style.css');
+  const slideshow = read('public/js/hero-slideshow.js');
 
-  assert.match(html, /class="hero-map-scene"/);
-  assert.match(html, /<svg class="hero-map-svg"[^>]+preserveAspectRatio="xMidYMid slice"/);
-  assert.match(html, /class="hero-route hero-route-main"/);
-  assert.match(html, /class="hero-home-marker"/);
-  assert.match(html, /class="hero-floating-card"/);
-
-  // Hidden on desktop so the existing desktop hero remains unchanged; full
-  // bleed on phones so there is no separate lower animation box.
+  // The retired SVG map must not sit on top of, or hide, the photography on
+  // phones. The photo stage is full bleed and therefore works at every width.
+  assert.doesNotMatch(html, /hero-map-scene|hero-map-svg|hero-floating-card/);
   assert.match(css, /\.hero-map-scene \{ display: none; \}/);
-  assert.match(css, /@media \(max-width: 640px\) \{[\s\S]*?\.hero-map-scene \{[\s\S]*?position: absolute;[\s\S]*?inset: 0;[\s\S]*?display: block;/);
-  assert.match(css, /\.hero-map-svg \{[\s\S]*?inset: -4% -8%;[\s\S]*?width: 116%;[\s\S]*?height: 108%;/);
-  assert.match(css, /min-height: min\(860px, 100dvh\);/);
+  assert.match(css, /\.hero-slideshow \{[\s\S]*?position: absolute;[\s\S]*?inset: 0;/);
+  assert.match(css, /\.hero-slideshow\.is-loaded \{ opacity: 1; \}/);
+  assert.match(css, /\.hero-shot img \{[\s\S]*?object-fit: cover;/);
   assert.match(css, /body\[data-page='home'\]:not\(\[data-theme='dark'\]\) \{ --bg: #ffffff; --bg-alt: #ffffff; \}/);
+
+  // All declarative URLs point to real, committed photo assets. Keeping this
+  // check next to the UI assertions stops a typo in the first frame from
+  // making the entire visual treatment silently disappear after deployment.
+  const rawList = html.match(/data-images='([\s\S]*?)'/)?.[1];
+  assert.ok(rawList, 'home hero declares its image list');
+  const imageUrls = JSON.parse(rawList);
+  assert.ok(imageUrls.length > 1, 'home hero has more than one frame');
+  for (const url of imageUrls) {
+    const filename = decodeURIComponent(url).replace(/^\/images\/hero\//, '');
+    assert.ok(fs.existsSync(path.join(ROOT, 'public', 'images', 'hero', filename)), `hero asset exists: ${filename}`);
+  }
+
+  // A cached/recycled image may not emit a second load event. The component
+  // detects that case immediately instead of waiting for its watchdog, and it
+  // tries the rest of the declared sources if the first one fails.
+  assert.match(slideshow, /if \(img\.complete\) \{[\s\S]*?img\.naturalWidth > 0/);
+  assert.match(slideshow, /async function showFirstAvailableFrame\(\)/);
+  assert.match(slideshow, /for \(let candidate = 0; candidate < images\.length; candidate \+= 1\)/);
+  assert.match(slideshow, /const canRotate = images\.length > 1 && !frugal && !reduced/);
+});
+
+test('hero slideshow advances cached and recycled frames without waiting for a load event', async () => {
+  class FakeClassList {
+    constructor() { this.values = new Set(); }
+    add(...names) { names.forEach((name) => this.values.add(name)); }
+    remove(...names) { names.forEach((name) => this.values.delete(name)); }
+    contains(name) { return this.values.has(name); }
+  }
+
+  class FakeElement {
+    constructor() {
+      this.attributes = new Map();
+      this.children = [];
+      this.dataset = {};
+      this.classList = new FakeClassList();
+      this.className = '';
+    }
+    setAttribute(name, value) { this.attributes.set(name, String(value)); }
+    getAttribute(name) { return this.attributes.get(name) || null; }
+    append(...children) { this.children.push(...children); }
+    appendChild(child) { this.children.push(child); return child; }
+    replaceChildren(...children) { this.children = children; }
+    get offsetWidth() { return 1; }
+  }
+
+  // This image reports an immediately decoded memory-cache result and never
+  // dispatches `onload`, matching the browser edge case that froze the old
+  // slideshow after recycling a frame.
+  class CachedImage extends FakeElement {
+    constructor() {
+      super();
+      this.complete = false;
+      this.naturalWidth = 0;
+    }
+    set src(value) {
+      this._src = value;
+      this.complete = true;
+      this.naturalWidth = 320;
+    }
+    get src() { return this._src; }
+    decode() { return Promise.resolve(); }
+  }
+
+  const timers = new Map();
+  const schedule = (fn, delay) => {
+    const handle = {};
+    timers.set(handle, { fn, delay });
+    return handle;
+  };
+  const cancel = (handle) => timers.delete(handle);
+  const document = {
+    readyState: 'complete',
+    hidden: false,
+    addEventListener() {},
+    createElement(tag) { return tag === 'img' ? new CachedImage() : new FakeElement(); },
+    querySelectorAll() { return []; }
+  };
+  const window = {
+    document,
+    navigator: {},
+    Image: CachedImage,
+    matchMedia: () => ({ matches: false }),
+    setTimeout: schedule,
+    clearTimeout: cancel,
+    SC: {}
+  };
+  const context = vm.createContext({ window, document, setTimeout: schedule, clearTimeout: cancel, Promise });
+  new vm.Script(read('public/js/hero-slideshow.js'), { filename: 'public/js/hero-slideshow.js' }).runInContext(context);
+
+  const host = new FakeElement();
+  host.setAttribute('data-images', JSON.stringify(['/images/one.jpeg', '/images/two.jpeg']));
+  window.SC.HeroSlideshow.init(host);
+  // `decode` → `load` → async initial-frame setup spans a few microtasks.
+  for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+
+  assert.ok(host.classList.contains('is-loaded'), 'the cached first image becomes visible');
+  assert.ok(host.children[0].classList.contains('is-active'), 'first layer is active');
+
+  async function advanceSlide() {
+    const next = [...timers.entries()].find(([, task]) => task.delay === 8000);
+    assert.ok(next, 'a slide transition is scheduled');
+    timers.delete(next[0]);
+    next[1].fn();
+    for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+  }
+
+  await advanceSlide();
+  assert.ok(host.children[1].classList.contains('is-active'), 'second layer activates from cache');
+  await advanceSlide();
+  assert.ok(host.children[0].classList.contains('is-active'), 'recycled first layer activates without a new load event');
 });
 
 test('hero photography renders as an aged archive print, cheaply', () => {

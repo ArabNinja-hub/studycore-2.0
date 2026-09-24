@@ -21,9 +21,9 @@
 //   · Fully pauses off-screen and on tab hide.
 //   · Honors prefers-reduced-motion and Save-Data /
 //     2G: a single static frame, no rotation, no drift.
-//   · If the first photo fails to load, the layer removes
-//     itself and the hero keeps its navy gradient — a
-//     broken image never damages the page.
+//   · If a photo fails, the remaining frames are tried before
+//     falling back to the plain navy hero — one stale URL never
+//     takes the whole slideshow down.
 // =============================================
 
 (function (global) {
@@ -31,7 +31,6 @@
 
   const FADE_MS = 1600;        // crossfade duration (mirrored in CSS)
   const HOLD_MS = 6400;        // time a photo stays fully visible
-  const HOLD_MS_CALM = 9000;   // slower cadence when motion is reduced
   // Watchdogs for a HUNG photo download. The browser fires neither onload
   // nor onerror while a socket stalls, so without these budgets one bad
   // frame would latch `swapping` true and freeze the hero forever. The
@@ -48,7 +47,8 @@
   // Respect the student's data plan. On Save-Data or a 2G-class link we
   // show one frame and stop — no background downloads for decoration.
   function isFrugalConnection() {
-    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const nav = global.navigator;
+    const c = nav && (nav.connection || nav.mozConnection || nav.webkitConnection);
     if (!c) return false;
     if (c.saveData) return true;
     return ['slow-2g', '2g'].includes(c.effectiveType);
@@ -96,22 +96,36 @@
         img.onerror = null;
         ok ? resolve() : reject(error || new Error(`hero image failed: ${src}`));
       };
-      if (timeoutMs > 0) {
-        watchdog = setTimeout(() => done(false, new Error(`hero image timed out: ${src}`)), timeoutMs);
-      }
-      img.onload = () => {
+      const decoded = () => {
+        // `decode()` prevents a partly-painted incoming frame. A few older
+        // WebKit builds reject it for an otherwise usable image, so a reject
+        // still counts as a successful load; the pixels are available.
         if (typeof img.decode === 'function') img.decode().then(() => done(true), () => done(true));
         else done(true);
       };
+
+      if (timeoutMs > 0) {
+        watchdog = setTimeout(() => done(false, new Error(`hero image timed out: ${src}`)), timeoutMs);
+      }
+      img.onload = decoded;
       img.onerror = () => done(false);
       img.src = src;
+
+      // A frame can already be decoded when it comes from the memory cache.
+      // In particular, assigning the same URL to a recycled <img> is allowed
+      // to produce no new `load` event in some engines. Without this branch
+      // the promise waits for its watchdog and the slideshow appears frozen.
+      if (img.complete) {
+        if (img.naturalWidth > 0) decoded();
+        else done(false);
+      }
     });
   }
 
   function prefetch(src) {
-    if (!src) return;
+    if (!src || typeof global.Image !== 'function') return;
     const idle = global.requestIdleCallback || ((fn) => setTimeout(fn, 900));
-    idle(() => { const i = new Image(); i.decoding = 'async'; i.src = src; });
+    idle(() => { const i = new global.Image(); i.decoding = 'async'; i.src = src; });
   }
 
   function init(host) {
@@ -122,7 +136,10 @@
 
     const reduced = prefersReducedMotion();
     const frugal = isFrugalConnection();
-    const canRotate = images.length > 1 && !frugal;
+    // Reduced motion and constrained connections deliberately receive one
+    // calm, static frame. The CSS also stops the drift, but this gate avoids
+    // downloading or crossfading additional decorative images at all.
+    const canRotate = images.length > 1 && !frugal && !reduced;
 
     // Aged-print treatment layers. Purely decorative, always behind the copy.
     const patina = document.createElement('div');
@@ -147,27 +164,32 @@
 
     function clear() { if (timer) { clearTimeout(timer); timer = null; } }
 
+    function canRunNow() {
+      return canRotate && visible && !document.hidden;
+    }
+
     function schedule() {
       clear();
-      if (!running || !canRotate) return;
-      timer = setTimeout(next, (reduced ? HOLD_MS_CALM : HOLD_MS) + FADE_MS);
+      if (!running || !canRunNow()) return;
+      timer = setTimeout(next, HOLD_MS + FADE_MS);
     }
 
     async function next() {
-      if (!running || swapping || document.hidden || !visible) { schedule(); return; }
+      if (!running || swapping || !canRunNow()) { schedule(); return; }
       swapping = true;
       const nextIndex = (index + 1) % images.length;
       const back = layers[1 - front];
       try {
         await load(back.img, images[nextIndex], SWAP_FRAME_TIMEOUT_MS);
       } catch {
-        // One bad file must not stop the show — skip past it.
+        // One bad file must not stop the show — skip past it. Keep the
+        // visible layer and advance the source cursor for the next attempt.
         swapping = false;
         index = nextIndex;
         schedule();
         return;
       }
-      if (!running) { swapping = false; return; }
+      if (!running || !canRunNow()) { swapping = false; return; }
       const outgoing = layers[front];
       // Restart the slow drift from the top for the incoming frame.
       back.layer.classList.remove('is-drifting');
@@ -175,7 +197,7 @@
       back.layer.classList.add('is-active', 'is-drifting');
       outgoing.layer.classList.remove('is-active');
       // Stop the faded-out layer animating once it is invisible.
-      window.setTimeout(() => outgoing.layer.classList.remove('is-drifting'), FADE_MS + 120);
+      global.setTimeout(() => outgoing.layer.classList.remove('is-drifting'), FADE_MS + 120);
       front = 1 - front;
       index = nextIndex;
       swapping = false;
@@ -183,22 +205,42 @@
       schedule();
     }
 
-    function start() { if (running) return; running = true; schedule(); }
+    function start() {
+      if (running || !canRunNow()) return;
+      running = true;
+      schedule();
+    }
     function stop() { running = false; clear(); }
 
-    // ── First frame ──────────────────────────
-    load(a.img, images[0], FIRST_FRAME_TIMEOUT_MS).then(() => {
+    // ── First usable frame ───────────────────
+    // The original implementation treated a missing first URL as a failure
+    // for the entire hero. Try every declared image before hiding photography
+    // so a renamed or stale first asset cannot make the slideshow disappear.
+    async function showFirstAvailableFrame() {
+      for (let candidate = 0; candidate < images.length; candidate += 1) {
+        try {
+          await load(a.img, images[candidate], candidate === 0 ? FIRST_FRAME_TIMEOUT_MS : SWAP_FRAME_TIMEOUT_MS);
+          index = candidate;
+          return true;
+        } catch { /* try the next declarative frame */ }
+      }
+      return false;
+    }
+
+    showFirstAvailableFrame().then((loaded) => {
+      if (!loaded) {
+        // No usable photography: fall back to the plain navy hero.
+        host.classList.add('is-unavailable');
+        host.replaceChildren();
+        return;
+      }
       host.classList.add('is-loaded');
       a.layer.classList.add('is-active');
       if (!reduced) a.layer.classList.add('is-drifting');
       if (canRotate) {
-        prefetch(images[1]);
+        prefetch(images[(index + 1) % images.length]);
         start();
       }
-    }).catch(() => {
-      // No usable photography: fall back to the plain navy hero.
-      host.classList.add('is-unavailable');
-      host.replaceChildren();
     });
 
     // ── Only animate what the student can see ──
