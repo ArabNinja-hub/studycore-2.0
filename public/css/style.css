@@ -2791,6 +2791,22 @@ body[data-theme='dark'] .search-result .sr-icon { background: rgba(255,255,255,0
 .footer-bottom .footer-legal a { color: rgba(255, 255, 255, 0.5); font-size: 0.82rem; }
 .footer-bottom .footer-legal a:hover { color: var(--teal-400); }
 
+/* ── Installed PWA (standalone) ──────────── */
+/* When StudyCore runs as an installed app the footer is browser-website
+   chrome that doesn't belong in an app shell, so it is hidden entirely.
+   Detection is layered rather than width/UA-based:
+   1. The display-mode media query matches Android Chrome / Samsung
+      Internet WebAPKs (and modern iOS/iPadOS home-screen apps).
+   2. html.pwa-standalone is set by layout.js from navigator.standalone
+      as a fallback for iOS/iPadOS WebKit builds that predate reliable
+      display-mode matching.
+   display:none removes the footer's own margin-top with it, so no blank
+   strip is left behind; normal browser tabs are completely unaffected. */
+@media all and (display-mode: standalone), all and (display-mode: fullscreen) {
+  .footer { display: none; }
+}
+html.pwa-standalone .footer { display: none; }
+
 /* ── Legal pages ─────────────────────────── */
 .legal-wrap { max-width: 820px; margin: 0 auto; padding: 56px 24px 80px; }
 .legal-wrap h1 { margin-bottom: 8px; }
