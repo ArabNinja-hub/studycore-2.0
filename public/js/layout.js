@@ -1290,6 +1290,29 @@
       </ul>`;
   }
 
+  /* ── Installed PWA (standalone) detection ──
+     style.css hides the site footer inside an installed app via the
+     display-mode media query; this adds a html.pwa-standalone class as a
+     fallback for iOS/iPadOS home-screen apps where only the proprietary
+     navigator.standalone flag is reliable. Class-based so the CSS stays
+     the single place that decides WHAT standalone mode changes. */
+  function applyStandaloneDisplayMode() {
+    const query = window.matchMedia
+      ? window.matchMedia('(display-mode: standalone), (display-mode: fullscreen)')
+      : null;
+    const update = () => {
+      const standalone = (query && query.matches) || window.navigator.standalone === true;
+      document.documentElement.classList.toggle('pwa-standalone', standalone);
+    };
+    update();
+    // Keep the flag current if the display mode changes (e.g. a link from
+    // the installed app opened into a regular browser tab context).
+    if (query) {
+      if (typeof query.addEventListener === 'function') query.addEventListener('change', update);
+      else if (typeof query.addListener === 'function') query.addListener(update);
+    }
+  }
+
   function renderFooter() {
     const host = document.getElementById('siteFooter');
     if (!host) return;
@@ -1893,6 +1916,9 @@
     // Apply the saved theme preference BEFORE rendering any chrome so the
     // first paint is already in the correct mode (no flash of wrong theme).
     applyTheme();
+    // Flag installed-app (standalone PWA) sessions before any chrome is
+    // rendered so the footer never flashes into view inside the app.
+    applyStandaloneDisplayMode();
     ensureMobileMeta();
     bindPageTransitions();
     // The Content Admin workspace knows its own role from the server-gated
