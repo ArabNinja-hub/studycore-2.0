@@ -40,15 +40,16 @@ StudyCore
   uploaded without an extension (or with a mismatched mime) still opens with the right
   renderer. Unsupported types show an honest preview-unavailable message and remain
   view-only—there is no source-file download fallback.
-- **Quizzes & assignments**: removed from the student experience. The backend keeps their
-  tables and admin upload options for compatibility, but they never appear in the student
-  UI, course listings, or search.
+- **Quizzes** (`/quiz.html`): live. Practice quizzes are written by Content Admins and the
+  Main Admin, targeted at programs, and marked by the server. See
+  [Quizzes](#quizzes-quizhtml) below.
 
 ## Access control (enforced server-side)
 
 | Content                | Free trial (30 days) | Trial expired | Premium active |
 |------------------------|----------------------|---------------|----------------|
 | Video lessons          | **locked** (Premium only) | locked | unlocked |
+| Quizzes                | **locked** (Premium only) | locked | unlocked |
 | Notes / tutorials / past papers | unlocked | **locked** unless free preview | unlocked |
 | Free previews (`is_premium = 0`) | unlocked | unlocked | unlocked |
 | Announcements          | unlocked | unlocked | unlocked |
@@ -166,37 +167,24 @@ under a private key; only the owner's own avatar is ever served
 (`GET /api/auth/avatar`). Displayed in the nav account menu, dashboard hero and profile
 section, with a professional User-icon fallback (never an emoji).
 
-## Student community (`/pages/community.html`)
+## Quizzes (`/quiz.html`)
 
-One shared, WhatsApp-style group room for the whole platform — students ask questions
-freely, answer each other, and the admin joins in like any other member (with moderator
-powers). It is a real conversation, not a notice board, so it is kept completely separate
-from the announcement centre and has its own unread pill on the Community nav link.
+Quizzes are a live part of the student experience. (An earlier on-site community chat
+room has been removed; the student community now lives in the official WhatsApp channel
+and group linked from the site.)
 
-| | Students | Admin |
-|---|---|---|
-| Post / reply / heart | yes | yes |
-| Edit own message (marked *edited*) | yes | yes |
-| Delete own message | yes (soft — "You deleted this message") | yes |
-| Delete somebody else's message | no (403) | yes (hard delete — spam is gone) |
-| Pin / unpin (max 3 at once) | no (403) | yes |
-
-- **Live updates**: `GET /api/community/stream` is a Server-Sent Events feed (built into
-  Node/Express — no new dependency) carrying `message`, `edit`, `delete`, `react`, `pin`,
-  `typing` and `presence`. SSE is treated as an optimisation: the client also catches up
-  with `GET /api/community?after=<seq>` every 25s, so a dropped stream costs latency, not
-  messages.
-- **Fan-out is viewer-agnostic**: `mine` and `reactions.mine` are per-viewer facts, so the
-  stream never asserts them — the client derives them from the author id.
-- **Ordering** uses SQLite's implicit `rowid` (exposed as `seq`), which is strictly
-  increasing and immune to two messages sharing a millisecond.
-- **Unread tracking** is one row per student (`community_read_state.last_read_at`), seeded
-  lazily on first touch so a brand-new student is never greeted with the whole history as
-  "unread".
-- **Moderation & abuse**: 2000-character cap, control characters stripped, 30 posts/min per
-  IP, server-side typing throttle (2s). Every member-authored string is escaped in the DOM;
-  only `http(s)` URLs are ever linkified, and profile pictures stay private to their owner,
-  so other members are shown as initials.
+- **Who writes them**: Content Admins and the Main Admin, from the quiz editor in their
+  dashboards (`public/js/quiz-admin.js`). A quiz is stored as a resource with
+  `category = 'quiz'`, so it uses the same program targeting as every other resource.
+- **Who can take them**: students in a targeted program with an **active Premium**
+  subscription. Quizzes are Premium-only, like videos - a free trial does not open them.
+  The Main Admin can preview.
+- **Marking is done by the server**: the student submits answers to
+  `POST /api/quiz/:id/attempt` and the server calculates the score. Answer keys are never
+  sent to students, and generic resource responses return `quizData: null` to students.
+  The old score-only endpoint (`POST /api/resources/:id/quiz-attempt`) is retired and
+  returns `410 Gone`.
+- **History**: a student's past attempts come from `GET /api/quiz/:id/attempts/mine`.
 
 ## Project structure
 
@@ -212,16 +200,30 @@ lib/email/              transactional email service (Resend): index.js = the eig
                         send* functions + duplicate protection, transport.js = the only
                         module that touches the API key, templates.js = branded
                         responsive HTML, config.js = env-driven settings
-lib/mailer.js           legacy SMTP helper (nodemailer); superseded by lib/email/, unused
+lib/db-backup.js        automatic database backups to R2 (startup + daily, keeps 14 days)
+lib/access-policy.js    which content types are trial / Premium-only, and the lock messages
+lib/programs.js, lib/program-access.js, lib/program-sharing.js
+                        program + course catalogue, who may see what, shared program groups
+lib/device-sessions.js  one active device per student, with email verification of a new device
+lib/stream.js           Bunny Stream video upload + playback
+lib/content-tickets.js  short-lived signed viewing tickets for protected media
+lib/resumable-uploads.js  chunked, resumable uploads for large files
+lib/terms.js, lib/lab-reports.js, lib/resource-types.js, lib/roles.js, lib/google-drive.js
+                        academic terms, lab-report rules, resource types, roles, Drive links
 routes/auth.routes.js   register/login/me, profile, password, avatar, subscribe, payment-info
 routes/courses.routes.js  public course directory, course home (topics/progress/continue), lesson flow
 routes/resources.routes.js  resource list/detail/view-only stream, search, bookmarks,
-                            completion, video progress, quiz compatibility endpoints
+                            completion, video progress
 routes/admin.routes.js  resource CRUD (incl. topic + pinned), users, payments, analytics
 routes/notifications.routes.js  announcement list, unread count, per-user read tracking
-routes/community.routes.js  student community room: messages, replies, reactions, pins,
-                            moderation, unread state, members + the SSE live stream
-views/dashboard.html    student dashboard (Premium section #premium, profile #profile, community #community)
+routes/quiz.routes.js   quizzes: authoring, student listing, server-side marking, attempts
+routes/programs.routes.js  programs and their courses (the dynamic course catalogue)
+routes/content-admin.routes.js  Content Admin dashboard API (their own uploads)
+routes/uploads.routes.js  resumable upload sessions
+views/dashboard.html    student dashboard (Premium section #premium, profile #profile)
+views/quiz.html         quiz page for students (public/js/quiz.js)
+views/content-admin.html  Content Admin dashboard (uploads, quizzes)
+scripts/restore-db.js   list / restore database backups (see "Database backups")
 views/admin.html        admin dashboard (uploads, topics, announcements, payments, students)
 public/js/icons.js      single SVG icon system (Lucide-style) - no emoji in the UI
 public/js/layout.js     shared navbar / mobile nav / account menu / footer / global search overlay
@@ -235,9 +237,6 @@ public/js/auth-stage.js animated backdrop behind login / signup / admin signup, 
 public/css/auth.css     the auth "study desk" stage: navy gradient, drifting graph paper,
                         aurora, course glyphs, and the glass card that sits on it
 public/js/video.js      Video Lessons page (/pages/videos.html) — per-course video cards on term shelves
-public/pages/community.html  the community room UI (chat column + members rail + composer)
-public/js/community.js  room logic: SSE + catch-up polling, bubbles, replies, reactions, pins
-public/css/community.css   chat layout, bubbles, day/unread dividers, typing dots (light + dark)
 public/sitemap.xml      public pages only - no dashboards, auth or admin URLs
 public/robots.txt       allows public pages + brand assets; disallows private surfaces
 ```
@@ -266,9 +265,9 @@ npm start
 | `PAYMENT_PHONE_MTN` / `PAYMENT_NAME_MTN` / `PAYMENT_PHONE_AIRTEL` / `PAYMENT_NAME_AIRTEL` | Mobile-money numbers shown on the Premium payment screen |
 | `RESEND_API_KEY` | **Server-only secret.** Resend API key for the welcome / subscription-approved / subscription-rejected emails. Never exposed to the frontend or any API response. Unset = emails are skipped and logged instead, and every StudyCore action still succeeds. |
 | `EMAIL_FROM` | Sender identity on the Resend-verified domain, e.g. `StudyCore <no-reply@studycore.academy>` |
-| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | Legacy SMTP settings for the older `lib/mailer.js` helper. Not used by the Resend email system; safe to leave empty. |
+| `DB_BACKUP_ENABLED` / `DB_BACKUP_KEEP_DAYS` | Optional. Automatic database backups are on whenever R2 is configured; set `DB_BACKUP_ENABLED=false` to turn them off. `DB_BACKUP_KEEP_DAYS` is how many days of backups to keep (default 14). |
 | `APP_URL` | Public base URL of this deployment, used for links inside emails (falls back to `https://studycore.academy`) |
-| `WHATSAPP_CHANNEL_URL` | Official academic channel link (community panels, footer) |
+| `WHATSAPP_CHANNEL_URL` | Official WhatsApp academic channel link (WhatsApp panels, footer) |
 | `WHATSAPP_GROUP_URL` | Official WhatsApp group invite link ("Join the WhatsApp Group" buttons) |
 
 Promote another admin later: `npm run make-admin -- someone@example.com "Full Name"`.
@@ -305,6 +304,40 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
    correct. The Content Admin dashboard also self-checks this and names the
    header in its console audit (row 11 of `window.__STUDYCORE_PICKER_DIAGNOSTICS__()`).
 
+### Database backups
+
+The whole database is one SQLite file, so it is copied off the server automatically
+(`lib/db-backup.js`):
+
+- **When**: about 15 seconds after every startup, then every 24 hours.
+- **How**: SQLite's online backup API takes a consistent snapshot while the app keeps
+  running (never a plain file copy), the snapshot must pass `PRAGMA integrity_check`,
+  and it is gzip-compressed.
+- **Where**: the same private R2 bucket, as
+  `db-backups/studycore-<UTC date and time>.sqlite.gz`. No extra credentials are needed.
+- **How long**: the newest backup of each of the last 14 days is kept; older ones are
+  deleted.
+- **Privacy**: no route serves `db-backups/`. `lib/storage.js` refuses that folder to
+  every caller except the backup module itself, so a backup cannot be streamed or deleted
+  through a resource, even one made to point at it (`scripts/test-db-backup-privacy.js`).
+  The R2 bucket itself must stay private (no public `r2.dev` URL or public custom domain).
+- **Logs**: look for `[db-backup] SUCCESS …` or `[db-backup] FAILED …` in the server log.
+  A failed backup never affects the running app.
+
+Restoring (run on the server, e.g. the Render **Shell** tab):
+
+```bash
+node scripts/restore-db.js --list              # show available backups
+node scripts/restore-db.js --latest --yes      # restore the newest one
+node scripts/restore-db.js <backup-name> --yes # restore a specific one
+node scripts/restore-db.js --backup-now        # take an extra backup right now
+```
+
+A restore checks the backup first, keeps the current database next to it as
+`studycore.sqlite.before-restore-<time>`, then swaps the backup in. **Restart the app
+straight afterwards** - until it restarts it is still using the old data. Covered by
+`scripts/test-db-backup.js`.
+
 ### Search Console / SEO
 
 - `https://studycore.academy/sitemap.xml` - submit in Google Search Console after verifying
@@ -326,7 +359,8 @@ Any Node 22.5+ host (Render, Railway, Fly.io, VPS). Two things matter:
 - **Videos are strictly Premium** - trial students can no longer stream them; the gate is
   server-side and covers streams, detail fetches and progress endpoints. All student media
   is view-only, and the former direct-download URL is explicitly denied.
-- Quizzes & assignments removed from the student UI (backend kept for compatibility).
+- **Quizzes** are a live, Premium-only, server-marked feature at `/quiz.html`; the
+  on-site community chat room was removed.
 - Standalone **Documents** and **Videos** pages removed - documents/videos live inside
   courses, lessons and the unified **Resources** page (filterable by course and type).
 - Global navigation redesigned to a learning-first model
