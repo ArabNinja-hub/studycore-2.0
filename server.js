@@ -476,6 +476,11 @@ if (require.main === module) {
   // abandoned transfer cannot keep paying for bucket storage. Only runs in the
   // real server process — tests own their own temporary data directory.
   require('./lib/resumable-uploads').startSweeper();
+
+  // Copy the database off this machine: once shortly after startup, then
+  // every 24 hours, to the private R2 bucket (see lib/db-backup.js). A failed
+  // backup is logged loudly but never affects the running app.
+  require('./lib/db-backup').startScheduler();
 }
 
 module.exports = app;
