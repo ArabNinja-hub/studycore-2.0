@@ -26,6 +26,7 @@ const { db, call, createUser, createResource } = require('./helpers/test-app');
 const { resolveCourse } = require('../lib/program-access');
 
 const MA110 = resolveCourse('MA110');
+const CS110 = resolveCourse('CS110');
 
 function createVideo(overrides = {}, programs = []) {
   return createResource({
@@ -96,7 +97,7 @@ test('the compact video payload is dramatically smaller than the full course hom
 });
 
 test('the legacy subject route serves the same compact video view', async () => {
-  const student = createUser({ program_code: 'LAW' });
+  const student = createUser({ program_code: 'SMNS' });
   createResource({
     category: 'video', subject: 'Physics', semester: 'Term 2', title: 'Newton laws',
     stored_name: 'videos/p.mp4', file_name: 'p.mp4', mime_type: 'video/mp4'
@@ -115,29 +116,29 @@ test('the legacy subject route serves the same compact video view', async () => 
 // ---------------------------------------------------------------------------
 
 test('the video view never widens access: another program still gets 403', async () => {
-  const outsider = createUser({ program_code: 'LAW' }); // LAW does not include MA110
-  createVideo({ title: 'Mines only lecture' });
-  const res = await call('GET', '/api/programs/course/MA110?view=videos', { user: outsider });
+  const outsider = createUser({ program_code: 'SICT' }); // SICT does not include CS110
+  createVideo({ title: 'Mines only lecture', course_id: CS110.id, subject: CS110.name });
+  const res = await call('GET', '/api/programs/course/CS110?view=videos', { user: outsider });
   assert.equal(res.status, 403, 'program membership is still enforced on the compact view');
 });
 
 test('the video view applies the same program targeting filter as the course home', async () => {
   const mines = createUser({ program_code: 'SMMS' });
   const nonQuota = createUser({ program_code: 'SMNS' });
-  const law = createUser({ program_code: 'LAW' });
+  const sict = createUser({ program_code: 'SICT' });
   // Targeted at Mines, on a course both pooled schools share.
-  createVideo({ title: 'Targeted at Mines', target_all: 0 }, ['SMMS']);
+  createVideo({ title: 'Targeted at Mines', target_all: 0, course_id: CS110.id, subject: CS110.name }, ['SMMS']);
 
-  const forMines = await call('GET', '/api/programs/course/MA110?view=videos', { user: mines });
-  const forNonQuota = await call('GET', '/api/programs/course/MA110?view=videos', { user: nonQuota });
+  const forMines = await call('GET', '/api/programs/course/CS110?view=videos', { user: mines });
+  const forNonQuota = await call('GET', '/api/programs/course/CS110?view=videos', { user: nonQuota });
   assert.ok(forMines.data.lectures.some((l) => l.title === 'Targeted at Mines'));
   // Mines and Non-Quota pool their content, so one upload serves both.
   assert.ok(forNonQuota.data.lectures.some((l) => l.title === 'Targeted at Mines'),
     'the pooled partner school receives the same upload');
   // Pooling must not widen beyond the group: an unrelated program is still
   // refused outright by the course-membership gate.
-  const forLaw = await call('GET', '/api/programs/course/MA110?view=videos', { user: law });
-  assert.equal(forLaw.status, 403, 'an unrelated program is still denied');
+  const forSICT = await call('GET', '/api/programs/course/CS110?view=videos', { user: sict });
+  assert.equal(forSICT.status, 403, 'an unrelated program is still denied');
 });
 
 test('a non-premium student gets the video lock flag, never a playable payload', async () => {

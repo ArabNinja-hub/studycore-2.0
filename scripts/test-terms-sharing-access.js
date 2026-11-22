@@ -37,6 +37,9 @@ Object.assign(process.env, {
 });
 
 const db = require('../db');
+// An isolated test-only category models a program outside the retained pool.
+db.prepare(`INSERT INTO programs (code, name, short_name, icon, description, created_at) VALUES ('OTHER', 'Other Test Program', 'Other', 'book-open', '', ?)`)
+  .run(new Date().toISOString());
 const app = require('../server');
 const { createSessionBackedToken, COOKIE_NAME } = require('../middleware/auth');
 const { resolveCourse, coursesForProgram, programIncludesCourse } = require('../lib/program-access');
@@ -231,7 +234,7 @@ test('the course home returns term shelves for every revisable resource type', a
 test('Mines and Non-Quota are pooled; no other program is', () => {
   assert.deepEqual(sharing.sharedProgramCodes('SMMS'), ['SMNS']);
   assert.deepEqual(sharing.sharedProgramCodes('SMNS'), ['SMMS']);
-  for (const code of ['LAW', 'BS', 'SNR', 'SICT', 'SBE']) {
+  for (const code of ['SICT', 'OTHER']) {
     assert.deepEqual(sharing.sharedProgramCodes(code), [], `${code} pools with nobody`);
   }
 });
@@ -307,30 +310,30 @@ test('Biology and Engineering Drawing content stays with its own school', async 
 
 test('pooling never widens to an unrelated program', async () => {
   const course = resolveCourse('MA110');
-  const law = makeUser({ program_code: 'LAW' });
+  const outsider = makeUser({ program_code: 'OTHER' });
   addResource({
     title: 'Mines calculus sheet', category: 'tutorial', course_id: course.id,
     semester: 'Term 1', target_all: 0
   }, ['SMMS']);
 
-  // LAW does not teach MA110 at all, so the course itself is refused.
-  assert.equal((await call('GET', `/api/programs/course/${course.slug}`, { user: law })).status, 403);
-  const list = await call('GET', '/api/resources?search=Mines%20calculus', { user: law });
+  // OTHER does not teach MA110 at all, so the course itself is refused.
+  assert.equal((await call('GET', `/api/programs/course/${course.slug}`, { user: outsider })).status, 403);
+  const list = await call('GET', '/api/resources?search=Mines%20calculus', { user: outsider });
   assert.equal(list.status, 200, list.text);
-  assert.equal(list.data.resources.length, 0, 'a Law student never receives pooled Mines content');
+  assert.equal(list.data.resources.length, 0, 'an unrelated program never receives pooled Mines content');
 });
 
-test('a Law-targeted resource on a shared course does not leak to the pooled schools', async () => {
+test('an unrelated-program resource on a shared course does not leak to the pooled schools', async () => {
   const course = resolveCourse('MA110');
   const mines = makeUser({ program_code: 'SMMS' });
   const nonQuota = makeUser({ program_code: 'SMNS' });
   addResource({
-    title: 'Law-only maths primer', category: 'document', course_id: course.id,
+    title: 'Other-only maths primer', category: 'document', course_id: course.id,
     semester: 'Term 1', target_all: 0
-  }, ['LAW']);
+  }, ['OTHER']);
 
   for (const student of [mines, nonQuota]) {
-    const list = await call('GET', '/api/resources?search=Law-only', { user: student });
+    const list = await call('GET', '/api/resources?search=Other-only', { user: student });
     assert.equal(list.data.resources.length, 0,
       'sharing a course must not turn another program\'s targeting into a grant');
   }

@@ -98,7 +98,7 @@ function createUser(overrides = {}) {
     email: `${id}@studycore.test`,
     password: passwordHash,
     role: 'student',
-    program_code: 'LAW',
+    program_code: 'SMMS',
     subscription: 'premium',
     trial_end: new Date(Date.now() + 86400000).toISOString(),
     subscription_end: new Date(Date.now() + 86400000).toISOString(),

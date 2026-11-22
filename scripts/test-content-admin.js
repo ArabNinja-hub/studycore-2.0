@@ -77,10 +77,10 @@ function uploadBody(course, overrides = {}) {
   const form = new FormData();
   const values = {
     resourceType: 'notes',
-    programCode: 'LAW',
+    programCode: 'SMMS',
     courseId: course.id,
     topic: 'Foundations',
-    title: 'Contract Law revision notes',
+    title: 'Chemistry revision notes',
     description: 'A concise revision pack.',
     // Course-bound notes, tutorial sheets and past papers are shelved by
     // term on the course page, so the term is a required upload field.
@@ -217,7 +217,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
         name: 'Program Student',
         email: `student-${uuidv4()}@test.studycore`,
         password: 'secure-password',
-        program: 'LAW',
+        program: 'SMMS',
         // Public signup must not honor a crafted privileged role either.
         role: ROLES.ADMIN
       }
@@ -262,11 +262,11 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     const course = db.prepare(`
       SELECT c.id, c.code FROM courses c
       JOIN program_courses pc ON pc.course_id = c.id
-      WHERE pc.program_code = 'LAW'
+      WHERE pc.program_code = 'SMMS'
       ORDER BY pc.sort_order ASC
       LIMIT 1
     `).get();
-    assert.ok(course, 'the seeded Law catalog must provide a course for the placement test');
+    assert.ok(course, 'the active catalog must provide a course for the placement test');
 
     const upload = await call(baseUrl, 'POST', '/api/content-admin/resources', {
       cookie: alice.cookie,
@@ -275,7 +275,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.equal(upload.response.status, 201, upload.raw);
     resourceId = upload.data.resource.id;
     assert.equal(upload.data.resource.resourceType, 'Notes');
-    assert.equal(upload.data.resource.programCode, 'LAW');
+    assert.equal(upload.data.resource.programCode, 'SMMS');
     assert.equal(upload.data.resource.courseId, course.id);
     assert.equal(upload.data.resource.topic, 'Foundations');
     const stored = db.prepare(`
@@ -296,7 +296,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     const studentResources = await call(baseUrl, 'GET', '/api/resources?pageSize=100', { cookie: studentCookie });
     assert.equal(studentResources.response.status, 200, studentResources.raw);
     assert.ok(studentResources.data.resources.some((resource) => resource.id === resourceId));
-    const studentSearch = await call(baseUrl, 'GET', '/api/resources/search?q=law', { cookie: studentCookie });
+    const studentSearch = await call(baseUrl, 'GET', '/api/resources/search?q=chemistry', { cookie: studentCookie });
     assert.equal(studentSearch.response.status, 200);
     assert.equal(studentSearch.data.authenticated, true, 'student search keeps its authenticated program-aware path');
 
@@ -307,7 +307,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
       cookie: alice.cookie,
       body: uploadBody(course, {
         resourceType: 'tutorial_sheet',
-        title: 'Contract Law tutorial sheet 1',
+        title: 'Chemistry tutorial sheet 1',
         semester: 'Term 1'
       })
     });
@@ -367,16 +367,16 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
 
     const aliceUpdate = await call(baseUrl, 'PUT', `/api/content-admin/resources/${encodeURIComponent(resourceId)}`, {
       cookie: alice.cookie,
-      body: uploadBody(course, { title: 'Contract Law revision notes — updated', noFile: true })
+      body: uploadBody(course, { title: 'Chemistry revision notes — updated', noFile: true })
     });
     assert.equal(aliceUpdate.response.status, 200, aliceUpdate.raw);
-    assert.equal(aliceUpdate.data.resource.title, 'Contract Law revision notes — updated');
+    assert.equal(aliceUpdate.data.resource.title, 'Chemistry revision notes — updated');
 
     // A Content Admin can keep a work-in-progress private as a draft; it
     // remains in their own library but is not exposed through student APIs.
     const draftUpdate = await call(baseUrl, 'PUT', `/api/content-admin/resources/${encodeURIComponent(resourceId)}`, {
       cookie: alice.cookie,
-      body: uploadBody(course, { title: 'Contract Law draft notes', publishStatus: 'draft', noFile: true })
+      body: uploadBody(course, { title: 'Chemistry draft notes', publishStatus: 'draft', noFile: true })
     });
     assert.equal(draftUpdate.response.status, 200, draftUpdate.raw);
     assert.equal(draftUpdate.data.resource.publishStatus, 'draft');
@@ -384,7 +384,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.ok(!hiddenFromStudent.data.resources.some((resource) => resource.id === resourceId));
     const republish = await call(baseUrl, 'PUT', `/api/content-admin/resources/${encodeURIComponent(resourceId)}`, {
       cookie: alice.cookie,
-      body: uploadBody(course, { title: 'Contract Law revision notes — updated', publishStatus: 'published', noFile: true })
+      body: uploadBody(course, { title: 'Chemistry revision notes — updated', publishStatus: 'published', noFile: true })
     });
     assert.equal(republish.response.status, 200, republish.raw);
     assert.equal(republish.data.resource.publishStatus, 'published');
@@ -440,7 +440,7 @@ test('Content Admin registration, ownership, revocation and Main Admin oversight
     assert.equal((await call(baseUrl, 'POST', '/api/auth/login', {
       body: { email: profile.data.user.email, password: 'secure-password' }
     })).response.status, 403);
-    const revokedSearch = await call(baseUrl, 'GET', '/api/resources/search?q=law', { cookie: alice.cookie });
+    const revokedSearch = await call(baseUrl, 'GET', '/api/resources/search?q=chemistry', { cookie: alice.cookie });
     assert.equal(revokedSearch.response.status, 200);
     assert.equal(revokedSearch.data.authenticated, false, 'a revoked session is not accepted by optional-auth endpoints');
     const restore = await call(baseUrl, 'PATCH', `/api/admin/content-admins/${encodeURIComponent(alice.id)}/status`, {

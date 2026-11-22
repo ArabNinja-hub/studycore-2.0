@@ -35,6 +35,7 @@ const { resolveCourse } = require('../lib/program-access');
 const stream = require('../lib/stream');
 
 const MA110 = resolveCourse('MA110');
+const ED = resolveCourse('ED');
 
 // A migrated lesson: lives entirely in Bunny, no R2/local object behind it.
 function createBunnyVideo(overrides = {}) {
@@ -94,9 +95,9 @@ test('a Bunny lesson is never given the legacy /stream byte-delivery URL', async
 });
 
 test('the program lesson flow follows the same Bunny rules', async () => {
-  const course = resolveCourse('LS110');
+  const course = resolveCourse('MA110');
   const video = createBunnyVideo({ course_id: course.id, subject: course.name });
-  const flow = await call('GET', `/api/programs/lesson/${video.id}`, { user: createUser({ program_code: 'LAW' }) });
+  const flow = await call('GET', `/api/programs/lesson/${video.id}`, { user: createUser({ program_code: 'SMMS' }) });
   assert.equal(flow.status, 200, flow.text);
 
   const sp = flow.data.lesson.streamPlayback;
@@ -130,9 +131,8 @@ test('the access model is unchanged: a lapsed student gets the lock, not a Bunny
 });
 
 test('a student from another program still cannot reach a Bunny lesson', async () => {
-  const course = resolveCourse('LS110');
-  const video = createBunnyVideo({ course_id: course.id, subject: course.name });
-  const outsider = createUser({ program_code: 'SMMS' });
+  const video = createBunnyVideo({ course_id: ED.id, subject: ED.name });
+  const outsider = createUser({ program_code: 'SMNS' });
   const res = await call('GET', `/api/programs/lesson/${video.id}`, { user: outsider });
   assert.ok(res.status === 403 || res.status === 404, `program isolation held (got ${res.status})`);
 

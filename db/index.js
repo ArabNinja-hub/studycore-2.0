@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const { DatabaseSync } = require('node:sqlite');
-const { seedProgramCatalog, pruneLegacySeedCourses } = require('../lib/programs');
+const { seedProgramCatalog, pruneRetiredPrograms, pruneLegacySeedCourses } = require('../lib/programs');
 const { ROLES } = require('../lib/roles');
 
 // On Render, set DATA_DIR to the mounted persistent disk's path (e.g.
@@ -51,10 +51,9 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL
 );
 
--- University programs / student categories (Law, Business, SNR, Mines,
--- Non-Quota, SICT, School of the Built Environment). A student picks exactly
--- one at registration; that program decides which courses and content they
--- ever see.
+-- University programs / student categories (School of Mines, Non-Quota, SICT,
+-- plus any future categories an admin adds). A student picks exactly one at
+-- registration; that program decides which courses and content they see.
 CREATE TABLE IF NOT EXISTS programs (
   code TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -824,18 +823,54 @@ function migrateBareUuidDocuments() {
 
 migrateBareUuidDocuments();
 
-// Seed the university programs, the global course catalog and the
-// program→course assignments (Law, Business, SNR, Mines, Non-Quota, SICT,
-// School of the Built Environment).
-// Idempotent — only inserts rows that do not yet exist, so admin-managed
-// programs/courses survive every restart.
+// Seed the active university programs, global course catalog and
+// program→course assignments (School of Mines, Non-Quota and SICT).
+// Idempotent — only inserts missing seed rows; admin-managed course data stays.
 seedProgramCatalog(db);
 
-// Databases created by an earlier build still contain that build's full
-// multi-year course dump. Seeding cannot remove rows, so prune the stale
-// non-first-year seed courses here (content-bearing and admin-created
-// courses are never touched). See lib/programs.js for the exact rules.
+// Remove the four programs retired from the built-in catalog, together with
+// their exclusive courses and program-only resources. Shared courses, global
+// resources and account/payment history are preserved. Resource objects are
+// removed from managed storage in the background after the database commit.
+const retiredProgramCleanup = pruneRetiredPrograms(db);
+
+// Older installs may also contain extra multi-year seed courses for retained
+// programs. Prune only the deterministic seed rows that have no uploaded
+// content; admin-created and content-bearing courses are kept.
 pruneLegacySeedCourses(db);
+
+if (retiredProgramCleanup.removedResources.length) {
+  setImmediate(() => {
+    const storage = require('../lib/storage');
+    const stream = require('../lib/stream');
+    const storedNameStillUsed = db.prepare('SELECT 1 FROM resources WHERE stored_name = ? LIMIT 1');
+    const streamUidStillUsed = db.prepare('SELECT 1 FROM resources WHERE stream_uid = ? LIMIT 1');
+    const tasks = [];
+
+    for (const resource of retiredProgramCleanup.removedResources) {
+      if (resource.stored_name && !resource.google_drive_file_id && resource.storage_provider !== 'google_drive' &&
+          !storedNameStillUsed.get(resource.stored_name)) {
+        tasks.push(() => storage.deleteObject(resource.stored_name));
+      }
+      if (resource.stream_uid && stream.isConfigured() && !streamUidStillUsed.get(resource.stream_uid)) {
+        tasks.push(() => stream.deleteVideo(resource.stream_uid));
+      }
+    }
+
+    (async () => {
+      let failures = 0;
+      for (let i = 0; i < tasks.length; i += 8) {
+        const results = await Promise.allSettled(tasks.slice(i, i + 8).map((task) => task()));
+        failures += results.filter((result) => result.status === 'rejected').length;
+      }
+      if (failures) {
+        console.warn(`StudyCore: ${failures} retired-program storage object(s) could not be removed; clean them up in the storage dashboard if needed.`);
+      }
+    })().catch((err) => {
+      console.warn('StudyCore: retired-program storage cleanup failed:', err.message);
+    });
+  });
+}
 
 function seedAdmin() {
   const existingAdmin = db.prepare(`SELECT id FROM users WHERE role = '${ROLES.ADMIN}' LIMIT 1`).get();

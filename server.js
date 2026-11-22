@@ -240,7 +240,7 @@ app.get('/api/config', (req, res) => {
     },
     support: {
       // Developer's WhatsApp line shown site-wide for user complaints.
-      complaintsPhone: process.env.SUPPORT_COMPLAINTS_PHONE || '+260981474031'
+      complaintsPhone: process.env.SUPPORT_COMPLAINTS_PHONE || '+260956334262'
     },
     googlePicker: {
       apiKey: process.env.GOOGLE_API_KEY || '',

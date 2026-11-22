@@ -94,9 +94,9 @@ test('malformed authentication fields return validation errors rather than hangi
   const invalid = [
     ['POST', '/api/auth/login', { email: {}, password: 'regression-password' }],
     ['POST', '/api/auth/login', { email: user.email, password: ['regression-password'] }],
-    ['POST', '/api/auth/register', { name: {}, email: 'invalid@studycore.test', password: 'password', program: 'LAW' }],
-    ['POST', '/api/auth/register', { name: 'Invalid', email: 'invalid@studycore.test', password: {}, program: 'LAW' }],
-    ['POST', '/api/auth/register', { name: 'Invalid', email: 'invalid@studycore.test', password: 'password', program: 'LAW', school: {} }],
+    ['POST', '/api/auth/register', { name: {}, email: 'invalid@studycore.test', password: 'password', program: 'SMMS' }],
+    ['POST', '/api/auth/register', { name: 'Invalid', email: 'invalid@studycore.test', password: {}, program: 'SMMS' }],
+    ['POST', '/api/auth/register', { name: 'Invalid', email: 'invalid@studycore.test', password: 'password', program: 'SMMS', school: {} }],
     ['POST', '/api/auth/register-content-admin', {
       name: ['Invalid'], email: 'invalid-publisher@studycore.test', password: 'password', confirmPassword: 'password',
       adminAccessCode: process.env.CONTENT_ADMIN_ACCESS_CODE
@@ -128,7 +128,7 @@ test('malformed authentication fields return validation errors rather than hangi
 
 test('concurrent registrations of the same email return one success and one conflict', async () => {
   const bodies = [
-    ['/api/auth/register', { name: 'Concurrent Student', email: 'duplicate-student@studycore.test', password: 'password', program: 'LAW' }],
+    ['/api/auth/register', { name: 'Concurrent Student', email: 'duplicate-student@studycore.test', password: 'password', program: 'SMMS' }],
     ['/api/auth/register-content-admin', {
       name: 'Concurrent Publisher', email: 'duplicate-publisher@studycore.test',
       password: 'password', confirmPassword: 'password', adminAccessCode: process.env.CONTENT_ADMIN_ACCESS_CODE
@@ -146,7 +146,7 @@ test('unexpected async route failures reach the sanitized HTTP error handler', a
   t.mock.method(console, 'error', (...args) => logged.push(args));
   t.mock.method(bcrypt, 'hash', async () => { throw new Error('private-regression-failure'); });
   const result = await call('POST', '/api/auth/register', {
-    body: { name: 'Hash Failure', email: 'hash-failure@studycore.test', password: 'password', program: 'LAW' }
+    body: { name: 'Hash Failure', email: 'hash-failure@studycore.test', password: 'password', program: 'SMMS' }
   });
   assert.equal(result.status, 500, result.text);
   assert.doesNotMatch(result.text, /private-regression-failure|stack|bcrypt/i);

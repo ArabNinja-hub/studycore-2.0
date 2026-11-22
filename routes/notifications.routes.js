@@ -9,8 +9,8 @@ const router = express.Router();
 router.use(requireAuth, requireRole(ROLES.STUDENT, ROLES.ADMIN));
 
 // Announcements obey the SAME program targeting as every other resource:
-// a Law announcement only reaches Law students; "All Students" reaches
-// everyone. The bell unread count and the list both filter server-side.
+// program-specific announcements stay within their authorized audience;
+// "All Students" reaches everyone. Both endpoints filter server-side.
 function getUnreadCount(user) {
   const vis = resourceVisibilityClause(user, 'r', 'notifProgram');
   const row = db.prepare(`

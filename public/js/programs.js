@@ -15,18 +15,13 @@
 
   // Display metadata keyed by program code (mirrors the seeded catalog).
   const PROGRAM_META = {
-    LAW:  { name: 'Law', shortName: 'Law', icon: 'shield' },
-    BS:   { name: 'Business Studies', shortName: 'Business', icon: 'wallet' },
-    SNR:  { name: 'School of Natural Resources', shortName: 'SNR', icon: 'leaf' },
     SMMS: { name: 'School of Mines', shortName: 'Mines', icon: 'shapes', groupName: 'School of Mines / Non-Quota' },
     SMNS: { name: 'Non-Quota', shortName: 'Non-Quota', icon: 'shapes', groupName: 'School of Mines / Non-Quota' },
-    SICT: { name: 'Computer Science / SICT', shortName: 'SICT', icon: 'code' },
-    SBE:  { name: 'School of the Built Environment', shortName: 'Built Environment', icon: 'home' }
+    SICT: { name: 'Computer Science / SICT', shortName: 'SICT', icon: 'code' }
   };
 
-  // The admin program filter order:
-  // ALL | LAW | BUSINESS | SNR | MINES | NON-QUOTA | SICT | BUILT ENVIRONMENT
-  const FILTER_ORDER = ['LAW', 'BS', 'SNR', 'SMMS', 'SMNS', 'SICT', 'SBE'];
+  // The admin program filter order mirrors the active built-in catalog.
+  const FILTER_ORDER = ['SMMS', 'SMNS', 'SICT'];
 
   function programName(code) {
     if (!code) return 'Unassigned';

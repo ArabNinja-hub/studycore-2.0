@@ -517,7 +517,7 @@
     }
   }
 
-  /* ── Program filter chips (ALL | LAW | BUSINESS | SNR | MINES | NON-QUOTA | SICT | BUILT ENVIRONMENT) ── */
+  /* ── Program filter chips (ALL | MINES | NON-QUOTA | SICT) ── */
   function renderProgramFilterChips() {
     if (!window.SCAdminPrograms) return;
     SCAdminPrograms.renderFilterChips(currentFilters.program || '', (code) => {
@@ -919,7 +919,7 @@
       await SCAdminPrograms.renderProgramCards();
       document.getElementById('addProgramBtn').addEventListener('click', SCAdminPrograms.promptCreateProgram);
       document.getElementById('addCourseBtn').addEventListener('click', () => {
-        const code = prompt('Which program code do you want to add a course to? (LAW, BS, SNR, SMMS, SMNS, SICT, SBE)');
+        const code = prompt('Which active program code do you want to add a course to? (SMMS, SMNS, SICT)');
         if (code) SCAdminPrograms.promptAddCourse(code.trim().toUpperCase());
       });
       // Refresh dependent UI when programs/courses change.
