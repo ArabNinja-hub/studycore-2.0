@@ -130,7 +130,7 @@ test('rejected template: name, clear non-approval, support contact, branding', (
   assert.match(html, /Bwalya/, 'greets the student by name');
   assert.match(html, /not approved/i, 'clearly states it was not approved');
   // The support number StudyCore already publishes site-wide.
-  assert.match(html, /\+260981474031/, 'includes the existing support contact');
+  assert.match(html, /\+260956334262/, 'includes the existing support contact');
   assert.match(html, /wa\.me/, 'support contact is reachable');
   assert.match(html, /https:\/\/studycore\.academy/, 'links back to StudyCore');
   assert.match(html, /Stay curious and winning/, 'carries the tagline');
@@ -561,7 +561,7 @@ test('TEST 3: rejecting a payment sends exactly one rejection email to that stud
       const sent = mailsTo(student.email, 'subscription_rejected');
       assert.equal(sent.length, 1, 'exactly one rejection email');
       assert.match(sent[0].html, /not approved/i);
-      assert.match(sent[0].html, /\+260981474031/, 'tells them how to reach support');
+      assert.match(sent[0].html, /\+260956334262/, 'tells them how to reach support');
       assert.equal(sent[0].to[0], student.email, 'sent to the stored address');
     });
   } finally {

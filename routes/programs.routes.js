@@ -424,7 +424,7 @@ router.get('/mine', requireAuth, requireStudentLearningAccount, (req, res) => {
 //
 // This is program-aware: "courses completed" counts the student's OWN
 // program courses (already serialized with progress above), rather than the
-// legacy fixed subject list, so a Law student is measured against Law.
+// legacy fixed subject list, so progress is measured against the student's own program.
 // Everything comes from three aggregate queries — no per-resource lookups.
 function computeAchievements(user, courses) {
   const lessons = db.prepare(
@@ -467,8 +467,8 @@ router.get('/course/:key', requireAuth, requireStudentLearningAccount, (req, res
 
   if (!isAdmin(user)) {
     if (!user.program_code || !programIncludesCourse(user.program_code, course.id)) {
-      // Program-based access enforced server-side — a Law student requesting
-      // an E.D/Mines course id gets a hard 403, not just hidden UI.
+      // Program-based access enforced server-side — a student requesting a
+      // course outside their program gets a hard 403, not just hidden UI.
       return res.status(403).json({ message: 'This course is not part of your program.' });
     }
   }

@@ -87,7 +87,7 @@ test('lab-report eligibility matches the requested schools and sciences', () => 
   const chemistry = { subject: 'Chemistry' };
   const mathematics = { subject: 'Mathematics' };
 
-  for (const program of ['SMMS', 'SMNS', 'SNR']) {
+  for (const program of ['SMMS', 'SMNS']) {
     assert.equal(canUseLabReports(program, physics), true);
     assert.equal(canUseLabReports(program, chemistry), true);
   }
@@ -99,11 +99,10 @@ test('lab-report eligibility matches the requested schools and sciences', () => 
 });
 
 test('eligible course APIs expose the dedicated lab-report slot and resources only there', async () => {
-  addLabReport('lab-physics', 'PH110', ['SMMS', 'SMNS', 'SNR', 'SICT']);
+  addLabReport('lab-physics', 'PH110', ['SMMS', 'SMNS', 'SICT']);
   addLabReport('lab-chemistry-mines', 'CH110', ['SMMS', 'SMNS']);
-  addLabReport('lab-chemistry-snr', 'CH130', ['SNR']);
 
-  const students = Object.fromEntries(['SMMS', 'SMNS', 'SNR', 'SICT'].map((code) => [code, makeStudent(code)]));
+  const students = Object.fromEntries(['SMMS', 'SMNS', 'SICT'].map((code) => [code, makeStudent(code)]));
   for (const code of Object.keys(students)) {
     const physics = await courseHome(students[code], 'ph110');
     assert.equal(physics.labReportsEnabled, true, `${code} Physics needs the slot`);
@@ -115,10 +114,6 @@ test('eligible course APIs expose the dedicated lab-report slot and resources on
     assert.equal(chemistry.labReportsEnabled, true);
     assert.deepEqual(chemistry.labReports.map((item) => item.id), ['lab-chemistry-mines']);
   }
-  const snrChemistry = await courseHome(students.SNR, 'ch130');
-  assert.equal(snrChemistry.labReportsEnabled, true);
-  assert.deepEqual(snrChemistry.labReports.map((item) => item.id), ['lab-chemistry-snr']);
-
   const sictMaths = await courseHome(students.SICT, 'ma110');
   assert.equal(sictMaths.labReportsEnabled, false, 'SICT must get the slot for Physics only');
   assert.deepEqual(sictMaths.labReports, []);

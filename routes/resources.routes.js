@@ -606,8 +606,8 @@ async function handleStream(req, res) {
   const row = db.prepare(`SELECT * FROM resources WHERE id = ? AND publish_status = 'published'`).get(req.params.id);
   if (!row) return res.status(404).json({ message: 'Resource not found.' });
   // Program permission (Student → Program → Course → Resource) is checked
-  // before any subscription gating — a Law student streaming a Mines
-  // resource id is refused outright.
+  // before any subscription gating — a Non-Quota student streaming a
+  // Mines-only Engineering Drawing resource id is refused outright.
   if (!programCanSeeResource(req.user, row)) return res.status(403).json({ message: 'This content is not available for your program.' });
   if (!canAccess(row, req.access)) return lockedResponse(res, lockReason(row, req.access));
 

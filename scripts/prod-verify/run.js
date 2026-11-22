@@ -108,7 +108,7 @@ const unique = process.env.SHARD || Math.random().toString(36).slice(2, 8);
 function emailFor(label) { return `verify-${label}-${unique}@studycore-verify.test`; }
 
 async function register(name, email, password, j, ua) {
-  return req(j, 'POST', '/api/auth/register', { body: { name, email, password, program: 'LAW' }, ua });
+  return req(j, 'POST', '/api/auth/register', { body: { name, email, password, program: 'SMMS' }, ua });
 }
 async function login(j, email, password, ua) {
   return req(j, 'POST', '/api/auth/login', { body: { email, password }, ua });
@@ -162,7 +162,7 @@ function insertBareUser(email, password) {
   const bcrypt = require('bcryptjs');
   const id = `user-bare-${Math.random().toString(36).slice(2, 10)}`;
   dbRun(`INSERT INTO users (id, name, email, password, role, program_code, subscription, trial_end, subscription_end, created_at)
-         VALUES (?, ?, ?, ?, 'student', 'LAW', 'premium', ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, 'student', 'SMMS', 'premium', ?, ?, ?)`,
     id, 'Bare Student', email, bcrypt.hashSync(password, 4),
     new Date(Date.now() + 86400000).toISOString(), new Date(Date.now() + 86400000).toISOString(), new Date().toISOString());
   return id;

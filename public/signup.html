@@ -114,15 +114,15 @@
     <script src="/js/auth-stage.js" defer></script>
     <script>
       document.addEventListener('DOMContentLoaded', async () => {
-        // Populate the required program list from the backend (the same
-        // six programs the API enforces).
+        // Populate the required program list from the backend (the active
+        // built-in categories available for student enrollment).
         try {
           const { programs } = await StudyCoreAPI.listPrograms();
           const sel = document.getElementById('program');
           programs.forEach((p) => {
             const opt = document.createElement('option');
             opt.value = p.code;
-            opt.textContent = p.groupName ? `${p.name} (${p.groupName})` : p.name;
+            opt.textContent = p.name;
             sel.appendChild(opt);
           });
         } catch {

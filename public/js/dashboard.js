@@ -588,7 +588,7 @@
       const sel = document.getElementById('programSelect');
       if (sel) {
         sel.innerHTML = '<option value="">Choose your program…</option>' +
-          programs.map((p) => `<option value="${p.code}" ${user.program === p.code ? 'selected' : ''}>${escapeHtml(p.groupName ? `${p.name} (${p.groupName})` : p.name)}</option>`).join('');
+          programs.map((p) => `<option value="${p.code}" ${user.program === p.code ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
       }
     } catch { /* non-fatal */ }
   }

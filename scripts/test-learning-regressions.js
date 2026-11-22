@@ -28,28 +28,28 @@ function visibleInSql(user, row) {
 }
 
 test('direct and SQL visibility enforce both targeting and course membership', () => {
-  const law = createUser();
   const mines = createUser({ program_code: 'SMMS' });
   const nonQuota = createUser({ program_code: 'SMNS' });
+  const sict = createUser({ program_code: 'SICT' });
   const unassigned = createUser({ program_code: null });
   const publisher = createUser({ role: 'content_admin' });
   const admin = createUser({ role: 'admin' });
-  const lawCourse = resolveCourse('LS110').id;
+  const minesOnlyCourse = resolveCourse('ED').id;
   const sharedCourse = resolveCourse('MA110').id;
   const cases = [
-    [createResource(), [law, mines, nonQuota, unassigned, admin]],
-    [createResource({ course_id: lawCourse }), [law, admin]],
-    [createResource({ course_id: sharedCourse }), [mines, nonQuota, admin]],
-    [createResource({ target_all: 0 }, ['LAW']), [law, admin]],
-    [createResource({ target_all: 0, course_id: sharedCourse }, ['LAW']), [admin]],
+    [createResource(), [mines, nonQuota, sict, unassigned, admin]],
+    [createResource({ course_id: minesOnlyCourse }), [mines, admin]],
+    [createResource({ course_id: sharedCourse }), [mines, nonQuota, sict, admin]],
+    [createResource({ target_all: 0 }, ['SMMS']), [mines, nonQuota, admin]],
+    [createResource({ target_all: 0, course_id: minesOnlyCourse }, ['SMNS']), [admin]],
     // School of Mines and Non-Quota POOL their content: an upload targeted at
     // Mines on a shared course reaches Non-Quota students too, from the one
-    // row, without widening to any other program.
-    [createResource({ target_all: 0, course_id: sharedCourse }, ['SMMS']), [mines, nonQuota, admin]],
-    [createResource({ target_all: 0, course_id: sharedCourse }, ['SMNS']), [mines, nonQuota, admin]]
+    // row, without widening access to unrelated programs.
+    [createResource({ target_all: 0, course_id: sharedCourse }, ['SMMS']), [mines, nonQuota, sict, admin]],
+    [createResource({ target_all: 0, course_id: sharedCourse }, ['SMNS']), [mines, nonQuota, sict, admin]]
   ];
   for (const [row, allowedUsers] of cases) {
-    for (const user of [law, mines, nonQuota, unassigned, publisher, admin, null]) {
+    for (const user of [mines, nonQuota, sict, unassigned, publisher, admin, null]) {
       const expected = allowedUsers.includes(user);
       const context = `${user?.role || 'anonymous'} / ${user?.program_code || 'unassigned'} / ${row.id}`;
       assert.equal(programCanSeeResource(user, row), expected, `direct: ${context}`);
@@ -60,8 +60,8 @@ test('direct and SQL visibility enforce both targeting and course membership', (
 });
 
 test('course-bound all-program resources cannot be opened by an unrelated or unassigned student', async () => {
-  const row = createResource({ course_id: resolveCourse('LS110').id });
-  for (const user of [createUser({ program_code: 'SMMS' }), createUser({ program_code: null })]) {
+  const row = createResource({ course_id: resolveCourse('ED').id });
+  for (const user of [createUser({ program_code: 'SMNS' }), createUser({ program_code: null })]) {
     const listed = await call('GET', `/api/resources?search=${row.id}`, { user });
     assert.equal(listed.status, 200);
     assert.equal(listed.data.resources.length, 0);
@@ -76,9 +76,9 @@ test('course-bound all-program resources cannot be opened by an unrelated or una
 
 test('legacy course homes and lesson navigation do not expose other programs resources', async () => {
   const user = createUser();
-  const visible = createResource({ target_all: 0 }, ['LAW']);
-  const hidden = createResource({ target_all: 0 }, ['SMMS']);
-  const hiddenCourse = createResource({ course_id: resolveCourse('MA110').id });
+  const visible = createResource({ target_all: 0 }, ['SMMS']);
+  const hidden = createResource({ target_all: 0 }, ['SICT']);
+  const hiddenCourse = createResource({ course_id: resolveCourse('BI110').id });
   const home = await call('GET', '/api/courses/mathematics', { user });
   assert.equal(home.status, 200, home.text);
   assert.ok(home.data.lessons.some((r) => r.id === visible.id));
@@ -96,14 +96,14 @@ test('dashboard lesson counts and progress use the same visible published learni
   const courseId = `course-${randomUUID()}`;
   db.prepare('INSERT INTO courses (id, code, slug, name, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(courseId, courseId, courseId, 'Regression course', new Date().toISOString());
-  db.prepare('INSERT INTO program_courses (program_code, course_id) VALUES (?, ?)').run('LAW', courseId);
+  db.prepare('INSERT INTO program_courses (program_code, course_id) VALUES (?, ?)').run('SMMS', courseId);
   const user = createUser();
   const lessons = ['video', 'document', 'tutorial', 'past_paper'].map((category) => createResource({ course_id: courseId, category }));
   const excluded = [
     createResource({ course_id: courseId, category: 'announcement' }),
     createResource({ course_id: courseId, category: 'quiz' }),
     createResource({ course_id: courseId, publish_status: 'draft' }),
-    createResource({ course_id: courseId, target_all: 0 }, ['SMMS'])
+    createResource({ course_id: courseId, target_all: 0 }, ['SICT'])
   ];
   // Old progress can survive an admin unpublishing/re-targeting a resource;
   // it must no longer inflate the current course's completion percentage.
@@ -123,7 +123,7 @@ test('dashboard lesson counts and progress use the same visible published learni
 });
 
 test('program-targeted quizzes use the current database program, not missing or stale JWT fields', async () => {
-  const quiz = await createQuiz({ targetAll: false, programs: ['LAW'], courseId: resolveCourse('LS110').id });
+  const quiz = await createQuiz({ targetAll: false, programs: ['SMMS'] });
   const user = createUser();
   const cookie = cookieFor(user);
   const listed = await call('GET', '/api/quiz/student', { cookie });
@@ -134,7 +134,7 @@ test('program-targeted quizzes use the current database program, not missing or 
   const attempt = await call('POST', `/api/quiz/${quiz.id}/attempt`, { cookie, body: { answers: [] } });
   assert.equal(attempt.status, 201, attempt.text);
 
-  db.prepare('UPDATE users SET program_code = ? WHERE id = ?').run('SMMS', user.id);
+  db.prepare('UPDATE users SET program_code = ? WHERE id = ?').run('SICT', user.id);
   const changed = await call('GET', '/api/quiz/student', { cookie });
   assert.ok(!changed.data.quizzes.some((q) => q.id === quiz.id));
   assert.equal((await call('GET', `/api/quiz/${quiz.id}`, { cookie })).status, 403);
@@ -142,13 +142,13 @@ test('program-targeted quizzes use the current database program, not missing or 
 });
 
 test('quiz cards and take payloads supply the metadata rendered by the student UI', async () => {
-  const quiz = await createQuiz({ targetAll: false, programs: ['LAW'] });
+  const quiz = await createQuiz({ targetAll: false, programs: ['SMMS'] });
   // Admin can preview quizzes too and should receive the same basic metadata.
   const admin = createUser({ role: 'admin' });
   const list = await call('GET', '/api/quiz/student', { user: admin });
   const card = list.data.quizzes.find((q) => q.id === quiz.id);
   assert.equal(card.targetAll, false);
-  assert.deepEqual(card.programCodes, ['LAW']);
+  assert.deepEqual(card.programCodes, ['SMMS']);
   assert.equal(card.passingPercent, 50);
   const take = await call('GET', `/api/quiz/${quiz.id}`, { user: admin });
   assert.equal(take.data.totalPoints, 5, 'the quiz heading must not display undefined points');
@@ -264,7 +264,7 @@ test('videos serialize without Stream playback when Bunny Stream is unconfigured
 });
 
 test('program lesson flow also piggybacks playback tickets but locked lessons do not', async () => {
-  const course = resolveCourse('LS110');
+  const course = resolveCourse('MA110');
   const video = createResource({
     category: 'video',
     course_id: course.id,
@@ -274,7 +274,7 @@ test('program lesson flow also piggybacks playback tickets but locked lessons do
     mime_type: 'video/mp4',
     file_size: 2048
   });
-  const premium = createUser({ program_code: 'LAW' });
+  const premium = createUser({ program_code: 'SMMS' });
   const allowed = await call('GET', `/api/programs/lesson/${video.id}`, { user: premium });
   assert.equal(allowed.status, 200, allowed.text);
   const protectedUrl = new URL(allowed.data.lesson.protectedStreamUrl, 'https://studycore.test');
@@ -285,7 +285,7 @@ test('program lesson flow also piggybacks playback tickets but locked lessons do
   assert.equal(allowed.data.lesson.mimeType, 'video/mp4', 'player receives format metadata');
 
   const expired = createUser({
-    program_code: 'LAW',
+    program_code: 'SMMS',
     subscription: 'free',
     subscription_end: new Date(Date.now() - 86400000).toISOString(),
     trial_end: new Date(Date.now() - 86400000).toISOString()

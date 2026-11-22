@@ -124,7 +124,7 @@ Access control lives on the server, and it always has:
 
 * `requirePageAuth` gates the lesson, viewer and course **pages**;
 * `/api/resources/:id/stream` runs `requireAuth`, then the program boundary
-  (`programCanSeeResource` — a Law student cannot stream a Mines resource id),
+  (`programCanSeeResource` — a Non-Quota student cannot stream a Mines-only Engineering Drawing resource),
   then the Premium/trial gate. Authorization is re-evaluated on **every single
   request**, including every 128 KB range chunk of a PDF;
 * `/api/resources/:id/download` is an explicit `403`, so a saved link from

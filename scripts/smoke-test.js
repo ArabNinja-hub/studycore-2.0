@@ -51,7 +51,7 @@ test('Smoke Test: 4. All public CSS stylesheets in public/css serve 200 with CSS
 });
 
 test('Smoke Test: 5. Auth API endpoints (me, config, payment-info, profile, referral)', async () => {
-  const student = createUser({ program_code: 'LAW' });
+  const student = createUser({ program_code: 'SMMS' });
 
   const meRes = await call('GET', '/api/auth/me', { user: student });
   assert.equal(meRes.status, 200);
@@ -82,7 +82,7 @@ function resUser(res) {
 }
 
 test('Smoke Test: 6. Programs and Courses API endpoints', async () => {
-  const student = createUser({ program_code: 'LAW' });
+  const student = createUser({ program_code: 'SMMS' });
 
   const progRes = await call('GET', '/api/programs');
   assert.equal(progRes.status, 200);
@@ -90,7 +90,7 @@ test('Smoke Test: 6. Programs and Courses API endpoints', async () => {
 
   const myProgRes = await call('GET', '/api/programs/mine', { user: student });
   assert.equal(myProgRes.status, 200);
-  assert.equal(myProgRes.data.program.code, 'LAW');
+  assert.equal(myProgRes.data.program.code, 'SMMS');
 
   const crsRes = await call('GET', '/api/courses');
   assert.equal(crsRes.status, 200);
@@ -106,8 +106,8 @@ test('Smoke Test: 6. Programs and Courses API endpoints', async () => {
 });
 
 test('Smoke Test: 7. Resources, Search, Bookmarks, and Completion API endpoints', async () => {
-  const student = createUser({ program_code: 'LAW' });
-  const doc = createResource({ category: 'document', title: 'Jurisprudence Notes', subject: 'Law' });
+  const student = createUser({ program_code: 'SMMS' });
+  const doc = createResource({ category: 'document', title: 'Chemistry Revision Notes', subject: 'Chemistry' });
 
   const listRes = await call('GET', '/api/resources', { user: student });
   assert.equal(listRes.status, 200);
@@ -117,7 +117,7 @@ test('Smoke Test: 7. Resources, Search, Bookmarks, and Completion API endpoints'
   assert.equal(getRes.status, 200);
   assert.equal(getRes.data.resource.id, doc.id);
 
-  const searchRes = await call('GET', '/api/resources/search?q=Jurisprudence', { user: student });
+  const searchRes = await call('GET', '/api/resources/search?q=Chemistry', { user: student });
   assert.equal(searchRes.status, 200);
   assert.ok(searchRes.data.results.some(r => r.id === doc.id));
 
@@ -137,7 +137,7 @@ test('Smoke Test: 7. Resources, Search, Bookmarks, and Completion API endpoints'
 });
 
 test('Smoke Test: 8. Notifications and Quiz API endpoints', async () => {
-  const student = createUser({ program_code: 'LAW' });
+  const student = createUser({ program_code: 'SMMS' });
 
   const notifRes = await call('GET', '/api/notifications', { user: student });
   assert.equal(notifRes.status, 200);

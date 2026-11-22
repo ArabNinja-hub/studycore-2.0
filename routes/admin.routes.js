@@ -197,8 +197,8 @@ function resourceWithUploader(resourceId) {
 // ---- Resource CRUD -------------------------------------------------------
 
 // GET all resources for the management table (includes drafts, supports search/filter/sort)
-// Program filter: ?program=LAW shows content targeted at LAW OR all-programs;
-// ?program=LAW&scope=exact shows ONLY content specifically targeting LAW.
+// Program filter: ?program=SMMS shows content targeted at Mines OR all-programs;
+// ?program=SMMS&scope=exact shows ONLY content specifically targeting Mines.
 router.get('/resources', (req, res) => {
   const { category, subject, search, sort = 'newest', publishStatus, program, scope } = req.query;
   const clauses = [];

@@ -3,8 +3,8 @@
 // Regression tests: the program catalog is DYNAMIC. Main Admin can create
 // new programs at runtime (POST /api/programs/admin) and the UI advertises
 // them on signup and in the targeting pickers. Program validation must
-// therefore check the live programs table, not the six codes that seed a
-// fresh install — otherwise:
+// therefore check the live programs table, not just the three categories in
+// the built-in seed catalog — otherwise:
 //   1. students can never enroll in an admin-created program, and
 //   2. content explicitly targeted at it is silently re-targeted to
 //      "All Programs", leaking it to every other program's students.
@@ -123,16 +123,16 @@ test('content targeted at an admin-created program stays hidden from other progr
   assert.equal(upload.data.resource.targetAll, false, 'explicit single-program targeting must not widen to all programs');
   assert.deepEqual(upload.data.resource.targetPrograms, ['MED']);
 
-  const lawStudent = await makeStudent('Lawy One', 'lawy1@targeting-test.com', 'LAW');
+  const sictStudent = await makeStudent('SICT One', 'sict1@targeting-test.com', 'SICT');
   const medStudent = await makeStudent('Medic Two', 'medic2@targeting-test.com', 'MED');
 
-  const lawRow = db.prepare('SELECT * FROM users WHERE email = ?').get('lawy1@targeting-test.com');
+  const sictRow = db.prepare('SELECT * FROM users WHERE email = ?').get('sict1@targeting-test.com');
   const medRow = db.prepare('SELECT * FROM users WHERE email = ?').get('medic2@targeting-test.com');
 
-  const lawList = await call('GET', '/api/resources?search=Anatomy', { cookie: cookieFor(lawRow) });
-  const lawTitles = lawList.data.resources.map((r) => r.title);
-  assert.ok(!lawTitles.includes('MED-Only Anatomy Notes'),
-    `a LAW student must not see MED-only content, got: ${lawTitles.join(', ') || '(none)'}`);
+  const sictList = await call('GET', '/api/resources?search=Anatomy', { cookie: cookieFor(sictRow) });
+  const sictTitles = sictList.data.resources.map((r) => r.title);
+  assert.ok(!sictTitles.includes('MED-Only Anatomy Notes'),
+    `an SICT student must not see MED-only content, got: ${sictTitles.join(', ') || '(none)'}`);
 
   const medList = await call('GET', '/api/resources?search=Anatomy', { cookie: cookieFor(medRow) });
   const medTitles = medList.data.resources.map((r) => r.title);
@@ -142,11 +142,11 @@ test('content targeted at an admin-created program stays hidden from other progr
   // The file itself is gated too — a straight stream URL must be refused for
   // a student whose program does not include the content (403 program gate,
   // not 200 bytes).
-  const stream = await call('GET', `/api/resources/${upload.data.resource.id}/stream`, { cookie: cookieFor(lawRow) });
-  assert.equal(stream.status, 403, `law student stream must be refused, got ${stream.status}`);
+  const stream = await call('GET', `/api/resources/${upload.data.resource.id}/stream`, { cookie: cookieFor(sictRow) });
+  assert.equal(stream.status, 403, `SICT student stream must be refused, got ${stream.status}`);
 
   // Admin-managed student program changes accept new program codes as well.
-  const moved = await call('PUT', `/api/admin/users/${lawRow.id}/program`, {
+  const moved = await call('PUT', `/api/admin/users/${sictRow.id}/program`, {
     cookie: admin,
     body: { program: 'MED' }
   });
@@ -188,10 +188,10 @@ test('programs teaching the same course automatically share its uploads', async 
   assert.ok(list.data.resources.some((resource) => resource.title === 'One Anatomy Upload'),
     'a student in another program teaching the same course should receive the upload');
 
-  const lawStudent = await makeStudent('Law Shared', 'law-shared@targeting-test.com', 'LAW');
-  const lawRow = db.prepare('SELECT * FROM users WHERE email = ?').get(lawStudent.email);
-  const lawList = await call('GET', '/api/resources?search=One+Anatomy', { cookie: cookieFor(lawRow) });
-  assert.ok(!lawList.data.resources.some((resource) => resource.title === 'One Anatomy Upload'),
+  const sictStudent = await makeStudent('SICT Shared', 'sict-shared@targeting-test.com', 'SICT');
+  const sictRow = db.prepare('SELECT * FROM users WHERE email = ?').get(sictStudent.email);
+  const sictList = await call('GET', '/api/resources?search=One+Anatomy', { cookie: cookieFor(sictRow) });
+  assert.ok(!sictList.data.resources.some((resource) => resource.title === 'One Anatomy Upload'),
     'programs which do not teach the course must remain excluded');
 });
 

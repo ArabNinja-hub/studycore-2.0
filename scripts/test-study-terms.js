@@ -114,14 +114,14 @@ test('term counts cover all three terms so the switcher can show what is waiting
 });
 
 test('the study view enforces the same program access as the course home', async () => {
-  const outsider = createUser({ program_code: 'LAW' });
+  const outsider = createUser({ program_code: 'SMNS' });
   const ED = resolveCourse('ED');
   const res = await call('GET', `/api/programs/course/${ED.code}?view=study&term=${encodeURIComponent('Term 1')}`, { user: outsider });
   assert.equal(res.status, 403, 'a course outside the student program is refused, view or no view');
 });
 
 test('the legacy subject route serves the same two-slot study view', async () => {
-  const student = createUser({ program_code: 'LAW' });
+  const student = createUser({ program_code: 'SMNS' });
   createResource({ category: 'document', subject: 'Physics', semester: 'Term 2', title: 'Physics notes' });
   createResource({ category: 'tutorial', subject: 'Physics', semester: 'Term 2', title: 'Physics sheet' });
   createResource({ category: 'document', subject: 'Physics', semester: 'Term 1', title: 'Earlier notes' });

@@ -138,9 +138,9 @@
       termStudyHref
     );
 
-    // Lab Reports is a dedicated slot only for Physics/Chemistry in Mines,
-    // Non-Quota and Natural Resources, plus Physics in SICT. The API is the
-    // authority for eligibility; unrelated course pages keep it fully hidden.
+    // Lab Reports is a dedicated slot only for Physics/Chemistry in Mines
+    // and Non-Quota, plus Physics in SICT. The API is the authority for
+    // eligibility; unrelated course pages keep it fully hidden.
     if (data.labReportsEnabled) {
       const section = $('#lab-reports');
       section.hidden = false;
